@@ -59,6 +59,10 @@ The existing Cabinet injection flow automatically selects a valid preferred save
 
 This follows the pinned source ad-hoc form (`AdHocLogForm.tsx`, initial choice and persistent figure). The original scheduled `LogDoseForm.tsx` gates its figure on a valid draw, so this is not a claim that every original form always displays an empty syringe. No numbered scale, Pitstop-design dashed marker, new arithmetic, schema or dependency is introduced.
 
+## Deployed-reference fidelity audit
+
+The [deployed-reference review](deployed-reference-review.md) anchors the broader appearance/flow and delivered-feature audit to the actual public source revision, records active design flags without private configuration, and distinguishes verified matches, approved adaptations and remaining partial coverage. It does not authorise new implementation.
+
 ## Feature backlog
 
 [feature-backlog.json](feature-backlog.json) contains all 77 reviewed items, stable IDs, source links, proposed work, relative effort and dependencies. It records 30 additions, 32 extensions, 12 capabilities covered by the baseline and 3 deferred ideas.

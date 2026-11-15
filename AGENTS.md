@@ -1,10 +1,11 @@
 # AGENTS.md
 
-*Last updated: 2026-11-15*
+_Last updated: 2026-11-15_
 
 This is the repo-root monorepo guide for SparkyFitness. Use it to choose the right package, understand shared repo-level rules, and find the next guide to read.
 
 **For AI Tools & Developers:** Start with `agent-docs/README.md` (in this repo) for quick navigation to:
+
 - `file-and-domain-reference.md` — Find any code by feature in seconds
 - `testing-patterns.md` — Concrete test examples for each layer
 - `architecture-permissions.md` — Permission types and RLS patterns
@@ -87,7 +88,7 @@ Cheap ways to learn things:
 - Auth or API contract changes usually need a quick check in both web and mobile because they share the same backend.
 - Frontend local dev proxies `/api`, `/health-data`, and `/uploads` to the server on `3010`. The `/health-data` proxy is rewritten to `/api/health-data`, while server APIs remain rooted at `/api`.
 - Server runtime secrets are usually sourced from repo-root `.env`, commonly created from `docker/.env.example`. The server can also load secret files via `SparkyFitnessServer/utils/secretLoader.ts`.
-- Extract shared logic on the **second** duplication ("rule of two"), not the third - duplicated logic drifts as different sessions edit each copy. Extract *behavior*, not coincidental shape. See `agent-docs/anti-patterns.md`.
+- Extract shared logic on the **second** duplication ("rule of two"), not the third - duplicated logic drifts as different sessions edit each copy. Extract _behavior_, not coincidental shape. See `agent-docs/anti-patterns.md`.
 - **Strict TypeScript Typing:** Never use `any` or `// eslint-disable-next-line @typescript-eslint/no-explicit-any` when creating new functions or editing existing code. When modifying existing files, proactively update legacy `any` declarations in the touched code to reflect their proper TypeScript data types, interfaces, or schemas from `@workspace/shared`. Do NOT copy legacy `any` parameter signatures forward when refactoring or extending service/repository files.
 - **Library Deletes vs Diary Snapshots:** `exercise_entries` and `food_entries` are self-contained snapshots, not pointers (`exercise_id` and `food_id` are `ON DELETE SET NULL`). Deleting an exercise or food from the library (`mode: 'delete'`) preserves past and current diary history, cascades from presets and plan templates, cleans up future scheduled workout plan entries (`entry_date >= today`), and cleans up empty parent preset entries. Only explicit `delete_with_history` (force delete) purges diary logs for that user. If an item is referenced by other users (`otherUserReferences > 0`), the backend falls back to hiding (`is_quick_exercise` / `is_quick_food`).
 - **Comprehensive Cache Invalidation:** When mutating library items (foods, exercises, presets, meals, plans), always invalidate the entire family of dependent query keys across library search, counts, templates, and daily diary summaries (`dailySummary` / `dailyProgress` / `exerciseEntries`) in both web and mobile.
@@ -97,7 +98,6 @@ Cheap ways to learn things:
   3. `docs/src/install/environment-variables.md` (the comprehensive documentation reference).
   4. `docs/components/EnvGenerator.vue` (the interactive web `.env` generator component).
   5. `helm/chart/templates/` and `helm/chart/values.yaml` (if passed through Helm charts).
-
 
 ## Commit & PR Conventions
 
@@ -170,6 +170,7 @@ Owner direction on 15 November 2026 for this fork:
 
 - Handle commits, branch review and merges within the requested work. Do not require owner PR approval.
 - Feature work must stay within capabilities verified in Peptide Pitstop v1.28.1, pinned to `1caffbcfaeb4ccaccee9806a37d169e013328528`. Ask the owner before adding any feature beyond that source; architectural compatibility, permissions and tests do not authorise additional product behavior.
+- Before claiming Pitstop parity, verify the actual deployed reference revision and active nonsecret UI flags. Compare complete source flows, defaults and empty/pending/error states using synthetic full-screen compositions; distinguish currently enabled screens from optional source features, approved adaptations and partial coverage. Preserve Sparky's existing theme, navigation placement, stock integrity and chart customisations. Record public-safe evidence in `instance/deployed-reference-review.md`; keep deployment credentials, private configuration and personal records outside Git.
 - Use local tests and builds. Do not add or restore GitHub Actions workflows or hosted release/deployment automation.
 - Use Git/SSH and supported APIs. Do not operate the owner's browser for repository work.
 - Keep new feature branches local for review and push only `instance/v1.12.1` after integration unless the owner explicitly requests a topic-branch push. Preserve existing remote refs.
