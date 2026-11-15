@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { FOOD_VARIANT_NUTRIENT_FIELDS } from '@workspace/shared';
 import type { FoodVariantNutrientField } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
@@ -10,9 +11,11 @@ async function getNutritionData(
   userId: string,
   startDate: string,
   endDate: string,
-  customNutrients: Array<{ name: string }> = []
+  customNutrients: Array<{ name: string }> = [],
+  snapshotClient?: PoolClient,
+  preserveUnknown = false
 ) {
-  const client = await getClient(userId); // User-specific operation
+  const client = snapshotClient ?? (await getClient(userId)); // User-specific operation
   try {
     const params: (string | number)[] = [userId, startDate, endDate];
     const customNutrientParamIndexes: number[] = [];
@@ -23,7 +26,7 @@ async function getNutritionData(
 
     const standardNutrientsSelectOuter = FOOD_VARIANT_NUTRIENT_FIELDS.map(
       (nutrient) =>
-        `SUM(${nutrient}) AS ${nutrient},\n         COALESCE(SUM(${nutrient}) FILTER (WHERE nutrient_source = 'food'), 0) AS food_${nutrient},\n         COALESCE(SUM(${nutrient}) FILTER (WHERE nutrient_source = 'supplement'), 0) AS supplement_${nutrient}`
+        `${preserveUnknown ? `CASE WHEN BOOL_OR(${nutrient} IS NULL) THEN NULL ELSE SUM(${nutrient}) END` : `SUM(${nutrient})`} AS ${nutrient},\n         COALESCE(SUM(${nutrient}) FILTER (WHERE nutrient_source = 'food'), 0) AS food_${nutrient},\n         COALESCE(SUM(${nutrient}) FILTER (WHERE nutrient_source = 'supplement'), 0) AS supplement_${nutrient}`
     ).join(',\n         ');
     // Generate dynamic SQL parts for custom nutrients
     const customNutrientsSelectOuter = customNutrients
@@ -34,7 +37,7 @@ async function getNutritionData(
       .join(',\n         ');
     const standardNutrientsSelectInner1 = FOOD_VARIANT_NUTRIENT_FIELDS.map(
       (nutrient) =>
-        `(COALESCE(fe.${nutrient}, 0) * fe.quantity / fe.serving_size) AS ${nutrient}`
+        `(${preserveUnknown ? `fe.${nutrient}` : `COALESCE(fe.${nutrient}, 0)`} * fe.quantity / ${preserveUnknown ? 'NULLIF(fe.serving_size, 0)' : 'fe.serving_size'}) AS ${nutrient}`
     ).join(',\n           ');
     const customNutrientsSelectInner1 = customNutrients
       .map((cn, idx) => {
@@ -46,7 +49,7 @@ async function getNutritionData(
     // Note: fe_meal.quantity is already scaled, so do NOT multiply by fem.quantity
     const standardNutrientsSelectInner2 = FOOD_VARIANT_NUTRIENT_FIELDS.map(
       (nutrient) =>
-        `SUM(COALESCE(fe_meal.${nutrient}, 0) * fe_meal.quantity / fe_meal.serving_size) AS ${nutrient}`
+        `${preserveUnknown ? `CASE WHEN BOOL_OR(fe_meal.${nutrient} IS NULL OR fe_meal.quantity IS NULL OR fe_meal.serving_size IS NULL OR fe_meal.serving_size = 0) THEN NULL ELSE SUM(fe_meal.${nutrient} * fe_meal.quantity / NULLIF(fe_meal.serving_size, 0)) END` : `SUM(COALESCE(fe_meal.${nutrient}, 0) * fe_meal.quantity / fe_meal.serving_size)`} AS ${nutrient}`
     ).join(',\n           ');
     const customNutrientsSelectInner2 = customNutrients
       .map((cn, idx) => {
@@ -66,7 +69,7 @@ async function getNutritionData(
     // malformed JSONB value can't error the whole query.
     const standardNutrientsSelectSupplement = FOOD_VARIANT_NUTRIENT_FIELDS.map(
       (nutrient) =>
-        `(COALESCE(public.sf_try_numeric(me.nutrients_snapshot->>'${nutrient}'), 0) * ${doseScale('me')}) AS ${nutrient}`
+        `(${preserveUnknown ? `public.sf_try_numeric(me.nutrients_snapshot->>'${nutrient}')` : `COALESCE(public.sf_try_numeric(me.nutrients_snapshot->>'${nutrient}'), 0)`} * ${doseScale('me')}) AS ${nutrient}`
     ).join(',\n           ');
     const customNutrientsSelectSupplement = customNutrients
       .map((cn, idx) => {
@@ -129,7 +132,7 @@ async function getNutritionData(
     );
     return result.rows;
   } finally {
-    client.release();
+    if (!snapshotClient) client.release();
   }
 }
 async function getTabularFoodData(

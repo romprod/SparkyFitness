@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import {
   createManualLabPanelBodySchema,
   parseLabValue,
@@ -634,17 +635,20 @@ export async function deleteResultsForMarkerKey(
 /** Complete contents of the latest three explicit panels, never inferred date buckets. */
 export async function listLatestLabPanels(
   userId: string,
-  authenticatedUserId?: string
+  authenticatedUserId?: string,
+  snapshotClient?: PoolClient
 ): Promise<LabComparisonResponse> {
-  return listLabPanels(userId, authenticatedUserId, 3);
+  return listLabPanels(userId, authenticatedUserId, 3, snapshotClient);
 }
 
 export async function listLabPanels(
   userId: string,
   authenticatedUserId?: string,
-  limit: number | null = null
+  limit: number | null = null,
+  snapshotClient?: PoolClient
 ): Promise<LabPanelHistoryResponse> {
-  const client = await getClient(userId, authenticatedUserId);
+  const client =
+    snapshotClient ?? (await getClient(userId, authenticatedUserId));
   try {
     const result = await client.query(
       `SELECT p.id,p.lab_name,p.collected_on,p.created_at,p.origin,p.notes,
@@ -678,7 +682,7 @@ export async function listLabPanels(
       })),
     };
   } finally {
-    client.release();
+    if (!snapshotClient) client.release();
   }
 }
 

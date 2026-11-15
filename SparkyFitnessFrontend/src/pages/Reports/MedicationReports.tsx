@@ -57,6 +57,7 @@ import {
 import Papa from 'papaparse';
 
 import MedicationLogTable from './MedicationLogTable';
+import AppointmentPdfExport from './AppointmentPdfExport';
 
 import type {
   Medication,
@@ -1315,15 +1316,24 @@ const MedicationReports = ({
             )}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
-          <Button variant="default" onClick={exportPrescriberPDF}>
-            <FileText className="w-4 h-4 mr-2" />
-            {t('medications.reports.printPDF', 'Print / Save PDF Report')}
-          </Button>
-          <Button variant="secondary" onClick={exportPrescriberCSV}>
-            <Download className="w-4 h-4 mr-2" />
-            {t('medications.reports.downloadCSV', 'Download CSV Data')}
-          </Button>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {t(
+              'medications.reports.currentViewExport',
+              'Print and CSV use the current report view and its selected period.'
+            )}
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button variant="default" onClick={exportPrescriberPDF}>
+              <FileText className="w-4 h-4 mr-2" />
+              {t('medications.reports.printPDF', 'Print / Save PDF Report')}
+            </Button>
+            <Button variant="secondary" onClick={exportPrescriberCSV}>
+              <Download className="w-4 h-4 mr-2" />
+              {t('medications.reports.downloadCSV', 'Download CSV Data')}
+            </Button>
+          </div>
+          <AppointmentPdfExport />
         </CardContent>
       </Card>
 

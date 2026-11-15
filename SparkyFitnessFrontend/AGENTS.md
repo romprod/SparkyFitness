@@ -194,3 +194,7 @@ Owner-requested website chrome: shared layouts no longer render Initial Beta Rel
 `pages/Labs/LabMarkerHelp.tsx` and `labMarkerDescriptions.ts` provide hover/focus/tap WHAT-it-measures help throughout existing Labs surfaces. Keep all built-in keys covered by primary-source definitions and source URLs, with honest custom/unknown fallback. Do not interpret result values, add ranges/treatment or infer descriptions from arbitrary names. Source links remain provenance, not interactive controls inside the help popup.
 
 `sleepReportMetrics.ts` supports `SleepReport.tsx` / `SleepAnalyticsTable.tsx` from existing nullable REM/deep seconds. Keep one CSV export control, explicit seconds columns/blank unknown, valid zero and known-day averages. No stage inference/backfill or API change. These are direct owner requests beyond the Pitstop comparison, intended for a frontend-only release.
+
+## Direct appointment PDF
+
+`AppointmentPdfExport.tsx`, `useAppointmentReport` and `api/Reports/appointmentReport.ts` extend the existing Prescriber Ready card in Reports → Medications. Keep PDF-specific From/To controls distinct from existing chart/report filters, Print and CSV. Use authoritative active-owner identity before requesting a private PDF; abort/discard late blobs across identity changes and clean object URLs. Do not include report contents in errors or logs. Preserve the existing delegated Print flow; the new owner-only PDF control must not introduce another report destination.

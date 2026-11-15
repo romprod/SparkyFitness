@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MedicationReports from '@/pages/Reports/MedicationReports';
 
@@ -63,6 +63,9 @@ jest.mock('@/hooks/useMedicationDisplayPreferences', () => ({
 }));
 
 jest.mock('@/pages/Reports/MedicationLogTable', () => () => null);
+jest.mock('@/pages/Reports/AppointmentPdfExport', () => () => (
+  <div>Owner appointment PDF controls</div>
+));
 
 jest.mock('recharts', () => {
   const Container = ({ children }: { children?: React.ReactNode }) => (
@@ -171,4 +174,45 @@ describe('MedicationReports localization', () => {
       'STRONG'
     );
   });
+});
+
+it('keeps existing Print and CSV formats distinct from owner-only appointment PDF controls', () => {
+  const print = jest.spyOn(window, 'print').mockImplementation(() => {});
+  render(
+    <MedicationReports
+      startDate="2020-01-01"
+      endDate="2020-01-01"
+      nutritionData={[]}
+      tabularData={[]}
+      exerciseEntries={[]}
+      measurementData={[]}
+      customCategories={[]}
+      customMeasurementsData={[]}
+      sleepAnalyticsData={[]}
+      medications={[]}
+      medicationEntries={[]}
+      symptomEntries={[]}
+      injections={[]}
+      titrationSteps={[]}
+    />
+  );
+  expect(
+    screen.getByRole('button', { name: 'Print / Save PDF Report' })
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Download CSV Data' })
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('Owner appointment PDF controls')
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      'Print and CSV use the current report view and its selected period.'
+    )
+  ).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Print / Save PDF Report' })
+  );
+  expect(print).toHaveBeenCalledTimes(1);
+  print.mockRestore();
 });

@@ -399,3 +399,4 @@ export * from './schemas/api/MedicationStockMetadata.api.zod.ts';
 
 export * from './schemas/api/MedicationCostAnalytics.api.zod.ts';
 export * from './medications/costAnalytics.ts';
+export type { AppointmentReportData } from './reports/appointmentReport.ts';

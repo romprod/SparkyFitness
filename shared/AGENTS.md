@@ -102,3 +102,7 @@ C01/C02/bounded C06 use `/api/v2/medication-purchases`, separate from delegated 
 ## Current-rate medication cost analytics
 
 `src/medications/costAnalytics.ts` derives current invoice/explicit-label rates and `medicationCostRange`; `MedicationCostAnalytics.api.zod.ts` owns the window and response contract. `MedicationStockMetadata.api.zod.ts` preserves optional exact `label_mass_mg` separately from preparation. No missing label or actual dose mass is inferred. Keep zero/negative known values distinct from unknown; mixed currencies disable only affected metrics. Spend ordering uses Decimal when comparable and stable name/ID order otherwise. Do not change source windows or filter the invoice ledger.
+
+## Appointment report contract
+
+`src/reports/appointmentReport.ts` contains the appointment query/date-range contract and recorded-fact DTO consumed by the server renderer and existing web report card. Keep real ISO calendar-date and IANA-zone validation, default inclusive 90-day range, exact dose units and qualified lab values. Latest explicit lab panels have an independent period label. Preserve missing facts as unknown, never inferred zero or a clinical interpretation. The direct PDF is owner-only; its contract does not grant delegated access or change existing Print/CSV.

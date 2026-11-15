@@ -150,7 +150,7 @@ The **Medications** tab (*Medications Report* — "Analyze dose correlations, si
 
   The page is explicit that these correlations are "purely descriptive calculations over the chosen date range and do not imply clinical causality."
 
-- **Sharing with your prescriber:** the **Prescriber-Ready Data Export** card offers a **Print / Save PDF Report** button that produces a clean PDF summary you can hand to your doctor, plus a **Download CSV Data** button for the raw numbers.
+- **Sharing with your prescriber:** the **Prescriber-Ready Data Export** card offers a **Print / Save PDF Report** button that opens the browser print flow for a summary you can hand to your doctor, plus a **Download CSV Data** button for the raw numbers.
 
 
 - - -
@@ -179,3 +179,9 @@ The **Table** tab gives you the raw data behind everything above:
 - [Settings → Calculation Settings](/features/settings/calculation-settings)
 - [Settings → External Providers](/features/settings/external-providers)
 
+
+### Selected direct appointment PDF
+
+The selected extension is implemented and source-tested on the existing Prescriber-Ready Data Export card. A direct PDF download has its own labelled From/To controls, initially today minus 90 calendar days through today. The current Print/Save PDF and CSV actions remain distinct. The new PDF is available only in the signed-in owner context; delegated Print behavior remains unchanged.
+
+The report uses recorded medication/schedule facts, all selected-range dose and symptom records and available weight, nutrition and water facts. The latest three explicit lab panels are separately labelled because their dates can fall outside the selected interval. It preserves units and qualified results and adds no clinical interpretation or inferred measurements. Output is generated for the download without storing the PDF. Focused source/client and synthetic PDF/font checks passed; actual-build and live release evidence are recorded separately.

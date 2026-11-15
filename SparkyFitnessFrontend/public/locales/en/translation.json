@@ -422,7 +422,19 @@
       "doseInsufficient": "Requires active GLP-1 dose records and logged nausea logs in this date range.",
       "dosesLogged2": "{{display_name}} — {{count}} doses logged",
       "inj": "({{injections}} inj)",
-      "reportingPeriodTo": "Reporting Period: {{startDate}} to {{endDate}}"
+      "reportingPeriodTo": "Reporting Period: {{startDate}} to {{endDate}}",
+      "currentViewExport": "Print and CSV use the current report view and its selected period.",
+      "appointmentPdf": {
+        "title": "Appointment report (PDF)",
+        "description": "Dose log, symptoms and wellness for this PDF period, plus the latest three explicit lab panels regardless of period.",
+        "from": "PDF from",
+        "to": "PDF to",
+        "reversed": "PDF from must be on or before PDF to.",
+        "invalid": "Enter valid PDF from and PDF to dates.",
+        "pending": "Preparing PDF…",
+        "download": "Download PDF",
+        "error": "Could not download the PDF report. Try again."
+      }
     },
     "locations": {
       "general": "General",

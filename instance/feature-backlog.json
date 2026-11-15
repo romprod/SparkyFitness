@@ -1097,15 +1097,18 @@
       "area": "Exports",
       "feature": "Consolidated doctor PDF",
       "reference_capability": "Date-ranged dose, symptom/wellness and body-composition report with recent lab panels.",
-      "sparky_baseline": "Partial: report UI and weekly summaries exist. Equivalent consolidated PDF not found.",
+      "sparky_baseline": "Existing Prescriber Ready card has browser Print/Save PDF and CSV. Direct owner-only date-ranged PDF is selected as an extension, not a duplicate report destination.",
       "proposed_work": "Create a selectable appointment report using existing medications, labs, measurements and symptom data.",
       "decision": "Add",
       "priority": "First",
       "relative_effort": "M",
       "dependencies_and_limits": "Pitstop includes latest three labs outside the dose date range. Sparky should label section date scopes explicitly.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/api/export/report/route.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Reports/Reports.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Reports/Reports.tsx",
+      "implementation_scope": "Implemented and source-tested selected scope: direct PDF on existing Reports → Medications Prescriber Ready card; PDF-specific From/To defaults today minus90calendar days through today. Strict real ISO dates, inclusive boundaries in validated requested IANA timezone, reversed ranges400. Owner-only new endpoint; preserve delegated existing Print and CSV. Current recorded medication/schedule/titration facts, full selected-range medication entries/injections merged once, symptoms and available weight/nutrition/water; latest3explicit labs independently labelled. Exact units/qualifiers/assay IDs, no silent limits or inference. No stored PDFs; no-store and client owner/late-blob guard. Pinned PDFKit and bundled OFL Unicode fonts are source-verified; actual-image and live release evidence are recorded separately. No migration, specialised DEXA/RMR/blends/newprotocol model or native UI.",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "67 focused server/data/auth cases and 5 isolated PostgreSQL cases, 22 web cases with full static checks, pure PDF tests and all-page synthetic rendering, combined shared/consuming type/build checks. Exact dependency graph/font/source hashes and live operational evidence are recorded separately. No owner report is a test fixture."
     },
     {
       "id": "E03",
