@@ -20,8 +20,6 @@ import {
 import type { Medication } from '@/types/medications';
 import AddMedicationDialog from './AddMedicationDialog';
 import Glp1InventoryManager from './Glp1InventoryManager';
-import Glp1LogInjection from './Glp1LogInjection';
-import Glp1RecentInjections from './Glp1RecentInjections';
 
 /** Shared stock tools for all injectable peptides; no GLP-1 model or flag is required. */
 export default function PeptideStock({ meds }: { meds: Medication[] }) {
@@ -101,8 +99,6 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
       {selected && (
         <div key={selected.id} className="space-y-4">
           <Glp1InventoryManager med={selected} />
-          <Glp1LogInjection med={selected} />
-          <Glp1RecentInjections med={selected} />
         </div>
       )}
     </div>

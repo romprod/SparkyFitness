@@ -69,7 +69,7 @@ See [Family & Friends Sharing](./family-friends-sharing.md) for how permissions 
 
 ## Vial preparation and mass stock
 
-**Open Medications → Preparation & stock** to choose any injectable peptide or medication. The GLP-1 flag is not required. Use **Add peptide / injectable** for a new record, or select an existing injectable. This tab can be bookmarked at `/medications?tab=stock`. It includes preparation, stock, injection logging and editable injection history together. The same tools are also available in the Cabinet detail for injectable medications.
+**Open Medications → Preparation & stock** to choose any injectable peptide or medication. The GLP-1 flag is not required. Use **Add peptide / injectable** for a new record, or select an existing injectable. This tab can be bookmarked at `/medications?tab=stock`. Preparation and inventory live in this tab. Use **Cabinet** and select the medication to log an injection or review and correct injection history. Those dose changes still reconcile stock automatically. The same tools are also available in the Cabinet detail for injectable medications.
 
 Click **Prepare a vial**, then enter its labelled content in **mg**, its **final prepared volume in mL**, and the dose in **mg**. The calculator shows concentration in mg/mL and the draw volume in mL for that entered dose. The final volume is the total prepared solution, rather than an assumed quantity of diluent. The calculator does not choose a dose or convert to syringe units.
 

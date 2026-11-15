@@ -28,7 +28,7 @@ jest.mock('@/pages/Medications/Glp1LogInjection', () => ({
 }));
 jest.mock('@/pages/Medications/Glp1RecentInjections', () => ({
   __esModule: true,
-  default: () => null,
+  default: () => <p>Injection history</p>,
 }));
 const peptide = {
   id: 'peptide',
@@ -43,7 +43,7 @@ beforeEach(() => {
   mockSave.mockClear();
   mockPens.mockClear();
 });
-it('opens preparation and injection tools for a non-GLP-1 peptide', () => {
+it('shows preparation tools without injection logging or history for a non-GLP-1 peptide', () => {
   render(
     <MemoryRouter
       initialEntries={['/medications?tab=stock&medication=peptide']}
@@ -54,7 +54,8 @@ it('opens preparation and injection tools for a non-GLP-1 peptide', () => {
   expect(screen.getByLabelText('Peptide / medication')).toHaveTextContent(
     'Example peptide'
   );
-  expect(screen.getByText('Log injection: peptide')).toBeInTheDocument();
+  expect(screen.queryByText('Log injection: peptide')).not.toBeInTheDocument();
+  expect(screen.queryByText('Injection history')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Prepare a vial' }));
   expect(screen.getByText('Preparation calculator')).toBeInTheDocument();
   expect(screen.getByLabelText('Kind')).toHaveTextContent('Vial');

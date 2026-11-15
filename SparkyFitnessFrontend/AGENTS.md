@@ -48,7 +48,7 @@ Features are organized by domain, and the same domain folder name appears in `sr
 
 ## Preparation and stock
 
-`pages/Medications/PeptideStock.tsx` is the Medications → Preparation & stock tab (`/medications?tab=stock&medication=<id>`). It lists all injectable medications, independent of `is_glp1` and the Cabinet subtype filter. It reuses the legacy-named `Glp1InventoryManager`, `Glp1LogInjection` and `Glp1RecentInjections` components; these are medication-agnostic. `medicationDoseInMg` in shared converts mass defaults without treating mL/device units as mg. Non-GLP-1 mass-based injectable doses logged in Today also deduct stock; GLP-1-specific modelling stays in `Glp1Coach`.
+`pages/Medications/PeptideStock.tsx` is the Medications → Preparation & stock tab (`/medications?tab=stock&medication=<id>`). It lists all injectable medications, independent of `is_glp1` and the Cabinet subtype filter. Keep this tab limited to preparation and inventory; injection logging and history remain in the existing Cabinet detail. It reuses the legacy-named `Glp1InventoryManager`, `Glp1LogInjection` and `Glp1RecentInjections` components; these are medication-agnostic. `medicationDoseInMg` in shared converts mass defaults without treating mL/device units as mg. Non-GLP-1 mass-based injectable doses logged in Today also deduct stock; GLP-1-specific modelling stays in `Glp1Coach`.
 
 ## Source Map
 

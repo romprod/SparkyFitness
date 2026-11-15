@@ -25,7 +25,7 @@ These are preservation commits. They do not claim new peptide preparation featur
 
 ## Peptide stock access
 
-Medications → **Preparation & stock** (`/medications?tab=stock`) exposes vial preparation, inventory, injection logging and corrections for every injectable peptide or medication. No GLP-1 flag is needed. **Prepare a vial** opens the calculator directly; **Add peptide / injectable** starts a medication record with the injection form selected. Saved mass doses and schedule overrides are converted to mg without guessing from volume or device units. GLP-1-specific models remain separate.
+Medications → **Preparation & stock** (`/medications?tab=stock`) exposes vial preparation and inventory for every injectable peptide or medication. **Cabinet**, after selecting the medication, contains dose logging and editable injection history, with automatic stock reconciliation. No GLP-1 flag is needed. **Prepare a vial** opens the calculator directly; **Add peptide / injectable** starts a medication record with the injection form selected. Saved mass doses and schedule overrides are converted to mg without guessing from volume or device units. GLP-1-specific models remain separate.
 
 ## Preparation and stock: first implementation
 
