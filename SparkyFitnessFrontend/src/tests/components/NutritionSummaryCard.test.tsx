@@ -2,9 +2,15 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import NutritionSummaryCard from '@/pages/Diary/NutritionSummaryCard';
 import { DEFAULT_GOALS } from '@/constants/goals';
+import type { NutrientGoalOverrideMap } from '@/utils/nutrientUtils';
 
 let mockShowNetCarbs = false;
 let mockVisibleNutrients = ['carbs'];
+let mockGoalPreferences: NutrientGoalOverrideMap = {};
+
+beforeEach(() => {
+  mockGoalPreferences = {};
+});
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -46,7 +52,7 @@ jest.mock('@/hooks/Diary/useFoodEntries', () => ({
 }));
 
 jest.mock('@/hooks/Settings/useNutrientGoalPreferences', () => ({
-  useNutrientGoalPreferences: () => ({ data: {} }),
+  useNutrientGoalPreferences: () => ({ data: mockGoalPreferences }),
 }));
 
 const renderSummary = () =>
@@ -114,4 +120,86 @@ describe('NutritionSummaryCard calorie budget', () => {
     );
     expect(parseFloat(bar?.style.width ?? '0')).toBeCloseTo(49.375);
   });
+});
+
+describe('NutritionSummaryCard goal completion', () => {
+  it.each([
+    ['minimum', 349.9, 350, false],
+    ['minimum', 350, 350, true],
+    ['minimum', 500.2, 350, true],
+    ['minimum', 500.2, 0, false],
+    ['maximum', 300, 350, true],
+    ['maximum', 350, 350, true],
+    ['maximum', 500.2, 350, false],
+  ] as const)(
+    '%s goal with %s consumed against %s shows completion: %s',
+    (goalType, amount, goal, completed) => {
+      mockVisibleNutrients = ['Magnesium'];
+      mockGoalPreferences = { Magnesium: { goalType } };
+      const { container } = render(
+        <NutritionSummaryCard
+          selectedDate="2026-11-11"
+          dayTotals={{
+            calories: 0,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            dietary_fiber: 0,
+            custom_nutrients: { Magnesium: amount },
+          }}
+          goals={{ ...DEFAULT_GOALS, custom_nutrients: { Magnesium: goal } }}
+          customNutrients={[
+            {
+              id: 'magnesium',
+              user_id: 'user',
+              name: 'Magnesium',
+              unit: 'mg',
+              aliases: [],
+              created_at: '',
+              updated_at: '',
+            },
+          ]}
+          energyUnit="kcal"
+          convertEnergy={(value) => value}
+        />
+      );
+      expect(Boolean(container.querySelector('svg.text-green-600'))).toBe(
+        completed
+      );
+    }
+  );
+
+  it.each([
+    [159, false],
+    [160, true],
+    [165, true],
+    [170, true],
+    [171, false],
+  ])(
+    'target range with %s consumed shows completion: %s',
+    (amount, completed) => {
+      mockVisibleNutrients = ['protein'];
+      mockGoalPreferences = {
+        protein: { goalType: 'target', targetMin: 160, targetMax: 170 },
+      };
+      const { container } = render(
+        <NutritionSummaryCard
+          selectedDate="2026-11-11"
+          dayTotals={{
+            calories: 0,
+            protein: amount,
+            carbs: 0,
+            fat: 0,
+            dietary_fiber: 0,
+          }}
+          goals={{ ...DEFAULT_GOALS, protein: 165 }}
+          energyUnit="kcal"
+          convertEnergy={(value) => value}
+        />
+      );
+      expect(Boolean(container.querySelector('svg.text-green-600'))).toBe(
+        completed
+      );
+    }
+  );
 });
