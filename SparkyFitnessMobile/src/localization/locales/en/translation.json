@@ -2087,7 +2087,9 @@
       "reenterDose": "The vial or syringe changed. Enter the dose again.",
       "visualTarget": "Syringe preview: target volume {{volume}} mL of {{capacity}} mL capacity",
       "targetBreakdown": "Target dose in all units",
-      "targetValue": "{{value}} {{unit}}"
+      "targetValue": "{{value}} {{unit}}",
+      "visualEmpty": "Syringe preview: no calculated draw",
+      "emptyMarking": "Draw to —"
     }
   },
   "scheduleSummary": {

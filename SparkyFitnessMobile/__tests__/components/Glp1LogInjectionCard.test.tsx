@@ -4,6 +4,7 @@ import {
   type DrawResult,
   type Medication,
   type MedicationPen,
+  type MedicationSyringe,
   type CalculatedDrawInput,
 } from '@workspace/shared';
 import Glp1LogInjectionCard from '../../src/components/glp1/Glp1LogInjectionCard';
@@ -13,7 +14,24 @@ const mockLog = jest.fn();
 let mockResult: DrawResult;
 let mockFetching = false;
 let mockDefaultId: string | null = null;
+let mockSavedSyringes: MedicationSyringe[] = [];
+let mockFailed = false;
 const mockSyringeId = '11111111-1111-4111-8111-111111111111';
+const savedSyringe = (
+  overrides: Partial<MedicationSyringe> = {}
+): MedicationSyringe => ({
+  id: mockSyringeId,
+  name: 'Example syringe',
+  graduation_type: 'units',
+  units_per_ml: 100,
+  capacity_ml: '1',
+  capacity_units: 100,
+  increment: '1',
+  is_default: true,
+  created_at: '',
+  updated_at: '',
+  ...overrides,
+});
 const mockPreview = jest.fn();
 jest.mock('../../src/hooks/useGlp1', () => ({
   useLogInjection: () => ({ mutate: mockLog, isPending: false }),
@@ -26,7 +44,7 @@ jest.mock('../../src/hooks/useSyringes', () => ({
   useSyringes: () => ({
     data: {
       default_syringe_id: mockDefaultId,
-      syringes: [{ id: mockSyringeId, name: 'Example syringe' }],
+      syringes: mockSavedSyringes,
     },
   }),
   useSyringeDrawPreview: (
@@ -37,7 +55,7 @@ jest.mock('../../src/hooks/useSyringes', () => ({
     return {
       data: input ? mockResult : undefined,
       isFetching: mockFetching,
-      isError: false,
+      isError: mockFailed,
     };
   },
 }));
@@ -47,7 +65,10 @@ jest.mock('../../src/components/FormInput', () => ({
 }));
 jest.mock('../../src/components/glp1/InjectionBodyMap', () => ({
   __esModule: true,
-  default: () => null,
+  default: () =>
+    require('react').createElement(require('react-native').View, {
+      testID: 'injection-body-map',
+    }),
 }));
 jest.mock('../../src/components/CalendarSheet', () => ({
   __esModule: true,
@@ -125,9 +146,14 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPen.status = 'in_use';
   mockPen.kind = 'vial';
+  mockPen.preparation = undefined;
+  mockPen.concentration_mg_ml = 1;
   mockDefaultId = mockSyringeId;
+  mockSavedSyringes = [savedSyringe()];
+  mockFailed = false;
   mockFetching = false;
   mockResult = {
+    syringeCapacityMl: '1',
     targetMassMcg: '5',
     targetVolumeMl: '0.005',
     rawUnits: '0.5',
@@ -239,7 +265,12 @@ test('a draft bound to a vial that becomes retired cannot silently log against i
   expect(mockLog).not.toHaveBeenCalled();
 });
 
-test('async default syringe clearing clears a mcg draft and cannot submit it as mg', () => {
+test('an implicit fallback to a different first syringe clears a mcg draft without reinterpreting it', () => {
+  const secondId = '22222222-2222-4222-8222-222222222222';
+  mockSavedSyringes = [
+    savedSyringe({ id: secondId, name: 'First saved syringe' }),
+    savedSyringe({ name: 'Preferred syringe' }),
+  ];
   const view = setup();
   fireEvent.press(view.getByText('mcg'));
   fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
@@ -247,16 +278,265 @@ test('async default syringe clearing clears a mcg draft and cannot submit it as 
   view.rerender(
     <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
   );
-  expect(view.getByLabelText('Dose (mg)').props.value).toBe('');
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
   expect(
     view.getByText('The vial or syringe changed. Enter the dose again.')
   ).toBeTruthy();
+  expect(view.getByText('Draw to —')).toBeTruthy();
   fireEvent.press(logButton(view));
   expect(mockLog).not.toHaveBeenCalled();
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '0.5');
+  fireEvent.press(logButton(view));
+  expect(mockLog.mock.calls[0][0].calculated_draw).toEqual({
+    syringe_id: secondId,
+    dose: { value: '0.5', unit: 'mg' },
+  });
+});
+
+test.each([null, 'missing-default'])(
+  'automatically uses the first saved syringe when default %s is absent or invalid',
+  (defaultId) => {
+    mockDefaultId = defaultId;
+    const view = setup();
+    expect(view.getByText('Draw to —')).toBeTruthy();
+    expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+    fireEvent.changeText(view.getByLabelText('Target dose / volume'), '1');
+    expect(mockPreview).toHaveBeenLastCalledWith('vial', {
+      syringe_id: mockSyringeId,
+      dose: { value: '1', unit: 'mg' },
+    });
+  }
+);
+
+test('a normal entry uses its saved default and shows the figure without selecting the syringe dropdown', () => {
+  const view = setup();
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '0.5');
+  expect(mockPreview).toHaveBeenLastCalledWith('vial', {
+    syringe_id: mockSyringeId,
+    dose: { value: '0.5', unit: 'mg' },
+  });
+});
+
+test('explicit Manual remains selected across saved default changes', () => {
+  const view = setup();
+  fireEvent.press(view.getByText('Manual dose (mg)'));
+  mockDefaultId = null;
+  view.rerender(
+    <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+  );
+  expect(view.getByLabelText('Dose (mg)')).toBeTruthy();
+  expect(view.queryByText('Draw to —')).toBeNull();
   fireEvent.changeText(view.getByLabelText('Dose (mg)'), '0.5');
   fireEvent.press(logButton(view));
-  expect(mockLog.mock.calls[0][0]).toEqual(
-    expect.objectContaining({ dose_mg: 0.5 })
-  );
+  expect(mockLog.mock.calls[0][0].dose_mg).toBe(0.5);
   expect(mockLog.mock.calls[0][0]).not.toHaveProperty('calculated_draw');
+});
+
+test('does not create or invent a syringe when none are saved', () => {
+  mockDefaultId = null;
+  mockSavedSyringes = [];
+  const view = setup();
+  expect(view.getByLabelText('Dose (mg)')).toBeTruthy();
+  expect(view.queryByText('Draw to —')).toBeNull();
+  expect(view.queryByTestId('syringe-target-fill')).toBeNull();
+});
+
+test('keeps a neutral figure through pending, error and invalid dose without displaying a cached marking', () => {
+  const view = setup();
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '1');
+  expect(view.getByText('Measured marking: 1 Units')).toBeTruthy();
+  mockFetching = true;
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '2');
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+  expect(view.queryByText('Measured marking: 1 Units')).toBeNull();
+  expect(view.queryByText(/^Delivered:/)).toBeNull();
+  mockFetching = false;
+  mockFailed = true;
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '3');
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+  mockFailed = false;
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '.');
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+  fireEvent.press(logButton(view));
+  expect(mockLog).not.toHaveBeenCalled();
+});
+
+test('the dose and persistent calculation appear above the existing body map', () => {
+  const view = setup();
+  const tree = JSON.stringify(view.toJSON());
+  expect(tree.indexOf('Target dose / volume')).toBeGreaterThan(-1);
+  expect(tree.indexOf('Draw to —')).toBeLessThan(
+    tree.indexOf('injection-body-map')
+  );
+  expect(tree.indexOf('Target dose / volume')).toBeLessThan(
+    tree.indexOf('injection-body-map')
+  );
+});
+
+test('clearing a default that remains the first saved syringe keeps the same calculated unit context', () => {
+  const view = setup();
+  fireEvent.press(view.getByText('mcg'));
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+  mockDefaultId = null;
+  view.rerender(
+    <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+  );
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('500');
+  expect(
+    view.queryByText('The vial or syringe changed. Enter the dose again.')
+  ).toBeNull();
+  expect(mockPreview).toHaveBeenLastCalledWith('vial', {
+    syringe_id: mockSyringeId,
+    dose: { value: '500', unit: 'mcg' },
+  });
+});
+
+test('explicit device changes clear the prior unit draft while preserving site and notes', () => {
+  const secondId = '22222222-2222-4222-8222-222222222222';
+  mockSavedSyringes.push(
+    savedSyringe({ id: secondId, name: 'Second saved syringe' })
+  );
+  const view = setup();
+  fireEvent.press(view.getByText('mcg'));
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+  fireEvent.changeText(
+    view.getByPlaceholderText('e.g. Mild stinging'),
+    'Example note'
+  );
+  fireEvent.press(view.getByText('Second saved syringe'));
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '0.5');
+  fireEvent.press(logButton(view));
+  expect(mockLog.mock.calls[0][0]).toEqual(
+    expect.objectContaining({
+      site: mockSiteId,
+      notes: 'Example note',
+      calculated_draw: {
+        syringe_id: secondId,
+        dose: { value: '0.5', unit: 'mg' },
+      },
+    })
+  );
+});
+
+test('deleting an explicit selected device clears the draft and blocks without auto replacement or phantom figure', () => {
+  const secondId = '22222222-2222-4222-8222-222222222222';
+  mockSavedSyringes.push(
+    savedSyringe({ id: secondId, name: 'Second saved syringe' })
+  );
+  const view = setup();
+  fireEvent.press(view.getByText('Second saved syringe'));
+  fireEvent.press(view.getByText('mcg'));
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+  expect(view.getByText('Measured marking: 1 Units')).toBeTruthy();
+  mockSavedSyringes = [savedSyringe()];
+  view.rerender(
+    <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+  );
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
+  expect(mockPreview).toHaveBeenLastCalledWith('vial', null);
+  expect(view.queryByTestId('syringe-target-fill')).toBeNull();
+  expect(view.queryByText(/^Measured marking:/)).toBeNull();
+  fireEvent.press(logButton(view));
+  expect(mockLog).not.toHaveBeenCalled();
+});
+
+test.each<Partial<MedicationSyringe>>([
+  { graduation_type: 'ml' },
+  { units_per_ml: 40 },
+  { capacity_ml: '0.5' },
+  { capacity_units: 50 },
+  { increment: '0.5' },
+])(
+  'same-ID calibration change %j clears the dose, unit and old numeric preview',
+  (calibration) => {
+    const view = setup();
+    fireEvent.press(view.getByText('mcg'));
+    fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+    mockSavedSyringes = [savedSyringe(calibration)];
+    view.rerender(
+      <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+    );
+    expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
+    expect(view.getByText('Draw to —')).toBeTruthy();
+    expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+    expect(view.queryByText(/^Measured marking:/)).toBeNull();
+    fireEvent.press(logButton(view));
+    expect(mockLog).not.toHaveBeenCalled();
+    fireEvent.changeText(view.getByLabelText('Target dose / volume'), '0.5');
+    expect(mockPreview).toHaveBeenLastCalledWith('vial', {
+      syringe_id: mockSyringeId,
+      dose: { value: '0.5', unit: 'mg' },
+    });
+  }
+);
+
+test('rename and default/update metadata do not clear the dose or its unit', () => {
+  const view = setup();
+  fireEvent.press(view.getByText('mcg'));
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+  mockSavedSyringes = [
+    savedSyringe({
+      name: 'Renamed syringe',
+      is_default: false,
+      updated_at: '2026-11-15T12:00:00Z',
+    }),
+  ];
+  mockDefaultId = null;
+  view.rerender(
+    <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+  );
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('500');
+  expect(mockPreview).toHaveBeenLastCalledWith('vial', {
+    syringe_id: mockSyringeId,
+    dose: { value: '500', unit: 'mcg' },
+  });
+});
+
+test('changing legacy concentration on the same vial ID clears the unit draft', () => {
+  const view = setup();
+  fireEvent.press(view.getByText('mcg'));
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+  mockPen.concentration_mg_ml = 2;
+  view.rerender(
+    <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+  );
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '0.5');
+  expect(mockPreview).toHaveBeenLastCalledWith('vial', {
+    syringe_id: mockSyringeId,
+    dose: { value: '0.5', unit: 'mg' },
+  });
+});
+
+test('changing preparation identity on the same vial clears the interpreted dose', () => {
+  mockPen.preparation = {
+    id: 'preparation-one',
+    mode: 'reconstituted',
+    mass_value: 1,
+    mass_unit: 'mg',
+    final_volume_ml: 1,
+    prepared_date: '2026-11-15',
+    diluent: null,
+    mass_mg: 1,
+    concentration_mg_ml: 1,
+    created_at: '',
+  };
+  const view = setup();
+  fireEvent.press(view.getByText('mcg'));
+  fireEvent.changeText(view.getByLabelText('Target dose / volume'), '500');
+  mockPen.preparation = { ...mockPen.preparation, id: 'preparation-two' };
+  view.rerender(
+    <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
+  );
+  expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(mockPreview).toHaveBeenLastCalledWith('vial', null);
 });

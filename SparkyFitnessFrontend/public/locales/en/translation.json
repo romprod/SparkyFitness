@@ -974,6 +974,8 @@
       "calculating": "Calculating marking…",
       "previewError": "Could not calculate a marking. Check the entered amount and syringe settings.",
       "marking": "Measurable marking: {{value}} {{scale}}",
+      "emptyMarking": "Measurable marking: —",
+      "syringeUnavailable": "The selected syringe is no longer available. Choose another syringe or Manual dose (mg).",
       "visualLabel": "Syringe target fill: draw to {{marking}}",
       "drawTo": "Draw to {{marking}}",
       "targetEquivalents": "Target dose equivalents",

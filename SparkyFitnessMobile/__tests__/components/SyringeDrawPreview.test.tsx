@@ -82,3 +82,25 @@ test('older preview responses without capacity keep numerical output without inv
   expect(view.queryByTestId('syringe-target-fill')).toBeNull();
   expect(view.getByText('Measured marking: 50.123456789 Units')).toBeTruthy();
 });
+
+test.each([
+  { pending: false, failed: false },
+  { pending: true, failed: false },
+  { pending: false, failed: true },
+])(
+  'retains a neutral nonnumeric figure without an authoritative result (%j)',
+  ({ pending, failed }) => {
+    const view = render(
+      <SyringeDrawPreview
+        showNeutral
+        data={pending || failed ? draw() : undefined}
+        pending={pending}
+        failed={failed}
+      />
+    );
+    expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
+    expect(view.getByText('Draw to —')).toBeTruthy();
+    expect(view.queryByText(/^Measured marking:/)).toBeNull();
+    expect(view.queryByText(/^Delivered:/)).toBeNull();
+  }
+);

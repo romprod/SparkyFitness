@@ -6,7 +6,7 @@ import {
 } from '@workspace/shared';
 import SyringeDrawFigure from './SyringeDrawFigure';
 export default function MedicationDrawPreview({
-  preview,
+  preview: cachedPreview,
   isFetching,
   isError,
 }: {
@@ -15,6 +15,7 @@ export default function MedicationDrawPreview({
   isError: boolean;
 }) {
   const { t } = useTranslation();
+  const preview = !isFetching && !isError ? cachedPreview : undefined;
   const targetDisplay = preview ? drawTargetDisplay(preview) : null;
   const fillFraction = preview?.syringeCapacityMl
     ? drawTargetFillFraction(preview.targetVolumeMl, preview.syringeCapacityMl)
@@ -39,10 +40,9 @@ export default function MedicationDrawPreview({
           )}
         </p>
       )}
-      {preview && (
-        <>
-          <p className="font-medium break-words">
-            {t(
+      <p className="font-medium break-words">
+        {preview
+          ? t(
               'medications.syringes.marking',
               'Measurable marking: {{value}} {{scale}}',
               {
@@ -52,15 +52,16 @@ export default function MedicationDrawPreview({
                     ? 'mL'
                     : t('medications.syringes.units', 'units'),
               }
-            )}
-          </p>
-          {fillFraction !== null && (
-            <SyringeDrawFigure
-              fillFraction={fillFraction}
-              markingLabel={markingLabel}
-              blocked={blocked}
-            />
-          )}
+            )
+          : t('medications.syringes.emptyMarking', 'Measurable marking: —')}
+      </p>
+      <SyringeDrawFigure
+        fillFraction={fillFraction ?? 0}
+        markingLabel={fillFraction !== null ? markingLabel : '—'}
+        blocked={fillFraction !== null && blocked}
+      />
+      {preview && (
+        <>
           {targetDisplay && (
             <div className="space-y-1">
               <p className="text-xs font-medium">

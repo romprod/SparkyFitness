@@ -269,7 +269,7 @@ export default function Glp1RecentInjections({
                 )}
               </p>
             )}
-            {calculatedEntry && amountChanged && (
+            {calculatedEntry && canChangeCalculatedAmount && (
               <MedicationDrawPreview
                 preview={editPreviewInput ? previewQ.data : undefined}
                 isFetching={previewQ.isFetching}

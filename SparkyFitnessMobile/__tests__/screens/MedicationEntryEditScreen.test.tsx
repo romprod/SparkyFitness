@@ -335,4 +335,22 @@ describe('MedicationEntryEditScreen', () => {
     pressAction(screen, mockNavigation, 'Save');
     expect(updateInjectionMutate).not.toHaveBeenCalled();
   });
+  it('shows a neutral figure for unchanged calculated zero or blank correction without inferring a saved marking', () => {
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: 'syringe',
+        volume_ml: '0',
+        dose_input_unit: 'mg',
+        dose_amount_snapshot: 0,
+      })
+    );
+    expect(screen.getByText('Draw to —')).toBeTruthy();
+    expect(screen.getByTestId('syringe-target-fill').props.width).toBe(0);
+    expect(mockDrawPreview).toHaveBeenLastCalledWith(null, null);
+    fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '');
+    expect(screen.getByText('Draw to —')).toBeTruthy();
+    expect(screen.queryByText(/^Measured marking:/)).toBeNull();
+  });
 });

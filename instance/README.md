@@ -53,6 +53,12 @@ L02 adds a read-only comparison of the latest three existing imported lab report
 
 I05 and D09 already have partial implementation: linked delivered mass drives vial balances, calibrated corrections recalculate delivered quantities, and edits/deletions reconcile stock transactionally. Incomplete legacy balances remain unknown. A separate dose-revision audit is not implemented; the existing stock-status audit must not be described as one. No generic stock-adjustment, spill or priming ledger is included.
 
+## Syringe preview flow parity
+
+The existing Cabinet injection flow automatically selects a valid preferred saved syringe, otherwise the first available saved syringe, and retains its figure with a neutral **Draw to —** caption when no current calculation is available. Explicit manual mode is preserved. Pending/error states do not reuse earlier numerical results. No device is fabricated when the saved list is empty. Existing dose/device/calculation controls precede the body map inside the same card, matching the source form order. Dose/unit/device transition guards remain unchanged in purpose.
+
+This follows the pinned source ad-hoc form (`AdHocLogForm.tsx`, initial choice and persistent figure). The original scheduled `LogDoseForm.tsx` gates its figure on a valid draw, so this is not a claim that every original form always displays an empty syringe. No numbered scale, Pitstop-design dashed marker, new arithmetic, schema or dependency is introduced.
+
 ## Feature backlog
 
 [feature-backlog.json](feature-backlog.json) contains all 77 reviewed items, stable IDs, source links, proposed work, relative effort and dependencies. It records 30 additions, 32 extensions, 12 capabilities covered by the baseline and 3 deferred ideas.
@@ -83,7 +89,7 @@ Owner instruction, 15 November 2026: the agent handles commits, review and merge
 3. Follow the root and package AGENTS guides, the shared schemas and existing permissions. Cover web, iOS, Android, server, MCP/chatbot, sync and docs as applicable.
 4. Keep migrations rerunnable and include RLS, shared schemas and the repository's required documentation. Preserve the previous mobile/API contracts.
 5. Run the affected package validation and focused regression tests. Compare source with the intended deployment version before building.
-6. Review and merge the feature branch into `instance/v1.12.1` after local checks. The agent handles commits and merges; no owner PR approval is required. Deploy through the existing local build/release process with an image version, backup and rollback reference.
+6. Review and merge the feature branch into `instance/v1.12.1` after local checks. The agent handles commits and merges; no owner PR approval is required. Deploy through the existing local build/release process with an image version and rollback reference. Server/schema/data changes need an appropriate backup. A frontend-only release retains the old web image and compose, verifies the server/schema unchanged, and creates no patient-data archive.
 
 For upstream updates, fetch first and compare the new release against both the pinned upstream base and the instance commits. Reapply only patches still required; do not overwrite the local chart or reporting fixes with stock assets.
 

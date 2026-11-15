@@ -324,11 +324,12 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
                 })}
               </Text>
             )}
-            {doseChanged && !doseReadOnly && (
+            {!doseReadOnly && (
               <SyringeDrawPreview
-                data={preview.data}
+                data={drawInput ? preview.data : undefined}
                 pending={preview.isFetching}
                 failed={preview.isError}
+                showNeutral
               />
             )}
           </View>

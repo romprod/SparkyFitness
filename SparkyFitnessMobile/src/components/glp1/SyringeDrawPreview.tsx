@@ -7,15 +7,39 @@ export default function SyringeDrawPreview({
   data,
   pending,
   failed,
+  showNeutral = false,
 }: {
   data?: DrawResult;
   pending: boolean;
   failed: boolean;
+  showNeutral?: boolean;
 }) {
   const { t } = useTranslation();
-  const target = data && !pending && !failed ? drawTargetDisplay(data) : null;
+  const current = !pending && !failed ? data : undefined;
+  const target = current ? drawTargetDisplay(current) : null;
   return (
     <>
+      {(current || showNeutral) && (
+        <>
+          <SyringeVisual draw={current} neutral={showNeutral} />
+          <Text className="text-base font-semibold text-text-primary">
+            {current
+              ? t('medications.syringes.marking', {
+                  defaultValue: 'Measured marking: {{value}} {{unit}}',
+                  value: current.markingValue,
+                  unit:
+                    current.markingScale === 'ml'
+                      ? t('medications.syringes.ml', { defaultValue: 'mL' })
+                      : t('medications.syringes.units', {
+                          defaultValue: 'Units',
+                        }),
+                })
+              : t('medications.syringes.emptyMarking', {
+                  defaultValue: 'Draw to —',
+                })}
+          </Text>
+        </>
+      )}
       {pending && (
         <Text className="text-sm text-text-muted">
           {t('medications.syringes.calculating', {
@@ -31,21 +55,8 @@ export default function SyringeDrawPreview({
           })}
         </Text>
       )}
-      {!pending && !failed && data && (
+      {current && (
         <View className="gap-1">
-          <SyringeVisual draw={data} />
-          <Text className="text-base font-semibold text-text-primary">
-            {t('medications.syringes.marking', {
-              defaultValue: 'Measured marking: {{value}} {{unit}}',
-              value: data.markingValue,
-              unit:
-                data.markingScale === 'ml'
-                  ? t('medications.syringes.ml', { defaultValue: 'mL' })
-                  : t('medications.syringes.units', {
-                      defaultValue: 'Units',
-                    }),
-            })}
-          </Text>
           {target && (
             <View className="gap-1 my-2">
               <Text className="text-xs text-text-muted">
@@ -95,17 +106,17 @@ export default function SyringeDrawPreview({
           <Text className="text-sm text-text-secondary">
             {t('medications.syringes.delivered', {
               defaultValue: 'Delivered: {{mass}} mcg · {{volume}} mL',
-              mass: data.deliveredMassMcg,
-              volume: data.deliveredVolumeMl,
+              mass: current.deliveredMassMcg,
+              volume: current.deliveredVolumeMl,
             })}
           </Text>
           <Text className="text-sm text-text-secondary">
             {t('medications.syringes.error', {
               defaultValue: 'Rounding error: {{error}} mcg',
-              error: data.roundingErrorMcg,
+              error: current.roundingErrorMcg,
             })}
           </Text>
-          {data.warnings.map((warning) => (
+          {current.warnings.map((warning) => (
             <Text key={warning.code} className="text-sm text-text-warning">
               {warning.message}
             </Text>

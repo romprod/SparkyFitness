@@ -91,6 +91,8 @@ A target volume above syringe capacity or above known remaining vial volume bloc
 
 The Cabinet preview also includes a syringe visual. Fill shows the target volume as a fraction of the selected syringe capacity, with quarter-capacity ticks; the caption shows the calculated measurable marking. Target-unit details show mcg, mg, mL and raw syringe units from that same calculation. These figures remain separate from the delivered mass/volume after rounding. The visual does not add pen/pump support or new logging controls to Preparation & stock.
 
+With a vial and saved syringes available, an untouched injection form automatically chooses the valid preferred syringe, otherwise the first available syringe. No separate device-selection step is needed to reveal that preview. It keeps an empty syringe and **Draw to —** caption visible before a current calculation is available, including while loading or after an error. Target and delivered numbers appear only for the current valid response; an earlier dose or device preview is not reused. Explicit manual entry remains available, and dose/unit/device changes keep the existing clearing guards. No device is assumed when the saved list is empty. Dose, device and calculation controls appear above the existing injection-site map within the same Cabinet card.
+
 ### Finished and discarded vials
 
 Use the existing inventory controls to mark stock finished or discarded, or edit its status to reopen it. Retiring stock records its status and finish time without zeroing remaining mass/volume or deleting injection history. Finished/discarded stock is grouped separately from active stock. This is lifecycle management, not a spill, priming or manual stock-adjustment ledger.

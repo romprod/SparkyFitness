@@ -133,3 +133,12 @@ it('previews the same numeric-mg precision used by the existing update API', () 
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(mockUpdate.mock.calls[0][0].body.dose_mg).toBe(0.02);
 });
+
+it('keeps a neutral figure for an unchanged calculated entry without reinterpreting its recorded dose', () => {
+  open();
+  expect(screen.getByText('Measurable marking: —')).toBeInTheDocument();
+  expect(screen.getByText('Draw to —')).toBeInTheDocument();
+  expect(mockPreview).toHaveBeenLastCalledWith(null, null);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('dose_mg');
+});

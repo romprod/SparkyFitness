@@ -154,7 +154,7 @@ beforeEach(() => {
           },
         ];
       if (endpoint.endsWith('/syringes'))
-        return { syringes: [syringe], default_syringe_id: syringe.id };
+        return { syringes: [syringe], default_syringe_id: null };
       if (endpoint.endsWith('/draw-preview')) {
         const input = calculatedDrawInputSchema.parse(options?.body);
         return {
@@ -206,6 +206,13 @@ it('renders all three amounts and syringe controls through Cabinet selection usi
   expect(
     screen.getByRole('img', { name: 'Syringe target fill: draw to 25 units' })
   ).toBeInTheDocument();
+  expect(
+    screen
+      .getByText('Measurable marking: 25 units')
+      .compareDocumentPosition(
+        screen.getByRole('group', { name: 'Injection site body map' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
   expect(mockApiCall).toHaveBeenCalledWith(
     expect.stringContaining('/serum-curve'),
     expect.objectContaining({ params: { stepDays: 1 / 12 } })

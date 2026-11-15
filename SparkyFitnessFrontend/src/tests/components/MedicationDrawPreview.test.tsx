@@ -97,7 +97,35 @@ it('preserves text and target equivalents without guessing missing response capa
   const result = draw();
   delete result.syringeCapacityMl;
   show(result);
-  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('img', { name: 'Syringe target fill: draw to —' })
+  ).toBeInTheDocument();
+  expect(fill()).toHaveAttribute('width', '0');
   expect(screen.getByText('Measurable marking: 13 units')).toBeInTheDocument();
   expect(screen.getByLabelText('Target dose equivalents')).toBeInTheDocument();
+});
+
+it.each([
+  { isFetching: true, isError: false },
+  { isFetching: false, isError: true },
+])(
+  'keeps a neutral figure and removes cached numeric results for %j',
+  (flags) => {
+    render(<MedicationDrawPreview preview={draw()} {...flags} />);
+    expect(screen.getByText('Measurable marking: —')).toBeInTheDocument();
+    expect(screen.getByText('Draw to —')).toBeInTheDocument();
+    expect(fill()).toHaveAttribute('width', '0');
+    expect(
+      screen.queryByText('Measurable marking: 13 units')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Target dose equivalents')
+    ).not.toBeInTheDocument();
+  }
+);
+it('keeps the marking and empty figure visible before a valid amount exists', () => {
+  render(<MedicationDrawPreview isFetching={false} isError={false} />);
+  expect(screen.getByText('Measurable marking: —')).toBeInTheDocument();
+  expect(screen.getByText('Draw to —')).toBeInTheDocument();
+  expect(fill()).toHaveAttribute('width', '0');
 });

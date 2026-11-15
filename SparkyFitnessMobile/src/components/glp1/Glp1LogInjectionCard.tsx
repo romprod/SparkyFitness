@@ -82,10 +82,30 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
   const penId = stalePenChoice ? NO_PEN : (penChoice ?? pens[0]?.id ?? NO_PEN);
 
   const selectedPen = pens.find((pen) => pen.id === penId);
-  const syringeId =
-    syringeChoice ?? syringesQuery.data?.default_syringe_id ?? '';
+  const syringes = syringesQuery.data?.syringes ?? [];
+  const preferredSyringe =
+    syringes.find(
+      (syringe) => syringe.id === syringesQuery.data?.default_syringe_id
+    ) ?? syringes[0];
+  const syringeId = syringeChoice ?? preferredSyringe?.id ?? '';
+  const selectedSyringe = syringes.find((syringe) => syringe.id === syringeId);
   const calculatedMode = selectedPen?.kind === 'vial' && !!syringeId;
-  const currentDoseContext = `${penId}|${selectedPen?.kind ?? ''}|${syringeId}`;
+  const currentDoseContext = JSON.stringify([
+    penId,
+    selectedPen?.kind ?? '',
+    selectedPen?.preparation?.id ?? selectedPen?.concentration_mg_ml ?? null,
+    syringeId,
+    selectedSyringe
+      ? [
+          selectedSyringe.id,
+          selectedSyringe.graduation_type,
+          selectedSyringe.units_per_ml,
+          selectedSyringe.capacity_ml,
+          selectedSyringe.capacity_units,
+          selectedSyringe.increment,
+        ]
+      : null,
+  ]);
   const doseContextChanged =
     doseContext !== null && doseContext !== currentDoseContext;
   const effectiveDoseText = doseContextChanged ? '' : doseText;
@@ -96,7 +116,7 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
     unit: effectiveDoseUnit,
   });
   const drawInput: CalculatedDrawInput | null =
-    calculatedMode && parsedDose.success
+    calculatedMode && selectedSyringe && parsedDose.success
       ? { syringe_id: syringeId, dose: parsedDose.data }
       : null;
   const preview = useSyringeDrawPreview(
@@ -242,36 +262,6 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
       <Text className="text-base font-semibold text-text-primary">
         {t('medications.glp1.log.title', { defaultValue: 'Log injection' })}
       </Text>
-      <Text className="text-xs text-text-muted mt-0.5 mb-3">
-        {t('medications.glp1.log.legend', {
-          defaultValue:
-            'Green is the suggested site. Amber was used in the last {{days}} days.',
-          days: siteQuery.data?.restDays ?? 7,
-        })}
-      </Text>
-
-      <InjectionBodyMap
-        sites={mapSites}
-        selectedSiteId={site}
-        suggestedSiteId={suggestedSite}
-        restingSiteIds={siteQuery.data?.restingSiteIds}
-        onSelect={setSelectedSite}
-      />
-      {/* The map is touch-only; the picker is the accessible way to choose a site. */}
-      <View className="mt-3">
-        <BottomSheetPicker
-          value={site ?? ''}
-          options={siteOptions}
-          onSelect={setSelectedSite}
-          placeholder={t('medications.glp1.log.chooseSite', {
-            defaultValue: 'Choose a site',
-          })}
-          title={t('medications.glp1.log.siteTitle', {
-            defaultValue: 'Injection site',
-          })}
-        />
-      </View>
-
       <View className="flex-row gap-4 mt-4">
         <View className="flex-1 gap-1.5">
           <Text className="text-text-secondary text-sm font-medium">
@@ -428,14 +418,45 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
                 ]}
               />
               <SyringeDrawPreview
-                data={preview.data}
+                data={drawInput ? preview.data : undefined}
                 pending={preview.isFetching}
                 failed={preview.isError}
+                showNeutral={!!selectedSyringe}
               />
             </>
           )}
         </View>
       )}
+
+      <Text className="text-xs text-text-muted mt-4 mb-3">
+        {t('medications.glp1.log.legend', {
+          defaultValue:
+            'Green is the suggested site. Amber was used in the last {{days}} days.',
+          days: siteQuery.data?.restDays ?? 7,
+        })}
+      </Text>
+
+      <InjectionBodyMap
+        sites={mapSites}
+        selectedSiteId={site}
+        suggestedSiteId={suggestedSite}
+        restingSiteIds={siteQuery.data?.restingSiteIds}
+        onSelect={setSelectedSite}
+      />
+      {/* The map is touch-only; the picker is the accessible way to choose a site. */}
+      <View className="mt-3">
+        <BottomSheetPicker
+          value={site ?? ''}
+          options={siteOptions}
+          onSelect={setSelectedSite}
+          placeholder={t('medications.glp1.log.chooseSite', {
+            defaultValue: 'Choose a site',
+          })}
+          title={t('medications.glp1.log.siteTitle', {
+            defaultValue: 'Injection site',
+          })}
+        />
+      </View>
 
       <View className="mt-4">
         <DateSelectRow

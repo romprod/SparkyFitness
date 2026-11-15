@@ -81,17 +81,57 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
     (!!selectedPen.preparation ||
       (Number.isFinite(selectedPen.concentration_mg_ml) &&
         (selectedPen.concentration_mg_ml ?? 0) > 0));
+  const availableSyringes = syringesQ.data?.syringes ?? [];
+  const automaticSyringe =
+    availableSyringes.find(
+      (syringe) => syringe.id === syringesQ.data?.default_syringe_id
+    ) ?? availableSyringes[0];
   const effectiveSyringeId = hasDrawConcentration
-    ? (syringeChoice ?? syringesQ.data?.default_syringe_id ?? 'none')
+    ? (syringeChoice ?? automaticSyringe?.id ?? 'none')
     : 'none';
+  const selectedSyringe = availableSyringes.find(
+    (syringe) => syringe.id === effectiveSyringeId
+  );
+  // Reset only the amount/unit when its vial or device identity/calibration changes.
+  // Conditional render-time reset prevents an old units/mL draft reaching the new binding.
+  const contextKey = JSON.stringify([
+    medId,
+    effectivePenId,
+    selectedPen?.preparation?.id ?? selectedPen?.concentration_mg_ml,
+    effectiveSyringeId,
+    selectedSyringe?.graduation_type,
+    selectedSyringe?.units_per_ml,
+    selectedSyringe?.capacity_ml,
+    selectedSyringe?.capacity_units,
+    selectedSyringe?.increment,
+  ]);
+  const [selectionContext, setSelectionContext] = useState<string | null>(null);
+  const selectionChanged =
+    selectionContext !== null && selectionContext !== contextKey;
+  if (
+    pensQ.data !== undefined &&
+    syringesQ.data !== undefined &&
+    selectionContext !== contextKey
+  ) {
+    setSelectionContext(contextKey);
+    if (selectionContext !== null) {
+      setDoseMg('');
+      setDoseUnit('mg');
+    }
+  }
+  const currentDose = selectionChanged ? '' : doseMg;
+  const currentDoseUnit = selectionChanged ? 'mg' : doseUnit;
   const calculatedMode = effectiveSyringeId !== 'none';
   const calculatedInput: CalculatedDrawInput | null =
     calculatedMode &&
-    positiveDrawDoseSchema.safeParse({ value: doseMg.trim(), unit: doseUnit })
-      .success
+    !!selectedSyringe &&
+    positiveDrawDoseSchema.safeParse({
+      value: currentDose.trim(),
+      unit: currentDoseUnit,
+    }).success
       ? {
           syringe_id: effectiveSyringeId,
-          dose: { value: doseMg.trim(), unit: doseUnit },
+          dose: { value: currentDose.trim(), unit: currentDoseUnit },
         }
       : null;
   const previewQ = useMedicationDrawPreview(
@@ -105,7 +145,8 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
       previewQ.isFetching ||
       previewQ.isError ||
       preview.warnings.some((warning) => warning.severity === 'block'));
-  const manualDose = doseUnit === 'mg' && doseMg.trim() ? Number(doseMg) : null;
+  const manualDose =
+    currentDoseUnit === 'mg' && currentDose.trim() ? Number(currentDose) : null;
   const doseValid =
     !lostPenSelection &&
     (calculatedMode
@@ -148,28 +189,6 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <Label className="text-xs text-muted-foreground">
-              <Trans
-                i18nKey="medications.glp1.injectionSiteGreenSuggestedAmber"
-                defaults={
-                  'Injection site · <span>green = suggested</span>, <span2>amber = resting <{{days}}d</span2>'
-                }
-                values={{ days: sitesQ.data?.restDays ?? 7 }}
-                components={{
-                  span: <span className="text-green-600" />,
-                  span2: <span className="text-amber-600" />,
-                }}
-              />
-            </Label>
-            <InjectionSiteSettings />
-          </div>
-          <div className="mt-2">
-            <InjectionSitePicker selection={siteSelection} />
-          </div>
-        </div>
-
         <div className="space-y-1">
           <Label htmlFor="glp1-pen" className="text-xs text-muted-foreground">
             {t('medications.glp1.deduct', 'Deduct from pen/vial')}
@@ -256,6 +275,18 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
               )}
             </p>
           )}
+          {hasDrawConcentration &&
+            syringeChoice !== null &&
+            syringeChoice !== 'none' &&
+            syringesQ.data !== undefined &&
+            !selectedSyringe && (
+              <p className="text-sm text-destructive">
+                {t(
+                  'medications.syringes.syringeUnavailable',
+                  'The selected syringe is no longer available. Choose another syringe or Manual dose (mg).'
+                )}
+              </p>
+            )}
           {syringesQ.isError && (
             <p className="text-sm text-destructive">
               {t('medications.syringes.loadError', 'Could not load syringes.')}
@@ -276,7 +307,9 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
               id="glp1-dose"
               type="text"
               inputMode="decimal"
-              value={calculatedMode || doseUnit === 'mg' ? doseMg : ''}
+              value={
+                calculatedMode || currentDoseUnit === 'mg' ? currentDose : ''
+              }
               onChange={(e) => {
                 setDoseMg(e.target.value);
                 if (!calculatedMode) setDoseUnit('mg');
@@ -293,7 +326,7 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
                   {t('medications.syringes.doseUnit', 'Amount unit')}
                 </Label>
                 <Select
-                  value={doseUnit}
+                  value={currentDoseUnit}
                   onValueChange={(value) =>
                     setDoseUnit(value as typeof doseUnit)
                   }
@@ -327,13 +360,35 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
           </div>
         </div>
 
-        {calculatedMode && (
+        {calculatedMode && selectedSyringe && (
           <MedicationDrawPreview
             preview={preview}
             isFetching={previewQ.isFetching}
             isError={previewQ.isError}
           />
         )}
+
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs text-muted-foreground">
+              <Trans
+                i18nKey="medications.glp1.injectionSiteGreenSuggestedAmber"
+                defaults={
+                  'Injection site · <span>green = suggested</span>, <span2>amber = resting <{{days}}d</span2>'
+                }
+                values={{ days: sitesQ.data?.restDays ?? 7 }}
+                components={{
+                  span: <span className="text-green-600" />,
+                  span2: <span className="text-amber-600" />,
+                }}
+              />
+            </Label>
+            <InjectionSiteSettings />
+          </div>
+          <div className="mt-2">
+            <InjectionSitePicker selection={siteSelection} />
+          </div>
+        </div>
 
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">

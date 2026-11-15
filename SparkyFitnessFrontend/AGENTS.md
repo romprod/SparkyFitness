@@ -164,3 +164,7 @@ D06 is syringe-only presentation of the existing canonical preview: target-volum
 `pages/Labs/LabComparison.tsx` sits above the existing Labs grid and uses `useLabComparison` / `listLabComparison` over `GET /api/v2/lab-results/panels/latest`. Shared `buildLabComparison` shapes existing imported reports; loading, empty and error states stay within Labs.
 
 `pages/Medications/SyringeDrawFigure.tsx` renders target fill and the existing measurable marking from the canonical preview; `MedicationDrawPreview.tsx` also renders shared target-unit display values.
+
+## Syringe preview flow follow-up
+
+Preserve the pinned source ad-hoc preview affordance: selected vial/device can show an empty neutral figure with an em-dash caption before a current valid result. Default selection is valid preferred syringe, otherwise first available, until the user explicitly chooses manual entry or a device. Never show stale numerical results across pending/error or dose/unit/device changes. The original scheduled form is draw-gated; do not claim universal empty rendering or unpassed design-only markers. Keep existing dose/device/calculation controls above the body map within the same card, matching source order. Never fabricate a device when the saved list is empty. This follow-up changes web/mobile presentation/state only, with no backend, schema, dependency or dose-math changes.

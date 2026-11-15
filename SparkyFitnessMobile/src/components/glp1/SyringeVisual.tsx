@@ -5,7 +5,13 @@ import { useTranslation } from 'react-i18next';
 import { drawTargetFillFraction, type DrawResult } from '@workspace/shared';
 
 /** Decorative target-volume fill; the adjacent exact caption remains the measured marking. */
-export default function SyringeVisual({ draw }: { draw: DrawResult }) {
+export default function SyringeVisual({
+  draw,
+  neutral = false,
+}: {
+  draw?: DrawResult;
+  neutral?: boolean;
+}) {
   const { t } = useTranslation();
   const [accent, danger, muted, surface] = useCSSVariable([
     '--color-accent-primary',
@@ -13,23 +19,31 @@ export default function SyringeVisual({ draw }: { draw: DrawResult }) {
     '--color-text-muted',
     '--color-surface',
   ]) as [string, string, string, string];
-  const fraction = draw.syringeCapacityMl
+  const fraction = draw?.syringeCapacityMl
     ? drawTargetFillFraction(draw.targetVolumeMl, draw.syringeCapacityMl)
-    : null;
+    : !draw && neutral
+      ? 0
+      : null;
   if (fraction === null) return null;
-  const fill = draw.warnings.some((warning) => warning.severity === 'block')
+  const fill = draw?.warnings.some((warning) => warning.severity === 'block')
     ? danger
     : accent;
   return (
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={t('medications.syringes.visualTarget', {
-        defaultValue:
-          'Syringe preview: target volume {{volume}} mL of {{capacity}} mL capacity',
-        volume: draw.targetVolumeMl,
-        capacity: draw.syringeCapacityMl,
-      })}
+      accessibilityLabel={
+        draw
+          ? t('medications.syringes.visualTarget', {
+              defaultValue:
+                'Syringe preview: target volume {{volume}} mL of {{capacity}} mL capacity',
+              volume: draw.targetVolumeMl,
+              capacity: draw.syringeCapacityMl,
+            })
+          : t('medications.syringes.visualEmpty', {
+              defaultValue: 'Syringe preview: no calculated draw',
+            })
+      }
     >
       <Svg width="100%" height={64} viewBox="0 0 260 64" accessible={false}>
         <Rect
