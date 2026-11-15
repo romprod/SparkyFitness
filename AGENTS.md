@@ -1,6 +1,6 @@
 # AGENTS.md
 
-*Last updated: 2026-11-05*
+*Last updated: 2026-11-15*
 
 This is the repo-root monorepo guide for SparkyFitness. Use it to choose the right package, understand shared repo-level rules, and find the next guide to read.
 
@@ -163,3 +163,14 @@ npx expo prebuild --clean
 pnpm dev
 pnpm run build
 ```
+
+## Instance fork workflow
+
+Owner direction on 15 November 2026 for this fork:
+
+- Handle commits, branch review and merges within the requested work. Do not require owner PR approval.
+- Use local tests and builds. Do not add or restore GitHub Actions workflows or hosted release/deployment automation.
+- Use Git/SSH and supported APIs. Do not operate the owner's browser for repository work.
+- Keep the existing v1.12.1 instance branch and its customisations separate from upstream main until an upgrade is deliberately tested.
+- Follow the technical package, schema, permissions and compatibility guidance above. The owner's current directions override upstream planning-only or owner-approval instructions for authorised work.
+- Keep credentials, health records, uploads and machine-specific deployment configuration out of Git.
