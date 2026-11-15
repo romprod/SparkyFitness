@@ -587,6 +587,13 @@ export function parseGarminHealthMeasurements(
             const type =
               mapping.targetType === 'check_in' ? mapping.field : mapping.name;
             if (!type) continue;
+            // A scale connected through Health Connect can be the sole weight
+            // source while Garmin continues to provide the other measurements.
+            if (
+              type === 'weight' &&
+              process.env.SPARKY_FITNESS_GARMIN_SYNC_WEIGHT === 'false'
+            )
+              continue;
             processed.push({
               type,
               value,

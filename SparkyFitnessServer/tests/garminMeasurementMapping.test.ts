@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import garminMeasurementMapping, {
   parseGarminHealthMeasurements,
 } from '../integrations/garminconnect/garminMeasurementMapping.js';
@@ -35,6 +35,26 @@ describe('Garmin daily calorie measurement mapping', () => {
 });
 
 describe('parseGarminHealthMeasurements', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('can disable Garmin weight while retaining all other measurements', () => {
+    vi.stubEnv('SPARKY_FITNESS_GARMIN_SYNC_WEIGHT', 'false');
+    const parsed = parseGarminHealthMeasurements({
+      body_composition: [
+        { date: '2026-11-12', weight: 83, body_fat_percentage: 18 },
+      ],
+      steps: [{ date: '2026-11-12', value: 1234 }],
+    });
+    expect(parsed.map((x) => x.type)).toEqual(['body_fat_percentage', 'steps']);
+  });
+
+  it('keeps the existing weight import unless explicitly disabled', () => {
+    vi.stubEnv('SPARKY_FITNESS_GARMIN_SYNC_WEIGHT', 'true');
+    const parsed = parseGarminHealthMeasurements({
+      weight: [{ date: '2026-11-12', value: 83 }],
+    });
+    expect(parsed[0]).toMatchObject({ type: 'weight', value: 83 });
+  });
   it('ignores zero values for water, weight, and body_fat_percentage', () => {
     const rawData = {
       hydration: [{ date: '2026-09-14', hydration: 0 }],
