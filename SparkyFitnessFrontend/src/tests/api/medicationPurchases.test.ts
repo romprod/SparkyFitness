@@ -1,3 +1,4 @@
+import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 import * as purchases from '@/api/Medications/purchaseService';
 import { apiCall } from '@/api/api';
 import type { MedicationPurchaseUpdateInput } from '@workspace/shared';
@@ -64,6 +65,7 @@ it('sends the owner-bound reporting window and validates its canonical response'
   const response = {
     window: { key: '3', from_date: '2026-08-15', to_date: '2026-11-15' },
     rows: [],
+    ...emptyCostBreakdown,
   };
   jest.mocked(apiCall).mockResolvedValueOnce(response);
   const signal = new AbortController().signal;

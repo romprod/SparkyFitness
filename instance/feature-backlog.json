@@ -7,7 +7,7 @@
   "customisation_baseline": "d0dbab307061d938ece4e1bd32308cf2b3a120f6",
   "reference_repository": "https://github.com/kavo91/peptide-pitstop",
   "reference_commit": "1caffbcfaeb4ccaccee9806a37d169e013328528",
-  "scope": "Source-verified candidate and delivered/partial coverage for the instance fork. Baseline 1490ce1eb contains the invoice ledger; C03 and bounded C07 are implemented/tested with live release identity recorded separately. Status and implementation_scope distinguish remaining work.",
+  "scope": "Source-verified candidate and delivered/partial coverage for the instance fork. Current baseline 3df46182c includes the completed invoice and consumed-cost reports plus direct website requests. Selected web C04/C05 and monthly bounded C07 are implemented and tested; live operational release identity is recorded separately. Status and implementation_scope distinguish remaining work.",
   "items": [
     {
       "id": "D01",
@@ -555,15 +555,18 @@
       "area": "Costs",
       "feature": "Consumable and administration cost",
       "reference_capability": "Pack quantities and optional units per dose model needles, swabs, diluent and disposal cost.",
-      "sparky_baseline": "Not found: consumable cost model.",
+      "sparky_baseline": "Invoice consumable category, pack size and units-per-dose fields already exist; derived administration estimates are now implemented and tested in the selected web continuation.",
       "proposed_work": "Add consumable lines and explicit usage assumptions, separately from peptide cost.",
       "decision": "Add",
       "priority": "Next",
       "relative_effort": "M",
       "dependencies_and_limits": "Depends on C01. If usage is unknown, show spend instead of an invented per-dose burn rate.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/costs-core.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "implementation_scope": "Implemented and tested selected web scope: category landed spend, pieces and cost per piece; prefer explicitly modelled positive units-per-dose lines, otherwise show window-spend amortised over logged doses. Estimates only, with no consumable stock decrement or usage ledger. Preserve known zero/negative and per-metric mixed-currency unavailability. Live operational release identity is recorded separately; native presentation is not part of this continuation.",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "Focused shared mathematical/source cases, repository and actual HTTP/API-key PostgreSQL checks, full frontend static/build gate and isolated final-build responsive UI proof. Exact release identity and live readback are recorded separately."
     },
     {
       "id": "C05",
@@ -571,14 +574,17 @@
       "feature": "Discarded or unused product value",
       "reference_capability": "Values residual mass in finished/discarded vials. Its waste display excludes vials with over 70% utilisation.",
       "sparky_baseline": "Not found: discarded-stock valuation.",
-      "proposed_work": "Report unused mass and cost on closure, with a configurable residue/waste reporting rule.",
+      "proposed_work": "Show the source closed-vial unused-mass/value estimate under its fixed utilisation rule, without stock changes or a configurable policy.",
       "decision": "Add",
       "priority": "Next",
       "relative_effort": "M",
       "dependencies_and_limits": "Depends on I05/C03. Pitstop’s 70% filter is a product choice, not a universal accounting rule.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/costs-core.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "implementation_scope": "Implemented and tested selected web scope: finished/discarded vials with known current cost and positive explicit label mass; include utilisation <=70%, exclude >70%, clamp overdraw residual to zero, show the first six by estimated value. Approved truthful adaptation uses all logged-history delivered mass independently of the analytics window, rather than the source window-limited doses. No stock mutation or waste ledger. Live operational release identity is recorded separately; native presentation is not part of this continuation.",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "Focused shared mathematical/source cases, repository and actual HTTP/API-key PostgreSQL checks, full frontend static/build gate and isolated final-build responsive UI proof. Exact release identity and live readback are recorded separately."
     },
     {
       "id": "C06",
@@ -613,7 +619,7 @@
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/costs/page.tsx",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Reports/Reports.tsx",
       "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
-      "implementation_scope": "Implemented bounded By medication table in existing Costs: Medication/Spend/Per dose/Per mg and costed/uncosted counts. Analytics-only source 3/6/12/All windows default to 12; invoice ledger remains all. Monthly-spend, waste, consumables, inclusive headline cost, course costs and forecasts remain deferred.",
+      "implementation_scope": "Delivered By medication table in existing Costs: Medication/Spend/Per dose/Per mg and costed/uncosted counts. Source 3/6/12/All windows default to 12; invoice ledger remains all. Implemented and tested monthly invoice spend extension: ascending populated months, medication/consumable raw subtotals plus net overhead and invoice totals without double-counting allocation. C04/C05 panels selected separately. Inclusive headline cost, course costs, prescription fallback and forecasts remain deferred. Live operational release identity is recorded separately; native presentation remains unchanged.",
       "verification": "Frozen backend artifact: 31 isolated PostgreSQL cases, 42 focused units, fresh/repeated migration 2330 and actual previous 1490 image CRUD/history/new-label preservation; unchanged RLS 374 proof retained. Independent 9 source goldens/15 oracle cases plus scoped exact-ordering review. Web 156 coherent +36 affected cases/static/build and final synthetic full-app proof; native 62 coherent +21 affected/package checks, no binary. Live operational release identity is recorded separately."
     },
     {

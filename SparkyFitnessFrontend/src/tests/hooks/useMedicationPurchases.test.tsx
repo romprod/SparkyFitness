@@ -1,3 +1,4 @@
+import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 import '@testing-library/jest-dom';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -36,6 +37,7 @@ beforeEach(() => {
   jest.mocked(api.getMedicationCostAnalytics).mockResolvedValue({
     window: { key: '12', from_date: '2025-11-15', to_date: '2026-11-15' },
     rows: [],
+    ...emptyCostBreakdown,
   });
   list.mockResolvedValue({ purchases: [] });
   jest.mocked(api.getMedicationPurchaseIdentity).mockReset();

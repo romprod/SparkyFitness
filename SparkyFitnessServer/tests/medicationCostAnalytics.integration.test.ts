@@ -265,9 +265,94 @@ describe.runIf(process.env.COST_ANALYTICS_INTEGRATION === '1')(
         costed_doses: 2,
       });
     });
+    it('projects consumable packs, lifetime closed-vial delivery and invoice-month totals without leaking another owner', async () => {
+      const { med, vial } = await fixture('40', '10', '2020-01-01');
+      await log(med, vial, '3', '2020-01-01');
+      await log(med, vial, '4');
+      const c = await getSystemClient();
+      let foreignVial: string;
+      try {
+        await c.query(
+          "UPDATE medication_pens SET status='discarded' WHERE id=$1",
+          [vial]
+        );
+        const foreignMed = (
+          await c.query(
+            "INSERT INTO medications(user_id,name,type_id) VALUES($1,'Synthetic foreign medication','injection') RETURNING id",
+            [other]
+          )
+        ).rows[0].id as string;
+        foreignVial = (
+          await c.query(
+            "INSERT INTO medication_pens(user_id,medication_id,kind,status,label_mass_mg) VALUES($1,$2,'vial','finished',100) RETURNING id",
+            [other, foreignMed]
+          )
+        ).rows[0].id as string;
+      } finally {
+        c.release();
+      }
+      await purchases.createPurchase(owner, {
+        expected_owner_id: owner,
+        operation_id: randomUUID(),
+        ordered_date: '2026-11-15',
+        currency: 'AUD',
+        shipping_cost: '3',
+        items: [
+          {
+            kind: 'consumable',
+            description: 'Synthetic packs',
+            category: 'needle',
+            quantity: 2,
+            unit_cost: '10',
+            units_per_pack: 100,
+            units_per_dose: '2',
+          },
+        ],
+      });
+      const result = await read('3');
+      expect(
+        result.consumables.rows.find((row) => row.category === 'needle')
+      ).toMatchObject({
+        spend: '23.00',
+        pieces: '200',
+        cost_per_piece: '0.115',
+      });
+      expect(result.consumables).toMatchObject({
+        cost_per_dose: '0.23',
+        cost_per_dose_basis: 'modelled',
+        modelled_lines: 1,
+      });
+      expect(
+        result.waste.rows.find((row) => row.vial_id === vial)
+      ).toMatchObject({
+        status: 'discarded',
+        delivered_mass_mg: '7',
+        estimated_unused_mg: '3',
+        estimated_unused_value: '12.00',
+        value_unavailable: false,
+      });
+      expect(result.waste.rows.some((row) => row.vial_id === foreignVial)).toBe(
+        false
+      );
+      expect(
+        result.monthly_spend.find((row) => row.month === '2026-11')
+      ).toMatchObject({ consumable_subtotal: '20.00', overhead: '3.00' });
+      expect(
+        (await read('all')).waste.rows.find((row) => row.vial_id === vial)
+      ).toEqual(result.waste.rows.find((row) => row.vial_id === vial));
+    });
     it('holds one snapshot across header, line, independent label and delivered history replacement without mutating data', async () => {
       const { med, vial, invoice } = await fixture('40');
       const entry = await log(med, vial, '1');
+      const close = await getSystemClient();
+      try {
+        await close.query(
+          "UPDATE medication_pens SET status='finished' WHERE id=$1",
+          [vial]
+        );
+      } finally {
+        close.release();
+      }
       const c = await getSystemClient();
       let pending: ReturnType<typeof read> | undefined;
       try {
@@ -286,7 +371,7 @@ describe.runIf(process.env.COST_ANALYTICS_INTEGRATION === '1')(
           [invoice.id]
         );
         await c.query(
-          'UPDATE medication_pens SET label_mass_mg=20 WHERE id=$1',
+          "UPDATE medication_pens SET label_mass_mg=20,status='in_use' WHERE id=$1",
           [vial]
         );
         await c.query('UPDATE injection_entries SET dose_mg=2 WHERE id=$1', [
@@ -310,8 +395,15 @@ describe.runIf(process.env.COST_ANALYTICS_INTEGRATION === '1')(
         }
         expect(blocked).toBe(true);
         await c.query('COMMIT');
+        const coherent = await pending;
         expect(
-          (await pending).rows.find((row) => row.medication_id === med)
+          coherent.waste.rows.find((row) => row.vial_id === vial)
+        ).toMatchObject({
+          status: 'finished',
+          estimated_unused_value: '36.00',
+        });
+        expect(
+          coherent.rows.find((row) => row.medication_id === med)
         ).toMatchObject({
           spend: '40.00',
           spend_currency: 'AUD',
@@ -335,6 +427,9 @@ describe.runIf(process.env.COST_ANALYTICS_INTEGRATION === '1')(
           cost_per_mg: '4',
           usage_currency: 'GBP',
         });
+        expect(
+          (await read()).waste.rows.some((row) => row.vial_id === vial)
+        ).toBe(false);
         expect(await checksum()).toEqual(before);
       } finally {
         await c.query('ROLLBACK');

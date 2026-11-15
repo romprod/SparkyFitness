@@ -1,3 +1,4 @@
+import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 import {
   act,
   fireEvent,
@@ -93,6 +94,7 @@ beforeEach(() => {
     .mockImplementation(async (_owner, window) => ({
       window: { key: window, from_date: '2025-11-15', to_date: '2026-11-15' },
       rows: [],
+      ...emptyCostBreakdown,
     }));
   jest
     .mocked(api.getMedicationPurchaseIdentity)

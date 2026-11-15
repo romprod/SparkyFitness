@@ -1,3 +1,4 @@
+import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,6 +12,7 @@ const response = (
   key: '3' | '6' | '12',
   name: string
 ): MedicationCostAnalytics => ({
+  ...emptyCostBreakdown,
   window: { key, from_date: '2026-01-01', to_date: '2026-11-15' },
   rows: [
     {

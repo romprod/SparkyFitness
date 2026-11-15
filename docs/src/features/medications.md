@@ -125,8 +125,16 @@ Consumable lines need a description; complete it or remove an unused row. After 
 
 The report is implemented and tested, with instance deployment verification recorded separately. It adds By medication Spend, Per dose and Per mg with costed/uncosted dose coverage inside Costs. Source 3/6/12-month and All windows default to 12 months and affect the report only; your complete invoice ledger remains visible.
 
-An optional explicit vial labelled mass is separate from preparation and remaining stock. No existing vial is backfilled from its preparation, concentration, volume or dose counts. Changing the labelled mass or invoice price changes the current report retrospectively; it does not alter physical stock or recorded doses. Known zero/negative cost is not the same as an unknown rate. Mixed currencies make the affected metric unavailable with a warning, without conversion or a new grouping workflow. Consumable usage, waste, prescription estimates and inclusive total cost per dose are outside this selected report.
+An optional explicit vial labelled mass is separate from preparation and remaining stock. No existing vial is backfilled from its preparation, concentration, volume or dose counts. Changing the labelled mass or invoice price changes the current report retrospectively; it does not alter physical stock or recorded doses. Known zero/negative cost is not the same as an unknown rate. Mixed currencies make the affected metric unavailable with a warning, without conversion or a new grouping workflow. The initial report excluded consumable estimates and unused value; the continuation below adds those panels. Prescription estimates and inclusive total cost per dose remain excluded.
 
 ## Diary chart
 
 The owner-requested web Diary chart is implemented and source-tested. It reuses the existing modelled absorbed, injection-site and total amounts below Caffeine as an independent widget. Cabinet keeps its chart and dose tools. The widget respects the active profile and existing medication read permissions; it does not add logging controls or change the model. Client and isolated final-build verification are complete; live release readback is recorded separately.
+
+## Selected cost breakdown extension
+
+The selected extension is implemented and source-tested inside Costs. It adds monthly invoice spend split into medication, consumables and net overhead; consumable category spend and explicit or amortised administration estimates; and an unused-value estimate for qualifying finished/discarded vials. These are reporting reads, not stock or usage adjustments.
+
+The unused-value estimate uses current explicit vial labelled mass and invoice rates against all recorded delivered mass, independently of the analytics window. Following the reference reporting rule, only closed vials with utilisation at or below 70% appear, with negative residual mass clamped to zero. This is an estimate and a selected display rule, not universal accounting. Unknown rates stay unknown; incompatible currencies are not added. Source/client checks are complete; live release readback is recorded separately. Prescription estimates, an inclusive headline cost per dose, course costs and native presentation are not part of this extension.
+
+Monthly presentation applies a deterministic category rounding residual so rounded bands reconcile to paid invoice totals while preserving the actual net shipping/tax/fee/discount overhead. This is a documented correction to the reference rounding defect, not an extra charge or stock adjustment.

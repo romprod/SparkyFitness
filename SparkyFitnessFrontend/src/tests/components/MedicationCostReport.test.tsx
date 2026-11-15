@@ -1,3 +1,4 @@
+import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MedicationCostReport from '@/pages/Medications/MedicationCostReport';
@@ -32,6 +33,7 @@ const data = (
 ) => ({
   window: { key, from_date: '2025-11-15', to_date: '2026-11-15' },
   rows,
+  ...emptyCostBreakdown,
 });
 beforeEach(() => mockReport.mockReset());
 const ready = (value = data()) =>
@@ -157,6 +159,9 @@ it('changes report windows without showing cached numbers while a request is pen
   expect(mockReport).toHaveBeenLastCalledWith('owner', '3', true);
   expect(screen.queryByText('AUD 100.00')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('Loading cost report');
+  expect(
+    screen.queryByRole('heading', { name: 'Spend by month' })
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'All' }));
   expect(mockReport).toHaveBeenLastCalledWith('owner', 'all', true);
 });
