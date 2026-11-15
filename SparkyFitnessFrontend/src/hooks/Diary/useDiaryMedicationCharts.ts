@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { resolveGlp1Profile } from '@workspace/shared';
 import { useAuth, type User } from '@/hooks/useAuth';
 import { useActiveUser } from '@/contexts/ActiveUserContext';
 import { getMedicationPurchaseIdentity as getCurrentIdentity } from '@/api/Medications/purchaseService';
@@ -13,16 +12,9 @@ let nextGeneration = 0;
 const PREFIX = 'diary-medication-charts';
 
 export function isDiaryModelEligible(med: Medication): boolean {
-  const drug = med.custom_fields?.['glp1_drug'];
-  return (
-    med.is_active &&
-    med.is_glp1 &&
-    Boolean(
-      resolveGlp1Profile(med.name) ||
-      (typeof drug === 'string' && resolveGlp1Profile(drug)) ||
-      drug === 'custom'
-    )
-  );
+  // Include diagnostic candidates: an unresolved flagged model must remain
+  // visible as an omission notice rather than disappearing from the Diary.
+  return med.is_active && med.is_glp1;
 }
 
 /** Diary access alone never authorizes medication reads. Proof is profile/generation bound. */

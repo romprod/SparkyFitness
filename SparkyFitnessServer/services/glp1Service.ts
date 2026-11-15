@@ -7,8 +7,9 @@ import {
   SITE_REST_DAYS,
   type DoseEvent,
   type RecentSiteUse,
-  type SerumPoint,
   type SiteRotationResult,
+  type SerumCurveResponse,
+  type SerumModelAvailability,
 } from '@workspace/shared';
 import injectionRepository from '../models/injectionRepository.js';
 import medicationRepository from '../models/medicationRepository.js';
@@ -34,21 +35,7 @@ async function getSerumCurve(
   userId: string,
   medicationId: string,
   opts: { fromDay?: number; toDay?: number; stepDays?: number } = {}
-): Promise<{
-  drugId: string | null;
-  drugName?: string | null;
-  curve: SerumPoint[];
-  currentLevelFraction: number | null;
-  /** Day positions (relative to the curve anchor) of each logged injection, for chart markers. */
-  doseDays: number[];
-  /**
-   * ISO timestamp of day 0 (the earliest injection in the window), so clients can
-   * render the curve against real dates instead of day offsets. Null when there is
-   * no curve to anchor.
-   */
-  anchorDate: string | null;
-  disclaimer: string;
-}> {
+): Promise<SerumCurveResponse> {
   const med = await medicationRepository.getMedicationById(
     userId,
     medicationId
@@ -85,8 +72,30 @@ async function getSerumCurve(
   const disclaimer =
     'Modeled estimate from published half-lives — not a measured blood level.';
 
-  if (!profile || injections.length === 0) {
+  const invalidParameters: NonNullable<
+    SerumModelAvailability['invalidParameters']
+  > = [];
+  if (profile) {
+    if (!Number.isFinite(profile.halfLifeDays) || profile.halfLifeDays <= 0)
+      invalidParameters.push('halfLifeDays');
+    if (!Number.isFinite(profile.tMaxDays) || profile.tMaxDays <= 0)
+      invalidParameters.push('tMaxDays');
+  }
+  const modelAvailability: SerumModelAvailability = !profile
+    ? { status: 'unavailable', reason: 'unresolved_profile' }
+    : invalidParameters.length
+      ? {
+          status: 'unavailable',
+          reason: 'invalid_parameters',
+          invalidParameters,
+        }
+      : injections.length === 0
+        ? { status: 'no_logged_history', reason: null }
+        : { status: 'available', reason: null };
+
+  if (!profile || modelAvailability.status !== 'available') {
     return {
+      modelAvailability,
       drugId: profile?.id ?? null,
       drugName: profile?.displayName ?? null,
       curve: [],
@@ -128,6 +137,7 @@ async function getSerumCurve(
   const doseDays = doses.map((d) => Number(d.day.toFixed(2)));
 
   return {
+    modelAvailability,
     drugId: profile.id,
     drugName: profile.displayName,
     curve,

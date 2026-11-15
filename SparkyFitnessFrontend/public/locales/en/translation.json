@@ -591,7 +591,18 @@
       "amountDisclaimer": "Dose-equivalent estimate from your logged injections, assuming full absorption. Not a measured amount or blood concentration.",
       "now": "~{{currentLevelFraction}}% now",
       "injectionSiteGreenSuggestedAmber": "Injection site · <span>green = suggested</span>, <span2>amber = resting <{{days}}d</span2>",
-      "left": "{{kind}}{{dose_mg}} · {{doses_total}} left"
+      "left": "{{kind}}{{dose_mg}} · {{doses_total}} left",
+      "modelHalfLife": "Half-life",
+      "modelTimeToPeak": "Time to peak",
+      "modelLoading": "Loading the model for {{medication}}…",
+      "modelLoadError": "Could not load the model for {{medication}}. Try again later.",
+      "modelNoHistory": "No logged doses are available to this model yet.",
+      "modelUnavailable": "Model unavailable",
+      "modelInvalidParameters": "Check {{fields}}: each value must be a number greater than zero.",
+      "modelParametersUnavailable": "{{medication}} has no available model parameters.",
+      "modelEmpty": "No modelled curve is available for {{medication}}.",
+      "modelSettingsHint": "Review the medication’s GLP-1 model settings in Medications → Cabinet.",
+      "modelHistoryLoadError": "Could not load logged doses for this model. Try again later."
     },
     "types": {
       "pill": "pill",

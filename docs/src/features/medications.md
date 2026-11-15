@@ -138,3 +138,9 @@ The selected extension is implemented and source-tested inside Costs. It adds mo
 The unused-value estimate uses current explicit vial labelled mass and invoice rates against all recorded delivered mass, independently of the analytics window. Following the reference reporting rule, only closed vials with utilisation at or below 70% appear, with negative residual mass clamped to zero. This is an estimate and a selected display rule, not universal accounting. Unknown rates stay unknown; incompatible currencies are not added. Source/client checks are complete; live release readback is recorded separately. Prescription estimates, an inclusive headline cost per dose, course costs and native presentation are not part of this extension.
 
 Monthly presentation applies a deterministic category rounding residual so rounded bands reconcile to paid invoice totals while preserving the actual net shipping/tax/fee/discount overhead. This is a documented correction to the reference rounding defect, not an extra charge or stock adjustment.
+
+## Selected model availability notices
+
+The selected chart extension is implemented and source-tested. Cabinet and Diary will explain missing required modelling parameters separately from no logged dose history. Custom profiles, the existing absorbed/site/total model and latest-60 history notice remain intact. This adds clarity about model coverage, not a new model or an expansion of recorded history. Final client and live verification are separate gates.
+
+Existing custom-profile fallback values remain part of model resolution; the notice does not turn a missing/zero/non-numeric custom setting that already uses those defaults into an unavailable model. The selected diagnostic distinguishes an unresolved profile or invalid effective parameters from an otherwise available model with no logged history.

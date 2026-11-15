@@ -1082,6 +1082,32 @@ describe('Medication Routes V2', () => {
       expect(res.body).toEqual(payload);
     });
 
+    it('passes through additive model availability without altering the empty legacy shape', async () => {
+      const payload = {
+        drugId: null,
+        curve: [],
+        currentLevelFraction: null,
+        doseDays: [],
+        anchorDate: null,
+        disclaimer: 'Modeled estimate',
+        modelAvailability: {
+          status: 'unavailable' as const,
+          reason: 'unresolved_profile' as const,
+        },
+      };
+      vi.mocked(glp1Service.getSerumCurve).mockResolvedValue(payload);
+      const res = await request(app)
+        .get(`/api/v2/medications/${UID}/glp1/serum-curve`)
+        .set('Cookie', cookie);
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual(payload);
+      expect(glp1Service.getSerumCurve).toHaveBeenCalledWith(
+        'testUser',
+        UID,
+        expect.any(Object)
+      );
+    });
+
     it('returns the site suggestion', async () => {
       const payload = {
         suggestedSiteId: 'right_arm',

@@ -30,9 +30,15 @@ jest.mock('@/contexts/PreferencesContext', () => ({
 }));
 
 const mockUseSerumCurve = jest.fn();
-const mockUseMedicationInjections = jest.fn(() => ({
-  data: undefined as unknown,
-}));
+const mockUseMedicationInjections = jest.fn<
+  {
+    data: unknown;
+    isError?: boolean;
+    isPending?: boolean;
+    isFetching?: boolean;
+  },
+  []
+>(() => ({ data: undefined }));
 jest.mock('@/hooks/useMedications', () => ({
   useSerumCurve: (medId: string) => mockUseSerumCurve(medId),
   useMedicationInjections: () => mockUseMedicationInjections(),
@@ -193,9 +199,7 @@ describe('Glp1Coach PK axis switch', () => {
     render(<Glp1Coach med={med} />);
 
     expect(screen.queryByRole('button', { name: 'Dates' })).toBeNull();
-    expect(
-      screen.getByText(/Log injections to model your serum level/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Loading the model/)).toBeInTheDocument();
   });
 
   it.each([1.5, 3])(
@@ -508,3 +512,271 @@ it.each([
     jest.useRealTimers();
   }
 );
+
+const emptyModelResponse = {
+  drugId: null,
+  curve: [],
+  doseDays: [],
+  anchorDate: null,
+  currentLevelFraction: null,
+  disclaimer: 'Modelled estimate',
+};
+const unresolvedMedication = {
+  ...med,
+  name: 'Unlisted medication',
+  display_name: 'Unlisted medication',
+  custom_fields: {},
+};
+
+describe('model availability explanations', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseMedicationInjections.mockReturnValue({ data: undefined });
+  });
+  it('names an unresolved medication and points to existing Cabinet model settings', () => {
+    mockUseSerumCurve.mockReturnValue({
+      data: {
+        ...emptyModelResponse,
+        modelAvailability: {
+          status: 'unavailable',
+          reason: 'unresolved_profile',
+        },
+      },
+    });
+    render(<Glp1Coach med={unresolvedMedication} />);
+    expect(screen.getByText('Model unavailable')).toBeInTheDocument();
+    expect(
+      screen.getByText('Unlisted medication has no available model parameters.')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Medications → Cabinet/)).toBeInTheDocument();
+    expect(screen.queryByTestId('pk-chart')).not.toBeInTheDocument();
+    expect(screen.queryByText(/half-life/i)).not.toBeInTheDocument();
+  });
+  it('distinguishes no logged history from unavailable model parameters', () => {
+    mockUseSerumCurve.mockReturnValue({
+      data: {
+        ...emptyModelResponse,
+        drugId: 'semaglutide',
+        modelAvailability: { status: 'no_logged_history', reason: null },
+      },
+    });
+    render(<Glp1Coach med={med} />);
+    expect(
+      screen.getByText('No logged doses are available to this model yet.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Model unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText(/model settings/)).not.toBeInTheDocument();
+  });
+  it('names only invalid effective parameters supplied by authoritative metadata', () => {
+    mockUseSerumCurve.mockReturnValue({
+      data: {
+        ...emptyModelResponse,
+        modelAvailability: {
+          status: 'unavailable',
+          reason: 'invalid_parameters',
+          invalidParameters: ['tMaxDays'],
+        },
+      },
+    });
+    render(<Glp1Coach med={unresolvedMedication} />);
+    expect(
+      screen.getByText(
+        'Check Time to peak: each value must be a number greater than zero.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Half-life/)).not.toBeInTheDocument();
+  });
+  it('keeps loading and network failure distinct from model omissions, even with stale diagnostic data', () => {
+    mockUseSerumCurve.mockReturnValue({ data: undefined, isPending: true });
+    const { rerender } = render(<Glp1Coach med={med} />);
+    expect(
+      screen.getByText('Loading the model for Ozempic…')
+    ).toBeInTheDocument();
+    mockUseSerumCurve.mockReturnValue({
+      isError: true,
+      data: {
+        ...emptyModelResponse,
+        modelAvailability: {
+          status: 'unavailable',
+          reason: 'unresolved_profile',
+        },
+      },
+    });
+    rerender(<Glp1Coach med={med} />);
+    expect(
+      screen.getByText('Could not load the model for Ozempic. Try again later.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Model unavailable')).not.toBeInTheDocument();
+  });
+  it('keeps a populated older-server curve even when this client cannot resolve the medication', () => {
+    mockUseSerumCurve.mockReturnValue({
+      data: {
+        ...emptyModelResponse,
+        drugId: 'new-server-model',
+        curve,
+        currentLevelFraction: 0.5,
+      },
+    });
+    render(<Glp1Coach med={unresolvedMedication} />);
+    expect(screen.getByTestId('pk-chart')).toBeInTheDocument();
+    expect(screen.queryByText('Model unavailable')).not.toBeInTheDocument();
+  });
+  it('keeps unknown notices beside a valid named Diary chart, and visible when all are unknown', () => {
+    mockUseSerumCurve.mockImplementation((id: string) => ({
+      data:
+        id === 'valid'
+          ? {
+              ...emptyModelResponse,
+              drugId: 'semaglutide',
+              curve,
+              currentLevelFraction: 0.5,
+            }
+          : {
+              ...emptyModelResponse,
+              modelAvailability: {
+                status: 'unavailable',
+                reason: 'unresolved_profile',
+              },
+            },
+    }));
+    const unknown = { ...unresolvedMedication, id: 'unknown' };
+    const { rerender } = render(
+      <DiaryMedicationCharts medications={[{ ...med, id: 'valid' }, unknown]} />
+    );
+    expect(screen.getByTestId('pk-chart')).toBeInTheDocument();
+    expect(
+      screen.getByText('Unlisted medication has no available model parameters.')
+    ).toBeInTheDocument();
+    rerender(<DiaryMedicationCharts medications={[unknown]} />);
+    expect(
+      screen.getByText('Unlisted medication has no available model parameters.')
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('pk-chart')).not.toBeInTheDocument();
+  });
+});
+
+it.each([undefined, 0, 'not-a-number'])(
+  'retains all three amounts for a custom model using existing defaults (%s)',
+  (value) => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-15T12:00:00Z'));
+    const anchorDate = '2026-11-13T12:00:00Z';
+    mockUseMedicationInjections.mockReturnValue({
+      data: [{ injected_at: anchorDate, dose_mg: 1 }],
+    });
+    mockUseSerumCurve.mockReturnValue({
+      data: {
+        ...emptyModelResponse,
+        drugId: 'custom',
+        anchorDate,
+        doseDays: [0],
+        curve: [
+          { day: 0, level: 0 },
+          {
+            day: 2,
+            level: serumLevelAt(2, [{ day: 0, doseMg: 1 }], {
+              halfLifeDays: 7,
+              tMaxDays: 1.5,
+            }),
+          },
+        ],
+        currentLevelFraction: 0.5,
+        modelAvailability: { status: 'available', reason: null },
+      },
+    });
+    render(
+      <Glp1Coach
+        med={{
+          ...unresolvedMedication,
+          custom_fields: {
+            glp1_drug: 'custom',
+            custom_half_life_days: value,
+            custom_t_max_days: value,
+          },
+        }}
+      />
+    );
+    expect(screen.getByText('Modelled at injection sites')).toBeInTheDocument();
+    expect(screen.getByText('Modelled total remaining')).toBeInTheDocument();
+    expect(screen.queryByText('Model unavailable')).not.toBeInTheDocument();
+    jest.useRealTimers();
+  }
+);
+it('uses an unambiguous older resolved response with empty history as no-history', () => {
+  mockUseMedicationInjections.mockReturnValue({ data: [] });
+  mockUseSerumCurve.mockReturnValue({
+    data: { ...emptyModelResponse, drugId: 'new-server-profile' },
+  });
+  render(<Glp1Coach med={unresolvedMedication} />);
+  expect(
+    screen.getByText('No logged doses are available to this model yet.')
+  ).toBeInTheDocument();
+});
+it('never shows numerical curve data when authoritative availability says unavailable', () => {
+  mockUseMedicationInjections.mockReturnValue({ data: undefined });
+  mockUseSerumCurve.mockReturnValue({
+    data: {
+      ...emptyModelResponse,
+      curve,
+      currentLevelFraction: 0.5,
+      modelAvailability: {
+        status: 'unavailable',
+        reason: 'unresolved_profile',
+      },
+    },
+  });
+  render(<Glp1Coach med={unresolvedMedication} />);
+  expect(screen.queryByTestId('pk-chart')).not.toBeInTheDocument();
+  expect(screen.queryByText(/mg now/)).not.toBeInTheDocument();
+  expect(screen.getByText('Model unavailable')).toBeInTheDocument();
+});
+it('preserves the existing oral curve presentation when the model is available', () => {
+  mockUseMedicationInjections.mockReturnValue({ data: [] });
+  mockUseSerumCurve.mockReturnValue({
+    data: {
+      ...emptyModelResponse,
+      drugId: 'oral_semaglutide',
+      curve,
+      currentLevelFraction: 0.5,
+      modelAvailability: { status: 'available', reason: null },
+    },
+  });
+  render(
+    <Glp1Coach
+      med={{
+        ...med,
+        type_id: 'oral',
+        custom_fields: { glp1_drug: 'oral_semaglutide' },
+      }}
+    />
+  );
+  expect(screen.getByTestId('pk-chart')).toBeInTheDocument();
+  expect(screen.queryByText('Model unavailable')).not.toBeInTheDocument();
+});
+
+it('keeps older empty-model history loading and errors separate from model configuration', () => {
+  mockUseSerumCurve.mockReturnValue({
+    data: { ...emptyModelResponse, drugId: 'semaglutide' },
+  });
+  mockUseMedicationInjections.mockReturnValue({
+    data: undefined,
+    isPending: true,
+  });
+  const { rerender } = render(<Glp1Coach med={med} />);
+  expect(
+    screen.getByText('Loading the model for Ozempic…')
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/model settings/)).not.toBeInTheDocument();
+  mockUseMedicationInjections.mockReturnValue({ data: [], isError: true });
+  rerender(<Glp1Coach med={med} />);
+  expect(
+    screen.getByText(
+      'Could not load logged doses for this model. Try again later.'
+    )
+  ).toBeInTheDocument();
+  expect(screen.queryByText('Model unavailable')).not.toBeInTheDocument();
+  mockUseMedicationInjections.mockReturnValue({ data: [] });
+  rerender(<Glp1Coach med={med} />);
+  expect(
+    screen.getByText('No logged doses are available to this model yet.')
+  ).toBeInTheDocument();
+});

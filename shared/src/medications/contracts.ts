@@ -296,7 +296,16 @@ export interface TitrationStep {
   note: string | null;
 }
 
+export interface SerumModelAvailability {
+  status: 'available' | 'no_logged_history' | 'unavailable';
+  reason: 'unresolved_profile' | 'invalid_parameters' | null;
+  /** Only effective parameters rejected for this estimate. */
+  invalidParameters?: ('halfLifeDays' | 'tMaxDays')[];
+}
+
 export interface SerumCurveResponse {
+  /** Additive diagnostic; older server responses may omit it. */
+  modelAvailability?: SerumModelAvailability;
   drugId: string | null;
   drugName?: string | null;
   curve: SerumPoint[];

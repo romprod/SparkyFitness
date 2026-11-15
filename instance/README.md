@@ -128,3 +128,9 @@ C05 is an explicitly labelled unused-value estimate for finished/discarded vials
 Source, isolated PostgreSQL, numerical and client checks passed; live operational release identity is recorded separately. No schema migration or new dependency is expected. C06 prescription fallback, inclusive headline cost per dose, course costs, FX, A07 and native presentation are outside this selected extension. Preserve the completed Diary, lab-help, Sleep and medication-chart changes.
 
 Monthly presentation applies a deterministic category rounding residual so rounded bands reconcile to paid invoice totals while preserving the actual net shipping/tax/fee/discount overhead. This is a documented correction to the reference rounding defect, not an extra charge or stock adjustment.
+
+## Selected model-availability clarity
+
+A07 is implemented and source-tested for the existing Cabinet and Diary charts. Explain when required modelling parameters are missing separately from a model with no logged history. Retain custom-profile eligibility, existing three-amount calculations and the latest-60 history bound; keep the existing history notice rather than duplicating it. This is omission transparency, not full parity with the reference absorption model. Additive API metadata is expected, with no migration, dependency or native presentation change. Actual-build and live release verification are recorded separately. E02 appointment/PDF work is deferred.
+
+Existing custom-profile fallback values remain part of model resolution; the notice does not turn a missing/zero/non-numeric custom setting that already uses those defaults into an unavailable model. The selected diagnostic distinguishes an unresolved profile or invalid effective parameters from an otherwise available model with no logged history.

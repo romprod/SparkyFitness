@@ -155,9 +155,13 @@ it('refreshes the summary budget when the calorie preference changes', () => {
   expect(screen.getByLabelText('Calorie budget')).toHaveTextContent('2681');
 });
 
-it('places the eligible chart widget after caffeine, including when viewing a historical date', () => {
+it('keeps an unresolved diagnostic widget after caffeine, including when viewing a historical date', () => {
   mockChartMedications.push({
     id: 'generic',
+    name: 'Unresolved medication',
+    is_active: true,
+    is_glp1: true,
+    custom_fields: {},
   } as import('@/types/medications').Medication);
   render(
     <MemoryRouter initialEntries={['/diary?date=2020-01-01']}>

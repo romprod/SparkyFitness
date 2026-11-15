@@ -77,7 +77,7 @@ it('waits for authoritative identity before any medication read', async () => {
   );
   await screen.findByText('one');
 });
-it('permits report-authorized delegation and filters unsupported, inactive, unflagged and wrong-owner rows', async () => {
+it('permits report-authorized delegation and retains unresolved diagnostic candidates but filters inactive, unflagged and wrong-owner rows', async () => {
   mockUser = { id: 'actor', activeUserId: 'delegate' };
   list.mockResolvedValue([
     med('one'),
@@ -88,7 +88,7 @@ it('permits report-authorized delegation and filters unsupported, inactive, unfl
     med('foreign', { user_id: 'other' }),
   ]);
   setup();
-  await screen.findByText('one,two');
+  await screen.findByText('one,two,unknown');
 });
 it('Diary-only access requests neither identity nor medication data', () => {
   mockPermission = false;
@@ -115,12 +115,14 @@ it('hides immediately on clear, rejects late old completion, and requires fresh 
   const { client, rerender, tree } = setup();
   await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
   act(() => client.clear());
-  await act(async () => resolve([med('late')]));
+  await act(async () =>
+    resolve([med('late', { name: 'Unresolved old profile' })])
+  );
   expect(screen.getByText('none')).toBeInTheDocument();
   rerender(tree());
   expect(list).toHaveBeenCalledTimes(1);
   mockUser = { id: 'actor', activeUserId: 'delegate' };
-  list.mockResolvedValue([med('new')]);
+  list.mockResolvedValue([med('new', { name: 'Unresolved new profile' })]);
   rerender(tree());
   await screen.findByText('new');
   expect(screen.queryByText('late')).not.toBeInTheDocument();
@@ -152,4 +154,13 @@ it('identity failure never starts medication queries', async () => {
   );
   expect(list).not.toHaveBeenCalled();
   expect(screen.getByText('none')).toBeInTheDocument();
+});
+
+it('retains all-unresolved active GLP-1 candidates for an omission-only widget', async () => {
+  list.mockResolvedValue([
+    med('unknown-a', { name: 'Unlisted A' }),
+    med('unknown-b', { name: 'Unlisted B' }),
+  ]);
+  setup();
+  await screen.findByText('unknown-a,unknown-b');
 });

@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import type { Medication } from '@/types/medications';
+import { legacyModelAvailability } from './modelAvailability';
 
 type PkAxisMode = 'date' | 'day';
 
@@ -57,6 +58,35 @@ export default function Glp1AmountChart({ med }: { med: Medication }) {
 
   const curveQ = useSerumCurve(medId);
   const injectionsQ = useMedicationInjections(medId);
+
+  const availability =
+    curveQ.data?.modelAvailability ??
+    (curveQ.data
+      ? legacyModelAvailability(med, curveQ.data, injectionsQ.data?.length)
+      : null);
+  const canDisplayModel =
+    !curveQ.isError && availability?.status === 'available';
+  const legacyNeedsHistory =
+    !!curveQ.data &&
+    !curveQ.data.modelAvailability &&
+    curveQ.data.curve.length === 0 &&
+    availability?.reason !== 'unresolved_profile';
+  const legacyHistoryError = legacyNeedsHistory && injectionsQ.isError;
+  const legacyHistoryPending =
+    legacyNeedsHistory &&
+    (!injectionsQ.data || injectionsQ.isPending || injectionsQ.isFetching);
+  const medicationName = med.display_name || med.name;
+  const invalidFields =
+    curveQ.data?.modelAvailability?.reason === 'invalid_parameters'
+      ? (curveQ.data.modelAvailability.invalidParameters ?? [])
+      : [];
+  const invalidFieldNames = invalidFields
+    .map((field) =>
+      field === 'halfLifeDays'
+        ? t('medications.glp1.modelHalfLife', 'Half-life')
+        : t('medications.glp1.modelTimeToPeak', 'Time to peak')
+    )
+    .join(', ');
 
   const anchorDate = curveQ.data?.anchorDate ?? null;
   // Day 0 is the earliest injection. Without that anchor the curve can only be
@@ -236,14 +266,15 @@ export default function Glp1AmountChart({ med }: { med: Medication }) {
               'medications.glp1.pkAmountTitle',
               'Modelled absorbed amount — {{drugName}}',
               {
-                drugName:
-                  curveQ.data?.drugName ?? curveQ.data?.drugId ?? med.name,
+                drugName: canDisplayModel
+                  ? (curveQ.data?.drugName ?? curveQ.data?.drugId ?? med.name)
+                  : medicationName,
               }
             )}
           </span>
           <span className="flex items-center gap-2">
             {/* Only offer the switch when there is an anchor date to switch to. */}
-            {canShowDates && chartData.length > 0 && (
+            {canDisplayModel && canShowDates && chartData.length > 0 && (
               <span className="flex items-center gap-1">
                 <Button
                   variant={axisMode === 'date' ? 'secondary' : 'ghost'}
@@ -277,7 +308,7 @@ export default function Glp1AmountChart({ med }: { med: Medication }) {
                 </Button>
               </span>
             )}
-            {currentAmountMg != null && (
+            {canDisplayModel && currentAmountMg != null && (
               <Badge variant="secondary">
                 {t('medications.glp1.amountNow', '~{{amount}} mg now', {
                   amount: currentAmountMg.toFixed(2),
@@ -288,7 +319,7 @@ export default function Glp1AmountChart({ med }: { med: Medication }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {currentAmounts && (
+        {canDisplayModel && currentAmounts && (
           <dl className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3 text-sm">
             {[
               {
@@ -325,13 +356,75 @@ export default function Glp1AmountChart({ med }: { med: Medication }) {
             ))}
           </dl>
         )}
-        {chartData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t(
-              'medications.glp1.pkEmpty',
-              'Log injections to model your serum level. (Needs a recognized GLP-1 drug — set it on the medication.)'
+        {!canDisplayModel || chartData.length === 0 ? (
+          <div
+            role="status"
+            className="space-y-2 rounded-md border bg-muted/20 p-3 text-sm text-foreground"
+          >
+            {curveQ.isError ? (
+              <p>
+                {t(
+                  'medications.glp1.modelLoadError',
+                  'Could not load the model for {{medication}}. Try again later.',
+                  { medication: medicationName }
+                )}
+              </p>
+            ) : legacyHistoryError ? (
+              <p>
+                {t(
+                  'medications.glp1.modelHistoryLoadError',
+                  'Could not load logged doses for this model. Try again later.'
+                )}
+              </p>
+            ) : !curveQ.data || legacyHistoryPending ? (
+              <p>
+                {t(
+                  'medications.glp1.modelLoading',
+                  'Loading the model for {{medication}}…',
+                  { medication: medicationName }
+                )}
+              </p>
+            ) : availability?.status === 'no_logged_history' ? (
+              <p>
+                {t(
+                  'medications.glp1.modelNoHistory',
+                  'No logged doses are available to this model yet.',
+                  { medication: medicationName }
+                )}
+              </p>
+            ) : (
+              <>
+                <p className="font-medium">
+                  {t('medications.glp1.modelUnavailable', 'Model unavailable')}
+                </p>
+                <p>
+                  {invalidFieldNames
+                    ? t(
+                        'medications.glp1.modelInvalidParameters',
+                        'Check {{fields}}: each value must be a number greater than zero.',
+                        { fields: invalidFieldNames }
+                      )
+                    : availability?.reason === 'unresolved_profile'
+                      ? t(
+                          'medications.glp1.modelParametersUnavailable',
+                          '{{medication}} has no available model parameters.',
+                          { medication: medicationName }
+                        )
+                      : t(
+                          'medications.glp1.modelEmpty',
+                          'No modelled curve is available for {{medication}}.',
+                          { medication: medicationName }
+                        )}
+                </p>
+                <p className="text-muted-foreground">
+                  {t(
+                    'medications.glp1.modelSettingsHint',
+                    'Review the medication’s GLP-1 model settings in Medications → Cabinet.'
+                  )}
+                </p>
+              </>
             )}
-          </p>
+          </div>
         ) : (
           <>
             <div className="overflow-x-auto">
