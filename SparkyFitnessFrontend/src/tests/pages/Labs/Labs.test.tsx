@@ -44,6 +44,7 @@ const renderPage = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   api.listLabMarkers.mockResolvedValue([customMarker()]);
+  api.listLabComparison.mockResolvedValue({ panels: [] });
   api.listLatestLabResults.mockResolvedValue([
     result(),
     result({
@@ -62,6 +63,52 @@ beforeEach(() => {
 });
 
 describe('Labs page', () => {
+  it('loads the imported-report comparison above the existing marker list', async () => {
+    api.listLabComparison.mockResolvedValue({
+      panels: [
+        {
+          id: 'report-1',
+          lab_name: 'Synthetic lab',
+          collected_on: '2026-09-12',
+          created_at: '2026-09-12T10:00:00Z',
+          results: [result()],
+        },
+      ],
+    });
+    renderPage();
+    const table = await screen.findByRole('table');
+    expect(table).toHaveTextContent('Latest');
+    expect(table).toHaveTextContent('2026-09-12');
+    expect(table).toHaveTextContent('5.1 %');
+    expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+    expect(api.listLabComparison).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the comparison visible with an empty state for manual-only results', async () => {
+    renderPage();
+    expect(
+      await screen.findByText('No imported reports yet.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Latest three imported reports')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+  });
+
+  it('shows a comparison load failure while retaining the existing marker list', async () => {
+    api.listLabComparison.mockRejectedValue(
+      new Error('Synthetic request failure')
+    );
+    renderPage();
+    expect(
+      await screen.findByText('Could not load the report comparison.')
+    ).toHaveAttribute('role', 'alert');
+    expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+    expect(
+      screen.queryByText('No imported reports yet.')
+    ).not.toBeInTheDocument();
+  });
+
   it('lists the markers with their latest result and range status', async () => {
     renderPage();
 
@@ -115,6 +162,7 @@ describe('Labs page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(api.deleteLabResult).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listLabComparison).toHaveBeenCalledTimes(2));
   });
 
   it('deletes a built-in marker by key and a custom one by id', async () => {
@@ -239,9 +287,9 @@ describe('Labs page', () => {
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not load your lab results.'
-    );
+    expect(
+      await screen.findByText('Could not load your lab results.')
+    ).toHaveAttribute('role', 'alert');
     expect(screen.queryByText('No results yet')).not.toBeInTheDocument();
     expect(screen.queryByTestId('lab-marker-chart')).not.toBeInTheDocument();
   });
@@ -328,9 +376,9 @@ describe('Labs page', () => {
     api.listLabMarkers.mockRejectedValue(new Error('boom'));
     renderPage();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not load your lab results.'
-    );
+    expect(
+      await screen.findByText('Could not load your lab results.')
+    ).toHaveAttribute('role', 'alert');
     expect(screen.queryByText(/No lab results yet/)).not.toBeInTheDocument();
   });
 
@@ -338,9 +386,9 @@ describe('Labs page', () => {
     api.listLatestLabResults.mockRejectedValue(new Error('boom'));
     renderPage();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Could not load your lab results.'
-    );
+    expect(
+      await screen.findByText('Could not load your lab results.')
+    ).toHaveAttribute('role', 'alert');
     expect(screen.queryByText('Homocysteine')).not.toBeInTheDocument();
   });
 

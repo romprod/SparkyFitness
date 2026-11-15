@@ -498,3 +498,9 @@ The instance preparation-records tranche uses `medication_preparations` for one 
 D04/D05 uses separate reusable syringe settings/default and shared decimal half-up arithmetic; retain the exact source five warn/block checks. I01 extends existing vial status to finished/discarded with quantity-preserving retirement and editable reopening. Web dose tooling stays in Cabinet and stock tooling in Preparation & stock; mobile retains Injection tracker. Do not add source-unverified features or restrictions without asking the owner.
 
 `SyringeSettingsScreen.tsx`, `hooks/useSyringes.ts` and `services/api/syringesApi.ts` manage devices/defaults. `SyringeDrawPreview.tsx` is used by existing injection logging/editing; retain the combined Injection tracker layout. Retired stock stays in the existing inventory view.
+
+## Visual syringe and recent lab comparison
+
+D06 is syringe-only presentation of the existing canonical preview: target-volume fill against matching capacity, existing measurable marking, quarter-capacity ticks and target-unit details. Keep dose tooling in Cabinet and stock-only tooling in Preparation & stock. L02 compares the latest three existing imported lab reports in Labs, preserving stable marker/assay identity and Sparky units/ranges/qualifiers; no fabricated manual-date panels, CRP merging, arbitrary filters or pickers. Pen/pump visuals and dose-revision audit remain deferred. Existing I05/D09 stock reconciliation is partially covered and must not trigger a new adjustment ledger. Strict pinned Pitstop-only scope and ask-first rule still apply.
+
+`components/glp1/SyringeVisual.tsx` presents the canonical target preview and same-response capacity. `components/labs/LabComparisonCard.tsx` is mounted in `LabResultsScreen.tsx`; `useLabComparison` in `useLabResults.ts` reads the latest imported reports through `fetchLabComparison` and shares `buildLabComparison` semantics with web.

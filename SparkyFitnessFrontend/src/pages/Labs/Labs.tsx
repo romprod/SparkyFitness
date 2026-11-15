@@ -34,10 +34,12 @@ import {
   useDeleteLabMarker,
   useDeleteLabResult,
   useLabHistory,
+  useLabComparison,
   useLabMarkers,
   useLatestLabResults,
 } from '@/hooks/Labs/useLabResults';
 import LabImportDialog from './LabImportDialog';
+import LabComparison from './LabComparison';
 import LabMarkerChart from './LabMarkerChart';
 import LabResultDialog from './LabResultDialog';
 import { formatLabRange, labResultText } from './labFormat';
@@ -53,6 +55,7 @@ const Labs = () => {
 
   const customMarkers = useLabMarkers();
   const latest = useLatestLabResults();
+  const comparison = useLabComparison();
 
   // Built-in markers are named from the catalog, never from stored text.
   const labels: LabMarkerLabels = useMemo(
@@ -164,6 +167,15 @@ const Labs = () => {
           </DropdownMenu>
         </div>
       </div>
+
+      <LabComparison
+        panels={comparison.data?.panels ?? []}
+        customMarkers={customMarkers.data ?? []}
+        labels={labels}
+        sex={sex}
+        isLoading={customMarkers.isLoading || comparison.isLoading}
+        isError={customMarkers.isError || comparison.isError}
+      />
 
       {loading ? (
         <Skeleton className="h-48 w-full" />

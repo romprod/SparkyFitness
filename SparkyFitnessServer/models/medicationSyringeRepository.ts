@@ -183,12 +183,15 @@ export async function calculateStoredDraw(
         )
       : undefined;
   try {
-    return computeDraw({
-      dose: input.dose,
-      concentrationMcgPerMl: concentration,
-      syringe: syringe.rows[0],
-      ...(remaining === undefined ? {} : { remainingMl: remaining }),
-    });
+    return {
+      ...computeDraw({
+        dose: input.dose,
+        concentrationMcgPerMl: concentration,
+        syringe: syringe.rows[0],
+        ...(remaining === undefined ? {} : { remainingMl: remaining }),
+      }),
+      syringeCapacityMl: syringe.rows[0].capacity_ml,
+    };
   } catch (error) {
     if (
       error instanceof Error &&

@@ -3,11 +3,14 @@ import {
   useDeleteLabImports,
   useDeleteLabMarker,
   useSaveLabResult,
+  useLabComparison,
 } from '../../src/hooks/useLabResults';
 import {
   createLabMarker,
   createLabResult,
   deleteLabMarker,
+  fetchLabComparison,
+  fetchLabMarkers,
 } from '../../src/services/api/labResultsApi';
 import {
   deleteBuiltinMarkerResults,
@@ -24,6 +27,7 @@ jest.mock('../../src/services/api/labResultsApi', () => ({
   fetchLabMarkers: jest.fn(),
   fetchLabResults: jest.fn(),
   fetchLatestLabResults: jest.fn(),
+  fetchLabComparison: jest.fn(),
 }));
 jest.mock('../../src/services/api/labReportApi', () => ({
   deleteBuiltinMarkerResults: jest.fn(),
@@ -176,13 +180,70 @@ describe('deleting lab data', () => {
     jest
       .mocked(deleteLabImports)
       .mockResolvedValue({ reports: 1, results: 3, markers: 0 });
+    const client = createTestQueryClient();
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
     const { result } = renderHook(() => useDeleteLabImports(), {
-      wrapper: createQueryWrapper(createTestQueryClient()),
+      wrapper: createQueryWrapper(client),
     });
 
     result.current.mutate();
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(deleteLabImports).toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labComparison'] });
   });
+});
+
+test('loads bounded imported-report panels and combines current custom-marker metadata', async () => {
+  jest.mocked(fetchLabComparison).mockResolvedValue({
+    panels: [
+      {
+        id: 'report',
+        lab_name: 'Example lab',
+        collected_on: '2026-01-30',
+        created_at: '2026-01-30T12:00:00Z',
+        results: [
+          {
+            id: 'result',
+            marker_key: null,
+            custom_marker_id: 'example',
+            entry_date: '2026-01-30',
+            value_numeric: 4,
+            value_text: null,
+            unit: 'mg/L',
+            ref_range_low: null,
+            ref_range_high: null,
+          },
+        ],
+      },
+    ],
+  });
+  jest.mocked(fetchLabMarkers).mockResolvedValue([
+    {
+      id: 'example',
+      user_id: 'example-user',
+      name: 'Example analyte',
+      unit: 'mg/L',
+      ref_range_low: 0,
+      ref_range_high: 5,
+      created_at: '',
+      updated_at: '',
+    },
+  ]);
+  const client = createTestQueryClient();
+  const { result, unmount } = renderHook(() => useLabComparison(), {
+    wrapper: createQueryWrapper(client),
+  });
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  expect(result.current.isError).toBe(false);
+  expect(result.current.comparison.panels.map((panel) => panel.id)).toEqual([
+    'report',
+  ]);
+  expect(result.current.comparison.rows[0]?.name).toBe('Example analyte');
+  expect(result.current.comparison.rows[0]?.cells[0]?.range).toEqual({
+    low: 0,
+    high: 5,
+  });
+  unmount();
+  client.clear();
 });

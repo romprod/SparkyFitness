@@ -2084,7 +2084,10 @@
       "error": "Rounding error: {{error}} mcg",
       "selectActiveVial": "The selected vial is no longer active. Choose an active vial or choose not to deduct.",
       "originalUnavailable": "The original syringe or vial is no longer available. The dose is read-only; other details can still be edited.",
-      "reenterDose": "The vial or syringe changed. Enter the dose again."
+      "reenterDose": "The vial or syringe changed. Enter the dose again.",
+      "visualTarget": "Syringe preview: target volume {{volume}} mL of {{capacity}} mL capacity",
+      "targetBreakdown": "Target dose in all units",
+      "targetValue": "{{value}} {{unit}}"
     }
   },
   "scheduleSummary": {
@@ -10101,7 +10104,23 @@
     "deleteMarker": "Delete marker and all results",
     "deleteMarkerTitle": "Delete marker",
     "deleteMarkerMessage": "Delete {{name}} and all of its results? This cannot be undone.",
-    "deleteMarkerFailed": "Could not delete the marker"
+    "deleteMarkerFailed": "Could not delete the marker",
+    "comparison": {
+      "title": "Latest three imported reports",
+      "loading": "Loading report comparison…",
+      "failed": "Could not load the imported report comparison.",
+      "empty": "No imported reports available to compare.",
+      "noResults": "These imported reports have no lab results to compare.",
+      "marker": "Marker",
+      "unit": "Unit",
+      "range": "Reference range",
+      "dateUnknown": "Collection date not recorded",
+      "closer": "Closer to reference range than prior report",
+      "resultDate": "Result date: {{date}}",
+      "cellRange": "Reference: {{range}}",
+      "rangeUnavailable": "Range unavailable",
+      "valueRange": "{{value}}; reference range {{range}}"
+    }
   },
   "serverStatus": {
     "notConfiguredTitle": "No server configured",

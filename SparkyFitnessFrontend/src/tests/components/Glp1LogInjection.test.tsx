@@ -98,12 +98,15 @@ beforeEach(() => {
       try {
         return {
           data: input
-            ? computeDraw({
-                dose: input.dose,
-                concentrationMcgPerMl: '4000',
-                syringe,
-                remainingMl: String(mockPens[0]?.stock?.remainingMl ?? 3),
-              })
+            ? {
+                ...computeDraw({
+                  dose: input.dose,
+                  concentrationMcgPerMl: '4000',
+                  syringe,
+                  remainingMl: String(mockPens[0]?.stock?.remainingMl ?? 3),
+                }),
+                syringeCapacityMl: syringe.capacity_ml,
+              }
             : undefined,
           isFetching: mockFetching,
           isError: false,

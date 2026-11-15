@@ -424,3 +424,9 @@ The instance preparation-records tranche uses `medication_preparations` for one 
 D04/D05 uses separate reusable syringe settings/default and shared decimal half-up arithmetic; retain the exact source five warn/block checks. I01 extends existing vial status to finished/discarded with quantity-preserving retirement and editable reopening. Web dose tooling stays in Cabinet and stock tooling in Preparation & stock; mobile retains Injection tracker. Do not add source-unverified features or restrictions without asking the owner.
 
 `models/medicationSyringeRepository.ts` manages reusable devices/defaults. Existing medication routes expose device management and draw previews; injection writes recompute through shared `medications/draw.ts`. Migration `20261115140000_syringes_vial_lifecycle.sql` adds medication-domain syringe/status-audit tables and injection draw fields.
+
+## Visual syringe and recent lab comparison
+
+D06 is syringe-only presentation of the existing canonical preview: target-volume fill against matching capacity, existing measurable marking, quarter-capacity ticks and target-unit details. Keep dose tooling in Cabinet and stock-only tooling in Preparation & stock. L02 compares the latest three existing imported lab reports in Labs, preserving stable marker/assay identity and Sparky units/ranges/qualifiers; no fabricated manual-date panels, CRP merging, arbitrary filters or pickers. Pen/pump visuals and dose-revision audit remain deferred. Existing I05/D09 stock reconciliation is partially covered and must not trigger a new adjustment ledger. Strict pinned Pitstop-only scope and ask-first rule still apply.
+
+The existing lab-results route exposes `GET /api/v2/lab-results/panels/latest` using existing `lab_reports` and report-linked results. It introduces no table or migration. Keep report ownership and original marker/unit/range/qualifier values intact.

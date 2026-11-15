@@ -60,12 +60,15 @@ beforeEach(() => {
   mockPreview.mockImplementation(
     (_pen: string | null, input: DrawPreviewInput | null) => ({
       data: input
-        ? computeDraw({
-            dose: input.dose,
-            concentrationMcgPerMl: '4000',
-            syringe,
-            remainingMl: '0.15',
-          })
+        ? {
+            ...computeDraw({
+              dose: input.dose,
+              concentrationMcgPerMl: '4000',
+              syringe,
+              remainingMl: '0.15',
+            }),
+            syringeCapacityMl: syringe.capacity_ml,
+          }
         : undefined,
       isFetching: false,
       isError: false,

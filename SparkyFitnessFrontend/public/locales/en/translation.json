@@ -974,6 +974,9 @@
       "calculating": "Calculating marking…",
       "previewError": "Could not calculate a marking. Check the entered amount and syringe settings.",
       "marking": "Measurable marking: {{value}} {{scale}}",
+      "visualLabel": "Syringe target fill: draw to {{marking}}",
+      "drawTo": "Draw to {{marking}}",
+      "targetEquivalents": "Target dose equivalents",
       "target": "Target",
       "delivered": "Delivered",
       "rounding": "Rounding difference",
@@ -10307,6 +10310,21 @@
     "minIntoWorkout": "{{min}} min into workout"
   },
   "labs": {
+    "comparison": {
+      "title": "Latest three imported reports",
+      "prior": "Prior",
+      "base": "Earlier",
+      "marker": "Marker",
+      "reference": "Latest reference range",
+      "caption": "Up to three saved reports, newest first. Arrows show a smaller distance outside the reference range than the prior report.",
+      "closer": "Closer to the reference range than the prior report",
+      "loadFailed": "Could not load the report comparison.",
+      "empty": "No imported reports yet.",
+      "unknownDate": "Collection date not recorded",
+      "resultDate": "Result date: {{date}}",
+      "collectionDate": "Report collection date",
+      "rangeUnavailable": "Range unavailable"
+    },
     "add": "Add lab result",
     "changeMarker": "Change",
     "chartEmpty": "No results yet",

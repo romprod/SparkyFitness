@@ -23,6 +23,7 @@ import {
   getLabResultById,
   importLabReport,
   listLabMarkers,
+  listLatestLabPanels,
   listLabResults,
   listLatestLabResults,
   updateLabMarker,
@@ -256,6 +257,25 @@ router.delete('/markers/:id', async (req, res, next) => {
  *         description: Internal server error
  */
 // GET /api/v2/lab-results/latest: the newest result of every marker
+/**
+ * @swagger
+ * /v2/lab-results/panels/latest:
+ *   get:
+ *     summary: Compare the latest three imported lab reports
+ *     description: Returns complete results of actual report groups, ordered by collected_on descending (undated last), created_at and id. Individual manual/FHIR results are not grouped into reports.
+ *     tags: [Wellness & Metrics]
+ *     security: [{cookieAuth: []}]
+ *     responses: {200: {description: Minimal report metadata and result values, units and reference ranges.},403: {description: Missing check-in permission.}}
+ */
+router.get('/panels/latest', async (req, res, next) => {
+  try {
+    const { targetUserId, authenticatedUserId } = actingUsers(req);
+    res.json(await listLatestLabPanels(targetUserId, authenticatedUserId));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/latest', async (req, res, next) => {
   try {
     const { targetUserId, authenticatedUserId } = actingUsers(req);

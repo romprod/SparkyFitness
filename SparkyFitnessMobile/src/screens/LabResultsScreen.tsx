@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 import LabStatusBadge from '../components/labs/LabStatusBadge';
+import LabComparisonCard from '../components/labs/LabComparisonCard';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import { useScreenHeader } from '../hooks/useScreenHeader';
 import { useDeleteLabImports, useLabMarkers } from '../hooks/useLabResults';
@@ -123,6 +124,7 @@ const LabResultsScreen: React.FC<Props> = ({ navigation }) => {
           paddingBottom: insets.bottom + 24,
         }}
       >
+        <LabComparisonCard />
         {isLoading ? (
           <ActivityIndicator />
         ) : isError ? (

@@ -380,3 +380,4 @@ export * from './medications/draw.ts';
 
 export * from './schemas/database/MedicationSyringes.zod.ts';
 export * from './schemas/database/MedicationStockStatusAudit.zod.ts';
+export * from './utils/labComparison.ts';

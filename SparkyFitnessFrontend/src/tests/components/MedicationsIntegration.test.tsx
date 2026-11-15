@@ -125,7 +125,7 @@ beforeEach(() => {
             profile,
             0,
             12,
-            Number(options?.params?.stepDays ?? 0.25)
+            Number(options?.params?.['stepDays'] ?? 0.25)
           ),
           currentLevelFraction: 0.5,
         };
@@ -157,12 +157,15 @@ beforeEach(() => {
         return { syringes: [syringe], default_syringe_id: syringe.id };
       if (endpoint.endsWith('/draw-preview')) {
         const input = calculatedDrawInputSchema.parse(options?.body);
-        return computeDraw({
-          dose: input.dose,
-          concentrationMcgPerMl: '2000',
-          syringe,
-          remainingMl: '2',
-        });
+        return {
+          ...computeDraw({
+            dose: input.dose,
+            concentrationMcgPerMl: '2000',
+            syringe,
+            remainingMl: '2',
+          }),
+          syringeCapacityMl: syringe.capacity_ml,
+        };
       }
       if (endpoint.endsWith('/site-suggestion'))
         return {
@@ -199,6 +202,9 @@ it('renders all three amounts and syringe controls through Cabinet selection usi
   ).toBeInTheDocument();
   expect(
     await screen.findByText('Measurable marking: 25 units')
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('img', { name: 'Syringe target fill: draw to 25 units' })
   ).toBeInTheDocument();
   expect(mockApiCall).toHaveBeenCalledWith(
     expect.stringContaining('/serum-curve'),

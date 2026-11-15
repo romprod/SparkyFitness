@@ -1,11 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ImportLabReportBody } from '@workspace/shared';
 import { importLabReport, scanLabReport } from '../services/api/labReportApi';
-import {
-  labHistoryRootQueryKey,
-  labLatestQueryKey,
-  labMarkersQueryKey,
-} from './queryKeys';
+import { invalidateLabCaches } from './invalidateLabCaches';
 import { ApiError } from '../services/api/errors';
 import { addLog } from '../services/LogService';
 
@@ -40,9 +36,7 @@ export function useImportLabReport() {
   return useMutation({
     mutationFn: (body: ImportLabReportBody) => importLabReport(body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: labMarkersQueryKey });
-      queryClient.invalidateQueries({ queryKey: labLatestQueryKey });
-      queryClient.invalidateQueries({ queryKey: labHistoryRootQueryKey });
+      invalidateLabCaches(queryClient);
     },
     onError: (err: Error) => {
       addLog(failureLog('import lab report', err), 'ERROR');

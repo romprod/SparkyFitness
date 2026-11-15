@@ -9,6 +9,7 @@ import * as labRepo from '../models/labResultRepository.js';
 
 vi.mock('../models/labResultRepository.js', () => ({
   listLabMarkers: vi.fn(),
+  listLatestLabPanels: vi.fn(),
   createLabMarker: vi.fn(),
   updateLabMarker: vi.fn(),
   deleteLabMarker: vi.fn(),
@@ -350,5 +351,20 @@ describe('Lab result routes (v2)', () => {
       ).toBe(400);
       expect(labRepo.deleteResultsForMarkerKey).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('latest explicit report panels', () => {
+  it('uses acting-user check-in access and returns the existing report groups', async () => {
+    vi.mocked(labRepo.listLatestLabPanels).mockResolvedValue({ panels: [] });
+    const response = await request(app).get(
+      '/api/v2/lab-results/panels/latest'
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ panels: [] });
+    expect(labRepo.listLatestLabPanels).toHaveBeenCalledWith(
+      'test-user-id',
+      'test-user-id'
+    );
   });
 });

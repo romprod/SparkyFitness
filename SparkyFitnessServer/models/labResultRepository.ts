@@ -1,6 +1,7 @@
 import { getClient } from '../db/poolManager.js';
 import type {
   CreateLabMarkerBody,
+  LabComparisonResponse,
   DeleteLabImportsResponse,
   ImportLabReportBody,
   ImportLabReportResponse,
@@ -614,6 +615,47 @@ export async function deleteResultsForMarkerKey(
       [userId, markerKey]
     );
     return result.rowCount ?? 0;
+  } finally {
+    client.release();
+  }
+}
+
+/** Complete contents of the latest three explicit imported reports, never inferred date buckets. */
+export async function listLatestLabPanels(
+  userId: string,
+  authenticatedUserId?: string
+): Promise<LabComparisonResponse> {
+  const client = await getClient(userId, authenticatedUserId);
+  try {
+    const result = await client.query(
+      `SELECT p.id,p.lab_name,p.collected_on,p.created_at,
+    COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.created_at DESC,r.id DESC) FILTER(WHERE r.id IS NOT NULL),'[]'::jsonb) AS results
+    FROM (SELECT id,lab_name,collected_on,created_at FROM lab_reports WHERE user_id=$1
+      ORDER BY collected_on DESC NULLS LAST,created_at DESC,id DESC LIMIT 3) p
+    LEFT JOIN lab_results r ON r.report_id=p.id AND r.user_id=$1
+    GROUP BY p.id,p.lab_name,p.collected_on,p.created_at
+    ORDER BY p.collected_on DESC NULLS LAST,p.created_at DESC,p.id DESC`,
+      [userId]
+    );
+    return {
+      panels: result.rows.map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        lab_name: toStringOrNull(row.lab_name),
+        collected_on: toStringOrNull(row.collected_on),
+        created_at: toIso(row.created_at),
+        results: (row.results as Record<string, unknown>[]).map((r) => ({
+          id: String(r.id),
+          marker_key: toStringOrNull(r.marker_key),
+          custom_marker_id: toStringOrNull(r.custom_marker_id),
+          entry_date: String(r.entry_date),
+          value_numeric: toNumberOrNull(r.value_numeric),
+          value_text: toStringOrNull(r.value_text),
+          unit: String(r.unit),
+          ref_range_low: toNumberOrNull(r.ref_range_low),
+          ref_range_high: toNumberOrNull(r.ref_range_high),
+        })),
+      })),
+    };
   } finally {
     client.release();
   }

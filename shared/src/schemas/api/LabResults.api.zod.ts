@@ -238,3 +238,25 @@ export const deleteMarkerResultsResponseSchema = z.object({
 export type DeleteMarkerResultsResponse = z.infer<
   typeof deleteMarkerResultsResponseSchema
 >;
+
+/** Explicit imported report groups only; individual manual/FHIR rows are not panels. */
+export const labComparisonResultSchema = labResultResponseSchema.pick({
+  id: true,
+  marker_key: true,
+  custom_marker_id: true,
+  entry_date: true,
+  value_numeric: true,
+  value_text: true,
+  unit: true,
+  ref_range_low: true,
+  ref_range_high: true,
+});
+export type LabComparisonResult = z.infer<typeof labComparisonResultSchema>;
+export const labComparisonPanelSchema = labReportResponseSchema
+  .omit({ user_id: true })
+  .extend({ results: z.array(labComparisonResultSchema) });
+export type LabComparisonPanel = z.infer<typeof labComparisonPanelSchema>;
+export const labComparisonResponseSchema = z.object({
+  panels: z.array(labComparisonPanelSchema).max(3),
+});
+export type LabComparisonResponse = z.infer<typeof labComparisonResponseSchema>;

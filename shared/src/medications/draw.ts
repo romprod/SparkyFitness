@@ -75,6 +75,8 @@ export interface DrawWarning {
   message: string;
 }
 export interface DrawResult {
+  /** Ephemeral preview metadata from the same saved syringe used for this draw. */
+  syringeCapacityMl?: string;
   targetMassMcg: string;
   targetVolumeMl: string;
   rawUnits: string;
@@ -215,3 +217,35 @@ export const positiveDrawDoseSchema = drawDoseSchema.refine(
   (dose) => decimalMeets(dose.value, true),
   'Enter a positive dose'
 );
+
+/** Source target figures: decimal rounding for display, without insignificant zeros. */
+export function drawTargetDisplay(
+  draw: Pick<DrawResult, 'targetMassMcg' | 'targetVolumeMl' | 'rawUnits'>
+) {
+  return {
+    mcg: new D(draw.targetMassMcg).toDecimalPlaces(1).toString(),
+    mg: new D(draw.targetMassMcg).div(1000).toDecimalPlaces(3).toString(),
+    ml: new D(draw.targetVolumeMl).toDecimalPlaces(3).toString(),
+    units: new D(draw.rawUnits).toDecimalPlaces(1).toString(),
+  };
+}
+/** Convert to a native number only at the visual boundary. */
+export function drawTargetFillFraction(
+  targetVolumeMl: string,
+  capacityMl: string
+): number | null {
+  try {
+    const volume = new D(targetVolumeMl),
+      capacity = new D(capacityMl);
+    if (
+      !volume.isFinite() ||
+      volume.lt(0) ||
+      !capacity.isFinite() ||
+      capacity.lte(0)
+    )
+      return null;
+    return D.min(1, D.max(0, volume.div(capacity))).toNumber();
+  } catch {
+    return null;
+  }
+}

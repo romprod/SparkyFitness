@@ -523,7 +523,7 @@ export default function Medications() {
             </div>
 
             {/* Selected Medication Details (Drawer-like Right Column) */}
-            <div>
+            <div className="min-w-0">
               {!selected ? (
                 <Card className="h-full border-dashed flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
                   <div className="rounded-full bg-muted p-3 mb-3">

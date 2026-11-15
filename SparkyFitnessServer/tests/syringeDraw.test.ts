@@ -3,6 +3,8 @@ import { calculateStoredDraw } from '../models/medicationSyringeRepository.js';
 import type { PoolClient } from 'pg';
 import {
   computeDraw,
+  drawTargetDisplay,
+  drawTargetFillFraction,
   drawConcentration,
   positiveDrawDoseSchema,
 } from '@workspace/shared';
@@ -49,6 +51,59 @@ describe('reference syringe draw semantics', () => {
         dose: { value: '1', unit: 'mg' },
       })
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it('binds preview capacity to the same saved device used in the calculation', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            kind: 'vial',
+            mass_value: null,
+            concentration_mg_ml: '1',
+            volume_ml: '1',
+            doses_used: 0,
+            linked_count: 0,
+            missing_count: 0,
+            used_mg: '0',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [{ ...syringe, capacity_ml: '0.5' }] });
+    const result = await calculateStoredDraw(
+      { query } as unknown as PoolClient,
+      'owner',
+      'vial',
+      { syringe_id: 'syringe', dose: { value: '1', unit: 'ml' } }
+    );
+    expect(result.syringeCapacityMl).toBe('0.5');
+    expect(
+      result.warnings.some((w) => w.code === 'EXCEEDS_SYRINGE_CAPACITY')
+    ).toBe(true);
+  });
+  it('formats the four target values at source precision independently of delivered rounding', () => {
+    expect(
+      drawTargetDisplay({
+        targetMassMcg: '1234.56',
+        targetVolumeMl: '0.123456',
+        rawUnits: '12.3456',
+      })
+    ).toEqual({ mcg: '1234.6', mg: '1.235', ml: '0.123', units: '12.3' });
+    expect(
+      drawTargetDisplay({
+        targetMassMcg: '500',
+        targetVolumeMl: '0.5',
+        rawUnits: '50',
+      })
+    ).toEqual({ mcg: '500', mg: '0.5', ml: '0.5', units: '50' });
+  });
+  it('keeps the syringe visual finite and capped without changing draw checks', () => {
+    expect(drawTargetFillFraction('0.25', '0.5')).toBe(0.5);
+    expect(drawTargetFillFraction('2', '1')).toBe(1);
+    expect(drawTargetFillFraction('0', '1')).toBe(0);
+    expect(drawTargetFillFraction('1e300', '1e-300')).toBe(1);
+    for (const capacity of ['0', '-1', '', 'Infinity'])
+      expect(drawTargetFillFraction('1', capacity)).toBeNull();
   });
   it('invalid decimal strings safely fail parsing', () => {
     for (const value of ['', 'abc', 'NaN', 'Infinity', '-1'])

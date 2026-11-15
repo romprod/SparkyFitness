@@ -6,6 +6,7 @@ import type {
   ImportLabReportBody,
   ImportLabReportResponse,
   LabMarkerResponse,
+  LabComparisonResponse,
   LabReportScanResponse,
   LabResultResponse,
   UpdateLabResultBody,
@@ -26,6 +27,10 @@ export const listLabMarkers = (): Promise<LabMarkerResponse[]> =>
 /** The newest result of every marker. */
 export const listLatestLabResults = (): Promise<LabResultResponse[]> =>
   apiCall('/v2/lab-results/latest', { method: 'GET' });
+
+/** The latest three imported reports with their saved results. */
+export const listLabComparison = (): Promise<LabComparisonResponse> =>
+  apiCall('/v2/lab-results/panels/latest', { method: 'GET' });
 
 export const listLabResults = (
   query: LabHistoryQuery

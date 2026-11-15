@@ -172,6 +172,7 @@ Owner direction on 15 November 2026 for this fork:
 - Feature work must stay within capabilities verified in Peptide Pitstop v1.28.1, pinned to `1caffbcfaeb4ccaccee9806a37d169e013328528`. Ask the owner before adding any feature beyond that source; architectural compatibility, permissions and tests do not authorise additional product behavior.
 - Use local tests and builds. Do not add or restore GitHub Actions workflows or hosted release/deployment automation.
 - Use Git/SSH and supported APIs. Do not operate the owner's browser for repository work.
+- Keep new feature branches local for review and push only `instance/v1.12.1` after integration unless the owner explicitly requests a topic-branch push. Preserve existing remote refs.
 - Keep the existing v1.12.1 instance branch and its customisations separate from upstream main until an upgrade is deliberately tested.
 - Follow the technical package, schema, permissions and compatibility guidance above. The owner's current directions override upstream planning-only or owner-approval instructions for authorised work.
 - Keep credentials, health records, uploads and machine-specific deployment configuration out of Git.
@@ -179,3 +180,7 @@ Owner direction on 15 November 2026 for this fork:
 ## Preparation records and handling metadata
 
 The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Syringe draw rounding and bounded lifecycle work extend these records. Unverified spill/priming/manual-adjustment features are outside authorised source parity; re-preparation remains deferred.
+
+## Visual syringe and recent lab comparison
+
+D06 is syringe-only presentation of the existing canonical preview: target-volume fill against matching capacity, existing measurable marking, quarter-capacity ticks and target-unit details. Keep dose tooling in Cabinet and stock-only tooling in Preparation & stock. L02 compares the latest three existing imported lab reports in Labs, preserving stable marker/assay identity and Sparky units/ranges/qualifiers; no fabricated manual-date panels, CRP merging, arbitrary filters or pickers. Pen/pump visuals and dose-revision audit remain deferred. Existing I05/D09 stock reconciliation is partially covered and must not trigger a new adjustment ledger. Strict pinned Pitstop-only scope and ask-first rule still apply.

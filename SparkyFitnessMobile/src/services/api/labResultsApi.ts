@@ -1,4 +1,8 @@
-import type { LabMarkerResponse, LabResultResponse } from '@workspace/shared';
+import type {
+  LabComparisonResponse,
+  LabMarkerResponse,
+  LabResultResponse,
+} from '@workspace/shared';
 import { apiFetch } from './apiClient';
 
 /** Which marker a result belongs to: a built-in key or a custom marker id. */
@@ -96,4 +100,13 @@ export const deleteLabMarker = (id: string): Promise<void> =>
     serviceName: SERVICE,
     operation: 'delete lab marker',
     method: 'DELETE',
+  });
+
+/** Up to three real imported reports, with only comparison fields. */
+export const fetchLabComparison = (): Promise<LabComparisonResponse> =>
+  apiFetch<LabComparisonResponse>({
+    endpoint: '/api/v2/lab-results/panels/latest',
+    serviceName: SERVICE,
+    operation: 'fetch imported report comparison',
+    logResponseBody: false,
   });

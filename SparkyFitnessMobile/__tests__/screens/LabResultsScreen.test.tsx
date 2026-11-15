@@ -5,6 +5,7 @@ import LabResultsScreen from '../../src/screens/LabResultsScreen';
 import {
   useDeleteLabImports,
   useLabMarkers,
+  useLabComparison,
 } from '../../src/hooks/useLabResults';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -25,6 +26,7 @@ jest.mock('../../src/hooks/useRefetchOnFocus', () => ({
 jest.mock('../../src/hooks/useLabResults', () => ({
   useDeleteLabImports: jest.fn(),
   useLabMarkers: jest.fn(),
+  useLabComparison: jest.fn(),
 }));
 
 const navigation = { navigate: jest.fn(), goBack: jest.fn() } as never;
@@ -60,6 +62,12 @@ describe('LabResultsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHeaderConfigs.length = 0;
+    jest.mocked(useLabComparison).mockReturnValue({
+      comparison: { panels: [], rows: [] },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    });
     jest.mocked(useLabMarkers).mockReturnValue({
       markers: [],
       isLoading: false,

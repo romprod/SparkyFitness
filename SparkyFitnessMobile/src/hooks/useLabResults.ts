@@ -1,3 +1,5 @@
+import { buildLabComparison } from '@workspace/shared';
+import { invalidateLabCaches } from './invalidateLabCaches';
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../services/api/errors';
@@ -11,6 +13,7 @@ import {
   deleteLabMarker,
   deleteLabResult,
   fetchLabMarkers,
+  fetchLabComparison,
   fetchLabResults,
   fetchLatestLabResults,
   type LabMarkerQuery,
@@ -19,7 +22,7 @@ import {
 } from '../services/api/labResultsApi';
 import {
   labHistoryQueryKey,
-  labHistoryRootQueryKey,
+  labComparisonQueryKey,
   labLatestQueryKey,
   labMarkersQueryKey,
 } from './queryKeys';
@@ -154,12 +157,6 @@ async function createLabResultForNewMarker(
   }
 }
 
-function invalidateLabCaches(queryClient: ReturnType<typeof useQueryClient>) {
-  queryClient.invalidateQueries({ queryKey: labMarkersQueryKey });
-  queryClient.invalidateQueries({ queryKey: labLatestQueryKey });
-  queryClient.invalidateQueries({ queryKey: labHistoryRootQueryKey });
-}
-
 export function useSaveLabResult() {
   const queryClient = useQueryClient();
 
@@ -237,4 +234,37 @@ export function useDeleteLabMarker() {
       addLog(`Failed to delete lab marker: ${err.message}`, 'ERROR');
     },
   });
+}
+
+/** Comparison is bounded to the latest three actual imported reports. */
+export function useLabComparison() {
+  const panels = useQuery({
+    queryKey: labComparisonQueryKey,
+    queryFn: fetchLabComparison,
+  });
+  const markers = useQuery({
+    queryKey: labMarkersQueryKey,
+    queryFn: fetchLabMarkers,
+  });
+  const { profile } = useProfile();
+  const labels = useLabMarkerLabels();
+  const sex = labSexFromGender(profile?.gender);
+  const comparison = useMemo(
+    () =>
+      buildLabComparison(
+        panels.data?.panels ?? [],
+        markers.data ?? [],
+        labels,
+        sex
+      ),
+    [panels.data, markers.data, labels, sex]
+  );
+  return {
+    comparison,
+    isLoading: panels.isLoading || markers.isLoading,
+    isError: panels.isError || markers.isError,
+    refetch: async () => {
+      await Promise.all([panels.refetch(), markers.refetch()]);
+    },
+  };
 }

@@ -113,6 +113,9 @@ describe('MedicationEntryEditScreen', () => {
     jest.clearAllMocks();
     mockDrawPreview.mockReturnValue({
       data: {
+        targetMassMcg: '200',
+        targetVolumeMl: '0.2',
+        rawUnits: '20',
         markingValue: '20',
         markingScale: 'units',
         deliveredMassMcg: '200',

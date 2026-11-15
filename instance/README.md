@@ -6,14 +6,15 @@ Preparation calculations and dose-linked stock are implemented. Preparation reco
 
 ## Branches and remotes
 
-| Name                           | Purpose                                                                                                          |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `origin`                       | This fork: [romprod/SparkyFitness](https://github.com/romprod/SparkyFitness). Push instance changes here.        |
-| `upstream`                     | [CodeWithCJ/SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness). Fetch releases and assess updates here. |
-| `main`                         | The fork's upstream main branch. It is not the deployed instance baseline.                                       |
-| `instance/v1.12.1`             | The pinned v1.12.1 baseline plus the existing customisations and this backlog.                                   |
-| `codex/peptide-preparations`   | Preparation calculator and mass stock implementation branch.                                                     |
-| `codex/syringe-vial-lifecycle` | Syringe draw calculations, source guardrails and bounded vial lifecycle.                                         |
+| Name                                  | Purpose                                                                                                          |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `origin`                              | This fork: [romprod/SparkyFitness](https://github.com/romprod/SparkyFitness). Push instance changes here.        |
+| `upstream`                            | [CodeWithCJ/SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness). Fetch releases and assess updates here. |
+| `main`                                | The fork's upstream main branch. It is not the deployed instance baseline.                                       |
+| `instance/v1.12.1`                    | The pinned v1.12.1 baseline plus the existing customisations and this backlog.                                   |
+| `codex/peptide-preparations`          | Preparation calculator and mass stock implementation branch.                                                     |
+| `codex/syringe-vial-lifecycle`        | Syringe draw calculations, source guardrails and bounded vial lifecycle.                                         |
+| `codex/syringe-visual-lab-comparison` | Local review branch for syringe visuals and recent imported-lab comparison.                                      |
 
 The upstream base is [`39d9ca2d1`](https://github.com/CodeWithCJ/SparkyFitness/commit/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c). The existing source changes were imported unchanged and split into four commits:
 
@@ -44,6 +45,14 @@ The five Pitstop checks are preserved: target volume above capacity or known rem
 
 Bounded I01 adds finished/discarded status, a finished timestamp and status audit within existing inventory. Retiring a vial preserves quantities and dose history; reopening uses existing status editing. Archived stock is separated from normal stock selection. A status change is not a waste deduction or a new stock-adjustment workflow. Syringe selection/calculation and injection history remain in Cabinet; vial management stays in Preparation & stock. Native source changes need rebuilt apps.
 
+## Visual draw and lab comparison slice
+
+D06 extends the existing Cabinet draw preview with a syringe-only visual and target-unit details. Its barrel fill represents target volume relative to the selected capacity; its caption retains the calculated measurable marking. Target mcg, mg, mL and raw syringe units are display conversions of the same preview, not a new dose calculation. Quarter-capacity ticks and the existing blocking-warning state follow the pinned source behavior. Pen and pump visuals remain deferred.
+
+L02 adds a read-only comparison of the latest three existing imported lab reports (`lab_reports`/`report_id`), newest first, inside existing Lab results. Manual result dates are not fabricated into panels. Marker rows use stable existing marker identity and retain the values, units, qualifiers and reference information already stored in Sparky. The adaptation preserves existing assay identities and only compares movement toward a range when the values/units/ranges are comparable; it does not copy source qualifier stripping, cross-unit arrows or CRP assay merging. There is no new arbitrary date picker, filter workflow, report importer or clinical recommendation.
+
+I05 and D09 already have partial implementation: linked delivered mass drives vial balances, calibrated corrections recalculate delivered quantities, and edits/deletions reconcile stock transactionally. Incomplete legacy balances remain unknown. A separate dose-revision audit is not implemented; the existing stock-status audit must not be described as one. No generic stock-adjustment, spill or priming ledger is included.
+
 ## Feature backlog
 
 [feature-backlog.json](feature-backlog.json) contains all 77 reviewed items, stable IDs, source links, proposed work, relative effort and dependencies. It records 30 additions, 32 extensions, 12 capabilities covered by the baseline and 3 deferred ideas.
@@ -70,7 +79,7 @@ Owner scope rule: **always stick to verified Peptide Pitstop features. Ask befor
 Owner instruction, 15 November 2026: the agent handles commits, review and merges without asking the owner to approve PRs. Do not use GitHub Actions or the owner's browser. Use Git/SSH, supported APIs and local checks.
 
 1. Select a bounded backlog item and implement it autonomously within the requested scope. Ask only when essential information or a consequential decision cannot be resolved from the existing instructions.
-2. Start a feature branch from the current instance branch. Keep unrelated work on separate branches/worktrees.
+2. Start a local feature branch from the current instance branch. Keep unrelated work on separate branches/worktrees. Keep new topic branches local for review; after integration push only `instance/v1.12.1` unless explicitly requested otherwise. Preserve existing remote refs.
 3. Follow the root and package AGENTS guides, the shared schemas and existing permissions. Cover web, iOS, Android, server, MCP/chatbot, sync and docs as applicable.
 4. Keep migrations rerunnable and include RLS, shared schemas and the repository's required documentation. Preserve the previous mobile/API contracts.
 5. Run the affected package validation and focused regression tests. Compare source with the intended deployment version before building.

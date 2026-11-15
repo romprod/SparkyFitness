@@ -46,6 +46,19 @@ export const useLatestLabResults = () =>
     },
   });
 
+/** Latest three imported reports; writes invalidate this with the whole labs family. */
+export const useLabComparison = () =>
+  useQuery({
+    queryKey: labKeys.comparison(),
+    queryFn: labApi.listLabComparison,
+    meta: {
+      errorMessage: i18n.t(
+        'labs.comparison.loadFailed',
+        'Could not load the report comparison.'
+      ),
+    },
+  });
+
 /** The newest results of one marker (up to `LAB_HISTORY_LIMIT`); `marker` is `builtin:<key>` or `custom:<uuid>`. */
 export const useLabHistory = (
   query: labApi.LabHistoryQuery | null,

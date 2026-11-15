@@ -89,6 +89,8 @@ Enter a target in mg, mcg, mL or syringe units. The preview shows target mass an
 
 A target volume above syringe capacity or above known remaining vial volume blocks a calibrated draw. A unit-graduated draw below two raw units, a target filling the barrel exactly, or mass rounding error greater than 5% shows a warning. Exactly two units or exactly 5% does not trigger those warnings. No extra dose-range rules or already-taken override are added.
 
+The Cabinet preview also includes a syringe visual. Fill shows the target volume as a fraction of the selected syringe capacity, with quarter-capacity ticks; the caption shows the calculated measurable marking. Target-unit details show mcg, mg, mL and raw syringe units from that same calculation. These figures remain separate from the delivered mass/volume after rounding. The visual does not add pen/pump support or new logging controls to Preparation & stock.
+
 ### Finished and discarded vials
 
 Use the existing inventory controls to mark stock finished or discarded, or edit its status to reopen it. Retiring stock records its status and finish time without zeroing remaining mass/volume or deleting injection history. Finished/discarded stock is grouped separately from active stock. This is lifecycle management, not a spill, priming or manual stock-adjustment ledger.

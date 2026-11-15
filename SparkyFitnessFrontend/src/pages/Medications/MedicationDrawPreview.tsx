@@ -1,5 +1,10 @@
 import { useTranslation } from 'react-i18next';
-import type { DrawResult } from '@workspace/shared';
+import {
+  drawTargetDisplay,
+  drawTargetFillFraction,
+  type DrawResult,
+} from '@workspace/shared';
+import SyringeDrawFigure from './SyringeDrawFigure';
 export default function MedicationDrawPreview({
   preview,
   isFetching,
@@ -10,6 +15,15 @@ export default function MedicationDrawPreview({
   isError: boolean;
 }) {
   const { t } = useTranslation();
+  const targetDisplay = preview ? drawTargetDisplay(preview) : null;
+  const fillFraction = preview?.syringeCapacityMl
+    ? drawTargetFillFraction(preview.targetVolumeMl, preview.syringeCapacityMl)
+    : null;
+  const markingLabel = preview
+    ? `${preview.markingValue} ${preview.markingScale === 'ml' ? 'mL' : t('medications.syringes.units', 'units')}`
+    : '';
+  const blocked =
+    preview?.warnings.some((warning) => warning.severity === 'block') ?? false;
   return (
     <div className="space-y-2 rounded-md border p-3 text-sm" aria-live="polite">
       {isFetching && (
@@ -40,6 +54,43 @@ export default function MedicationDrawPreview({
               }
             )}
           </p>
+          {fillFraction !== null && (
+            <SyringeDrawFigure
+              fillFraction={fillFraction}
+              markingLabel={markingLabel}
+              blocked={blocked}
+            />
+          )}
+          {targetDisplay && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium">
+                {t(
+                  'medications.syringes.targetEquivalents',
+                  'Target dose equivalents'
+                )}
+              </p>
+              <dl
+                aria-label={t(
+                  'medications.syringes.targetEquivalents',
+                  'Target dose equivalents'
+                )}
+                className="grid grid-cols-2 gap-2 text-center text-xs tabular-nums sm:grid-cols-4"
+              >
+                {(['mcg', 'mg', 'ml', 'units'] as const).map((unit) => (
+                  <div key={unit} className="min-w-0">
+                    <dt className="text-muted-foreground">
+                      {unit === 'ml'
+                        ? 'mL'
+                        : unit === 'units'
+                          ? t('medications.syringes.units', 'units')
+                          : unit}
+                    </dt>
+                    <dd className="break-words">{targetDisplay[unit]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
           <dl className="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
             <dt className="text-muted-foreground">
               {t('medications.syringes.target', 'Target')}

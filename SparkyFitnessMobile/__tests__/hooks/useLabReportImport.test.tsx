@@ -69,7 +69,12 @@ describe('useImportLabReport', () => {
     expect(importLabReport).toHaveBeenCalledWith(body);
     const keys = invalidate.mock.calls.map((call) => call[0]?.queryKey?.[0]);
     expect(keys).toEqual(
-      expect.arrayContaining(['labMarkers', 'labLatest', 'labHistory'])
+      expect.arrayContaining([
+        'labMarkers',
+        'labLatest',
+        'labHistory',
+        'labComparison',
+      ])
     );
   });
 
