@@ -81,3 +81,24 @@ export function medicationDoseInMg(
   const mg = amount * multiplier;
   return Number.isFinite(mg) && mg > 0 ? mg : null;
 }
+
+/** Canonical preparation values independent of a requested injection dose. */
+export function calculatePreparationValues(input: {
+  mass_value: number;
+  mass_unit: 'mg' | 'mcg';
+  final_volume_ml: number;
+}) {
+  if (
+    ![input.mass_value, input.final_volume_ml].every(
+      (v) => Number.isFinite(v) && v > 0
+    )
+  )
+    return null;
+  const mass_mg = input.mass_value * (input.mass_unit === 'mcg' ? 0.001 : 1);
+  const concentration_mg_ml = mass_mg / input.final_volume_ml;
+  return [mass_mg, concentration_mg_ml].every(
+    (v) => Number.isFinite(v) && v > 0
+  )
+    ? { mass_mg, concentration_mg_ml }
+    : null;
+}

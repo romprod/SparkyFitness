@@ -414,3 +414,7 @@ Before adding a feature or changing auth/permission behavior, read:
 - For work inside `SparkyFitnessServer/`, this file wins over repo-root guidance on package-specific details
 - Use `../AGENTS.md` for monorepo context
 - If a task spans multiple packages, combine this guide with the other affected package guides instead of relying on one file alone
+
+## Preparation records and handling metadata
+
+The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Device rounding, waste accounting and re-preparation are deferred.

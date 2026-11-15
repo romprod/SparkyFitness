@@ -2,7 +2,7 @@
 
 This fork keeps the existing v1.12.1 customisations in Git and records the peptide feature research as a backlog.
 The baseline contains the existing chart, diary, reporting and Garmin changes.
-New preparation, stock and cost features are proposed work, not completed features.
+Preparation calculations and dose-linked stock are implemented. Preparation records, lot/storage metadata and explicit beyond-use dates extend that foundation; cost and forecast work remains proposed.
 
 ## Branches and remotes
 
@@ -27,11 +27,13 @@ These are preservation commits. They do not claim new peptide preparation featur
 
 Medications → **Preparation & stock** (`/medications?tab=stock`) exposes vial preparation and inventory for every injectable peptide or medication. **Cabinet**, after selecting the medication, contains dose logging and editable injection history, with automatic stock reconciliation. No GLP-1 flag is needed. **Prepare a vial** opens the calculator directly; **Add peptide / injectable** starts a medication record with the injection form selected. Saved mass doses and schedule overrides are converted to mg without guessing from volume or device units. GLP-1-specific models remain separate.
 
-## Preparation and stock: first implementation
+## Preparation and stock
 
-The first slice adds shared preparation arithmetic to the existing web/mobile vial forms, stores concentration and final volume, and derives mass/volume stock from linked injection doses. Edits and deletions reconcile that balance. Incomplete historic use remains unknown; used preparation details are protected from changes. No database migration is required.
+Shared preparation arithmetic supports web/mobile vial forms and derives mass/volume stock from linked injections. Edits and deletions reconcile that balance; incomplete historic use remains unknown.
 
-This is partial coverage of D03, D05, D09, I02 and I03. Dedicated preparation history, device graduations, waste adjustments, revision audit and supply forecasts remain backlog work. See [medication documentation](../docs/src/features/medications.md). Code/build verification does not itself mean an instance deployment.
+The preparation-records tranche stores original labelled mass (mg/mcg), final prepared volume, reconstituted/premixed mode, preparation date and optional diluent as one immutable record per vial, with server-derived mass and concentration. New draws link to that record. Unused legacy vials can receive a record; historic inputs are not invented. Lot number and storage location remain editable stock metadata. Beyond-use dates use an explicit date or an entered interval/base date/source; there is no universal 28-day default. BUD is current handling metadata, not a date-revision audit.
+
+This extends D03, I02, I03 and I04. Device graduations and rounding (D04/D05), repeated preparations on the same vial, waste adjustments (I05), full lifecycle/revision audit and supply forecasts remain backlog work. See [medication documentation](../docs/src/features/medications.md). Local verification and instance deployment are separate steps; native source changes need rebuilt apps.
 
 ## Feature backlog
 

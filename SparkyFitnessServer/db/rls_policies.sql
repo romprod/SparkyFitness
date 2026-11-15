@@ -112,6 +112,7 @@ BEGIN
     'medication_schedules',
     'medication_entries',
     'medication_pens',
+    'medication_preparations',
     'injection_entries',
     'medication_titration_steps',
     'user_custom_symptoms',
@@ -1070,6 +1071,7 @@ SELECT create_medication_policy('medications');
 SELECT create_medication_policy('medication_schedules');
 SELECT create_medication_policy('medication_entries');
 SELECT create_medication_policy('medication_pens');
+SELECT create_medication_policy('medication_preparations');
 SELECT create_medication_policy('injection_entries');
 SELECT create_medication_policy('medication_titration_steps');
 

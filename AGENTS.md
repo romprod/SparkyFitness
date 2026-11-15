@@ -174,3 +174,7 @@ Owner direction on 15 November 2026 for this fork:
 - Keep the existing v1.12.1 instance branch and its customisations separate from upstream main until an upgrade is deliberately tested.
 - Follow the technical package, schema, permissions and compatibility guidance above. The owner's current directions override upstream planning-only or owner-approval instructions for authorised work.
 - Keep credentials, health records, uploads and machine-specific deployment configuration out of Git.
+
+## Preparation records and handling metadata
+
+The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Device rounding, waste accounting and re-preparation are deferred.

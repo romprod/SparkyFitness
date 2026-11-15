@@ -166,7 +166,8 @@ The `food_entries` insert policy permits detached nutrition snapshots when `food
 | `medications` | Custom medication inventory lists (e.g. insulin) | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_schedules` | Reminders/schedules to take medications | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_entries` | Logs of medications taken | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
-| `medication_pens` | Trackers for medication delivery pens | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
+| `medication_pens` | Vial/pen inventory, lot/storage and beyond-use metadata | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
+| `medication_preparations` | Immutable preparation snapshots linked to same-owner vial and medication; updates are prohibited | Delegate with `can_manage_medications` (no snapshot updates) | Delegate with `can_manage_medications` or `can_view_reports` |
 | `injection_entries` | Injection logs (e.g., site of injection) | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_titration_steps` | Automated titration dosage plans | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 

@@ -3,6 +3,7 @@ import type {
   Medication,
   MedicationSchedule,
   MedicationPen,
+  MedicationPenWriteInput,
   InjectionEntry,
   TitrationStep,
   SerumCurveResponse,
@@ -79,13 +80,13 @@ export const listPens = (medicationId: string): Promise<MedicationPen[]> =>
 
 export const createPen = (
   medicationId: string,
-  body: Partial<MedicationPen>
+  body: MedicationPenWriteInput
 ): Promise<MedicationPen> =>
   apiCall(`/v2/medications/${medicationId}/pens`, { method: 'POST', body });
 
 export const updatePen = (
   id: string,
-  body: Partial<MedicationPen>
+  body: MedicationPenWriteInput
 ): Promise<MedicationPen> =>
   apiCall(`/v2/medications/pens/${id}`, { method: 'PUT', body });
 

@@ -48,7 +48,7 @@ Features are organized by domain, and the same domain folder name appears in `sr
 
 ## Preparation and stock
 
-`pages/Medications/PeptideStock.tsx` is the Medications → Preparation & stock tab (`/medications?tab=stock&medication=<id>`). It lists all injectable medications, independent of `is_glp1` and the Cabinet subtype filter. Keep this tab limited to preparation and inventory; injection logging and history remain in the existing Cabinet detail. It reuses the legacy-named `Glp1InventoryManager`, `Glp1LogInjection` and `Glp1RecentInjections` components; these are medication-agnostic. `medicationDoseInMg` in shared converts mass defaults without treating mL/device units as mg. Non-GLP-1 mass-based injectable doses logged in Today also deduct stock; GLP-1-specific modelling stays in `Glp1Coach`.
+`pages/Medications/PeptideStock.tsx` is the Medications → Preparation & stock tab (`/medications?tab=stock&medication=<id>`). It lists all injectable medications, independent of `is_glp1` and the Cabinet subtype filter. Keep this tab limited to preparation and inventory; injection logging and history remain in the existing Cabinet detail. It reuses the medication-agnostic legacy-named `Glp1InventoryManager`; `Glp1LogInjection` and `Glp1RecentInjections` stay in Cabinet. `medicationDoseInMg` in shared converts mass defaults without treating mL/device units as mg. Non-GLP-1 mass-based injectable doses logged in Today also deduct stock; GLP-1-specific modelling stays in `Glp1Coach`.
 
 ## Source Map
 
@@ -146,3 +146,7 @@ When searching, ignore `node_modules/`, `dist/`, and every locale except `public
 - For work inside `SparkyFitnessFrontend/`, this file wins over repo-root guidance on package-specific details.
 - If a task spans packages, combine this guide with the other affected package guides.
 - If you add a new domain folder, route family, or cross-cutting convention, update the Domain list, Source Map, and Quick Routing sections of this file in the same change.
+
+## Preparation records and handling metadata
+
+The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Device rounding, waste accounting and re-preparation are deferred.

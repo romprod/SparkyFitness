@@ -47,7 +47,6 @@ import type { CustomCategory } from '../types/customMeasurements';
 import type {
   LogInjectionInput,
   UpdateInjectionInput,
-  MedicationPen,
   TitrationStep,
   UpdateTitrationStepInput,
 } from '@workspace/shared';
@@ -147,7 +146,7 @@ export function useUpdatePen() {
       body,
     }: {
       id: string;
-      body: Partial<Omit<MedicationPen, 'id' | 'medication_id'>>;
+      body: Parameters<typeof updatePen>[1];
     }) => updatePen(id, body),
     onSuccess: () => invalidateMedicationEntryCaches(queryClient),
   });

@@ -856,8 +856,6 @@
       "volumeML": "Volume (mL)",
       "dateOpened": "Date Opened",
       "expiryDate": "Expiry Date",
-      "calculatedBeyondUseDateBUD": "Calculated Beyond-Use Date (BUD):",
-      "basedOn28DayStability": "Based on 28-day stability window from first opening.",
       "enableReorderWarning": "Enable Reorder Warning",
       "alertWhenRemainingDosesAre": "Alert when remaining doses are low",
       "reorderThresholdDosesLeft": "Reorder Threshold (doses left)",
@@ -904,7 +902,29 @@
       "mass": "Vial content (mg)",
       "help": "Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.",
       "result": "{{concentration}} mg/mL · {{draw}} mL per entered dose",
-      "exceeds": "The entered dose exceeds the vial content."
+      "exceeds": "The entered dose exceeds the vial content.",
+      "massValue": "Vial content",
+      "massUnit": "Mass unit",
+      "mode": "Preparation type",
+      "reconstituted": "Reconstituted",
+      "premixed": "Premixed",
+      "preparedDate": "Prepared date",
+      "diluent": "Diluent (optional)",
+      "saved": "Saved preparation",
+      "finalVolume": "Final volume",
+      "immutable": "Original preparation details are saved and cannot be changed.",
+      "required": "Vial content, final volume and prepared date are required. Original preparation details cannot be changed after saving.",
+      "lot": "Lot number",
+      "storage": "Storage location",
+      "budSource": "BUD source",
+      "budMethod": "Beyond-use date (BUD)",
+      "notRecorded": "Not recorded",
+      "explicitDate": "Explicit date",
+      "interval": "Interval and source",
+      "budDate": "BUD date",
+      "budBase": "BUD basis date",
+      "budDays": "BUD interval (days)",
+      "budHelp": "Enter the date or interval from your product or clinician guidance. No stability interval is assumed."
     },
     "stock": {
       "title": "Preparation & stock",
@@ -914,7 +934,7 @@
       "empty": "Add your peptide as an injection to start. Existing injectable medications appear here automatically.",
       "prepare": "Prepare a vial",
       "calculator": "Preparation calculator",
-      "subtitle": "Vial preparation, draw calculations, stock and injection history"
+      "subtitle": "Vial preparation, draw calculations and stock"
     }
   },
   "nav": {

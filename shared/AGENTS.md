@@ -64,3 +64,7 @@ _Last updated: 2026-11-15_
 
 - Keep this package export-focused and schema-focused; logic that scales should live in consuming packages.
 - Never export stale or unfinished types; if a consumer is drafting code and needs a type not yet here, add it.
+
+## Preparation records and handling metadata
+
+The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Device rounding, waste accounting and re-preparation are deferred.

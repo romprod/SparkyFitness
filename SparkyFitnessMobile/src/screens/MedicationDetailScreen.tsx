@@ -366,18 +366,23 @@ const MedicationDetailScreen: React.FC<MedicationDetailScreenProps> = ({
               <View className="flex-1">
                 <Text className="text-base font-semibold text-text-primary">
                   {med.type_id === 'injection'
-                    ? t('medications.stock.title', {
-                        defaultValue: 'Preparation & stock',
+                    ? t('medications.stock.injectionTrackerTitle', {
+                        defaultValue: 'Injection tracker',
                       })
                     : t('medications.glp1.tracker.title', {
                         defaultValue: 'GLP-1 tracker',
                       })}
                 </Text>
                 <Text className="text-sm text-text-muted mt-0.5">
-                  {t('medications.stock.subtitle', {
-                    defaultValue:
-                      'Vial preparation, draw calculations, stock and injection history',
-                  })}
+                  {med.type_id === 'injection'
+                    ? t('medications.stock.injectionTrackerSubtitle', {
+                        defaultValue:
+                          'Log injections, review history and manage vial stock',
+                      })
+                    : t('medications.glp1.tracker.subtitle', {
+                        defaultValue:
+                          'Daily check-ins, medication levels and titration',
+                      })}
                 </Text>
               </View>
               <Icon name="chevron-forward" size={16} color={textSecondary} />

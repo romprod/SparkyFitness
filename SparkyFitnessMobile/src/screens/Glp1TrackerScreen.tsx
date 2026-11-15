@@ -39,7 +39,9 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
 
   const title =
     med?.type_id === 'injection'
-      ? t('medications.stock.title', { defaultValue: 'Preparation & stock' })
+      ? t('medications.stock.injectionTrackerTitle', {
+          defaultValue: 'Injection tracker',
+        })
       : t('medications.glp1.tracker.title', { defaultValue: 'GLP-1 tracker' });
   const header = useScreenHeader({
     title,

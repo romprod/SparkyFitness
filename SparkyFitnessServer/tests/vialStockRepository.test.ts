@@ -59,6 +59,7 @@ describe('vial stock from injection history', () => {
           },
         ],
       })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ count: 1 }] })
       .mockResolvedValueOnce({});
     await expect(

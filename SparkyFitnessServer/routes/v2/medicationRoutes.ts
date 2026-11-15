@@ -311,6 +311,7 @@ const requireDiaryForSupplementDose = (
  *     responses: { 200: { description: Pen/vial inventory. } }
  *   post:
  *     summary: Add a pen/vial (concentration, volume, BUD, doses)
+ *     description: Optional preparation stores mode (reconstituted/premixed), mass_value, mass_unit (mg/mcg), final_volume_ml, prepared_date and diluent. Server derives mass_mg/concentration_mg_ml and returns the immutable preparation snapshot. Lot/storage and explicit BUD date or interval/base/source remain editable vial metadata; no default BUD is assigned.
  *     tags: [Medications & GLP-1]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: medicationId, required: true, schema: { type: string, format: uuid } }]
@@ -318,12 +319,14 @@ const requireDiaryForSupplementDose = (
  * /v2/medications/pens/{id}:
  *   put:
  *     summary: Update a pen/vial
+ *     description: A preparation can be attached once to unused legacy vial stock. Saved preparation inputs and derived concentration/volume are immutable. Omitted BUD fields preserve existing dates; interval changes require an explicit base date and source.
  *     tags: [Medications & GLP-1]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
  *     responses: { 200: { description: Updated. }, 404: { description: Not found. } }
  *   delete:
  *     summary: Delete a pen/vial
+ *     description: Stock with linked injection history or recorded use cannot be removed.
  *     tags: [Medications & GLP-1]
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]

@@ -1868,7 +1868,7 @@
       },
       "tracker": {
         "title": "GLP-1 tracker",
-        "subtitle": "Injections, site map, pens, titration and daily check-in"
+        "subtitle": "Daily check-ins, medication levels and titration"
       },
       "sites": {
         "stomach_upper_left": "Stomach - Upper Left",
@@ -2007,7 +2007,36 @@
       "help": "Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.",
       "result": "{{concentration}} mg/mL · {{draw}} mL per entered dose",
       "exceeds": "The entered dose exceeds the vial content.",
-      "invalid": "Enter positive vial content, final volume and dose. The dose must not exceed the vial content."
+      "invalid": "Enter positive vial content, final volume and dose. The dose must not exceed the vial content.",
+      "notRecorded": "Preparation details not recorded.",
+      "saved": "Saved preparation (read-only)",
+      "premixed": "Premixed",
+      "reconstituted": "Reconstituted",
+      "summary": "{{mass}} {{unit}} in {{volume}} mL · {{concentration}} mg/mL",
+      "preparedSummary": "Prepared {{date}}",
+      "invalidRecord": "Enter positive vial content, a positive final volume and a prepared date.",
+      "invalidBud": "Enter a base date, a whole number of days (zero or more) and the source of that duration.",
+      "record": "Save preparation details",
+      "immutableHelp": "Saved preparation inputs cannot be changed. Use the labelled product information; no beyond-use period is assumed.",
+      "mode": "Preparation type",
+      "massValue": "Labelled vial content",
+      "massUnit": "Mass unit",
+      "preparedDate": "Prepared date",
+      "diluent": "Diluent (optional)",
+      "lot": "Lot / batch number (optional)",
+      "storage": "Storage location (optional)",
+      "bud": "Beyond-use date",
+      "budExplicit": "Explicit date",
+      "budInterval": "Duration from a date",
+      "budBase": "Beyond-use base date",
+      "budDays": "Beyond-use duration (days)",
+      "budSource": "Beyond-use source / instructions",
+      "budSummary": "Beyond-use {{date}}",
+      "lotSummary": "Lot {{lot}}",
+      "invalidBudDate": "Select a beyond-use date or choose Not set.",
+      "finalVolume": "Final volume (mL)",
+      "unitMg": "mg",
+      "unitMcg": "mcg"
     },
     "stock": {
       "title": "Preparation & stock",
@@ -2017,7 +2046,9 @@
       "empty": "Add your peptide as an injection to start. Existing injectable medications appear here automatically.",
       "prepare": "Prepare a vial",
       "calculator": "Preparation calculator",
-      "subtitle": "Vial preparation, draw calculations, stock and injection history"
+      "subtitle": "Vial preparation, draw calculations, stock and injection history",
+      "injectionTrackerTitle": "Injection tracker",
+      "injectionTrackerSubtitle": "Log injections, review history and manage vial stock"
     }
   },
   "scheduleSummary": {

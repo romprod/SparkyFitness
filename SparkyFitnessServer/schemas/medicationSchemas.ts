@@ -1,3 +1,4 @@
+import { medicationPreparationInputSchema } from '@workspace/shared';
 import { z } from 'zod/v4';
 import { optionalNullableNumber, optionalNullableInt } from './schema.utils.js';
 
@@ -125,6 +126,13 @@ export type UpdateScheduleBody = z.infer<typeof UpdateScheduleBodySchema>;
 // Pens / vials
 // --------------------------------------------------------------------------
 const PenFieldsSchema = z.object({
+  preparation: medicationPreparationInputSchema.optional(),
+  lot_number: z.string().trim().max(500).nullable().optional(),
+  storage_location: z.string().trim().max(500).nullable().optional(),
+  bud_mode: z.enum(['date', 'interval']).nullable().optional(),
+  bud_interval_days: z.number().int().min(0).max(36500).nullable().optional(),
+  bud_base_date: z.iso.date().nullable().optional(),
+  bud_source: z.string().trim().max(1000).nullable().optional(),
   kind: z.enum(['pen', 'vial']).optional(),
   label: optionalNullableString,
   dose_mg: z.number().finite().positive().nullable().optional(),
@@ -135,7 +143,7 @@ const PenFieldsSchema = z.object({
   status: z.enum(['sealed', 'in_use', 'finished']).optional(),
   opened_at: optionalDateString,
   expiry_date: optionalDateString,
-  bud_date: optionalDateString,
+  bud_date: z.iso.date().nullable().optional(),
   reorder_flag: z.boolean().optional(),
   reorder_threshold: optionalNullableInt,
   notes: optionalNullableString,

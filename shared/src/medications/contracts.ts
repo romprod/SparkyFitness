@@ -1,3 +1,4 @@
+import type { MedicationPreparation } from '../schemas/api/MedicationPreparation.api.zod.ts';
 import type { SerumPoint } from './glp1.ts';
 import type { FoodVariantNutrientField } from '../constants/foodVariantNutrients.ts';
 import type { SharedScheduleRule } from './schedules.ts';
@@ -219,6 +220,13 @@ export interface ListMedicationEntriesOptions {
 // --- GLP-1 injections, pen/vial inventory and titration ---------------------
 
 export interface MedicationPen {
+  preparation?: MedicationPreparation | null;
+  lot_number?: string | null;
+  storage_location?: string | null;
+  bud_mode?: 'date' | 'interval' | null;
+  bud_interval_days?: number | null;
+  bud_base_date?: string | null;
+  bud_source?: string | null;
   stock?: {
     totalMg: number;
     usedMg: number;
@@ -246,6 +254,7 @@ export interface MedicationPen {
 }
 
 export interface InjectionEntry {
+  preparation_id?: string | null;
   id: string;
   medication_id: string;
   pen_id: string | null;

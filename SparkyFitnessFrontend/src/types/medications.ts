@@ -5,6 +5,8 @@
 import type {
   FoodVariantNutrientField,
   MedicationWithMeal,
+  MedicationPen,
+  MedicationPreparationInput,
 } from '@workspace/shared';
 
 /**
@@ -150,3 +152,10 @@ export interface ListMedicationEntriesOptions {
   toDate?: string;
   medicationId?: string;
 }
+
+export type MedicationPenWriteInput = Omit<
+  Partial<MedicationPen>,
+  'preparation'
+> & {
+  preparation?: MedicationPreparationInput;
+};

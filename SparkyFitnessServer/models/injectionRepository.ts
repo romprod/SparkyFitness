@@ -10,7 +10,7 @@ const MASS_STOCK_SQL =
 const USED_MASS_SQL =
   '(SELECT COALESCE(SUM(si.dose_mg),0) FROM injection_entries si WHERE si.pen_id = medication_pens.id AND si.user_id = medication_pens.user_id)';
 
-const INJECTION_COLS = `id, medication_id, user_id, pen_id, injected_at, entry_date,
+const INJECTION_COLS = `id, medication_id, user_id, pen_id, preparation_id, injected_at, entry_date,
   site, dose_mg, notes, source, custom_fields, created_at, updated_at`;
 
 /**
@@ -50,6 +50,20 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
       }
     }
 
+    // A separate lock statement ensures preparations committed while waiting are
+    // visible to the INSERT's fresh READ COMMITTED snapshot.
+    if (resolvedPenId) {
+      const locked = await client.query(
+        'SELECT id FROM medication_pens WHERE id=$1 AND user_id=$2 AND medication_id=$3 FOR UPDATE',
+        [resolvedPenId, userId, data.medication_id]
+      );
+      if (!locked.rows[0])
+        throw Object.assign(
+          new Error('The selected stock does not belong to this medication.'),
+          { statusCode: 400 }
+        );
+    }
+
     let resolvedDoseMg = data.dose_mg ?? null;
     if (resolvedDoseMg === null) {
       const doseResult = await client.query(
@@ -80,9 +94,9 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
          FOR UPDATE
        )
        INSERT INTO injection_entries (
-         medication_id, user_id, pen_id, injected_at, entry_date, site, dose_mg, notes,
+         medication_id, user_id, pen_id, preparation_id, injected_at, entry_date, site, dose_mg, notes,
          source, custom_fields)
-       SELECT $1,$2,$3, COALESCE($4::timestamptz, NOW()), COALESCE($5::date, CURRENT_DATE),$6,$7,$8,
+       SELECT $1,$2,$3, (SELECT p.id FROM medication_preparations p WHERE p.pen_id=$3 AND p.user_id=$2 AND p.medication_id=$1), COALESCE($4::timestamptz, NOW()), COALESCE($5::date, CURRENT_DATE),$6,$7,$8,
          COALESCE($9,'manual'), COALESCE($10::jsonb,'{}'::jsonb)
        WHERE $3 IS NULL OR EXISTS (SELECT 1 FROM locked_pen)
        RETURNING ${INJECTION_COLS}`,

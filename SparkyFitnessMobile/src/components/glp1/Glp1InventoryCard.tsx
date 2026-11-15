@@ -7,7 +7,8 @@ import {
   type PenExpiryStatus,
 } from '../../utils/glp1';
 import { useMedicationPens } from '../../hooks/useGlp1';
-import { getTodayDate } from '../../utils/dateUtils';
+import { formatDateLabel, getTodayDate } from '../../utils/dateUtils';
+import PreparationSummary from './PreparationSummary';
 
 interface Glp1InventoryCardProps {
   medicationId: string;
@@ -20,7 +21,7 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
   onAdd,
   onEdit,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { data: pens = [] } = useMedicationPens(medicationId);
   const today = getTodayDate();
 
@@ -110,6 +111,20 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
                 })
               : null,
             expiryText(expiry, pen.expiry_date),
+            pen.bud_date
+              ? t('medications.preparation.budSummary', {
+                  defaultValue: 'Beyond-use {{date}}',
+                  date: formatDateLabel(pen.bud_date, t, i18n.language),
+                })
+              : null,
+            pen.bud_source || null,
+            pen.lot_number
+              ? t('medications.preparation.lotSummary', {
+                  defaultValue: 'Lot {{lot}}',
+                  lot: pen.lot_number,
+                })
+              : null,
+            pen.storage_location || null,
           ].filter(Boolean);
           return (
             <View key={pen.id}>
@@ -125,6 +140,9 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
                   <Text className="text-xs text-text-muted mt-0.5">
                     {[statusLabel, ...details].join(' · ')}
                   </Text>
+                  {pen.kind === 'vial' && (
+                    <PreparationSummary preparation={pen.preparation} />
+                  )}
                   {(lowStock || expiry === 'expired' || expiry === 'soon') && (
                     <Text className="text-xs font-medium text-text-warning mt-0.5">
                       {lowStock

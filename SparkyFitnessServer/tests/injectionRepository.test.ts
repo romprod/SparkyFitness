@@ -34,6 +34,7 @@ describe('injectionRepository', () => {
     it('deducts the given pen inside the transaction', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ id: penId }] }) // standalone stock lock
         .mockResolvedValueOnce({
           rows: [{ id: injectionId, pen_id: penId }],
         }) // INSERT injection
@@ -66,7 +67,9 @@ describe('injectionRepository', () => {
       });
       // No auto-pick lookup when a pen_id is given.
       expect(mockClient.query).not.toHaveBeenCalledWith(
-        expect.stringMatching(/^SELECT id FROM medication_pens/),
+        expect.stringMatching(
+          /^SELECT id FROM medication_pens\s+WHERE user_id/
+        ),
         expect.anything()
       );
     });
@@ -76,6 +79,7 @@ describe('injectionRepository', () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
         .mockResolvedValueOnce({ rows: [{ id: pickedPenId }] }) // auto-pick
+        .mockResolvedValueOnce({ rows: [{ id: pickedPenId }] }) // stock lock
         .mockResolvedValueOnce({
           rows: [{ id: injectionId, pen_id: pickedPenId }],
         }) // INSERT
@@ -123,7 +127,9 @@ describe('injectionRepository', () => {
 
       // No auto-pick and no deduction happen.
       expect(mockClient.query).not.toHaveBeenCalledWith(
-        expect.stringMatching(/^SELECT id FROM medication_pens/),
+        expect.stringMatching(
+          /^SELECT id FROM medication_pens\s+WHERE user_id/
+        ),
         expect.anything()
       );
       expect(mockClient.query).not.toHaveBeenCalledWith(

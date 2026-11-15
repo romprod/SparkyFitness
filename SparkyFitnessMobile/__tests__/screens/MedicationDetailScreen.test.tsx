@@ -226,6 +226,18 @@ describe('MedicationDetailScreen', () => {
     } as unknown as ReturnType<typeof useDeleteMedicationEntry>);
   });
 
+  it('names the combined injectable screen accurately without changing its route', () => {
+    const screen = setupScreen(buildMedication({ type_id: 'injection' }));
+    expect(screen.getByText('Injection tracker')).toBeTruthy();
+    expect(
+      screen.getByText('Log injections, review history and manage vial stock')
+    ).toBeTruthy();
+    fireEvent.press(screen.getByText('Injection tracker'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('Glp1Tracker', {
+      medicationId: 'med-1',
+    });
+  });
+
   describe('supplement nutrition', () => {
     const supplement = () =>
       buildMedication({

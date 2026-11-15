@@ -1,3 +1,8 @@
+import {
+  badPreparation,
+  preparationValues,
+  resolveBud,
+} from '../services/medicationPreparationService.js';
 import { calculateVialStock, type MedicationPen } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import type {
@@ -5,9 +10,14 @@ import type {
   UpdatePenBody,
 } from '../schemas/medicationSchemas.js';
 
+const PREPARATION_SQL = `(SELECT to_jsonb(p) - 'user_id' - 'medication_id' - 'pen_id'
+  FROM medication_preparations p WHERE p.pen_id = medication_pens.id
+    AND p.user_id = medication_pens.user_id AND p.medication_id = medication_pens.medication_id)`;
 const PEN_COLS = `id, medication_id, user_id, kind, label, dose_mg, concentration_mg_ml,
   volume_ml, doses_total, doses_used, status, opened_at, expiry_date, bud_date,
-  reorder_flag, reorder_threshold, notes, source, custom_fields, created_at, updated_at`;
+  reorder_flag, reorder_threshold, notes, source, custom_fields, created_at, updated_at,
+  lot_number, storage_location, bud_mode, bud_interval_days, bud_base_date, bud_source,
+  ${PREPARATION_SQL} AS preparation`;
 
 async function createPen(
   userId: string,
@@ -16,6 +26,41 @@ async function createPen(
 ) {
   const client = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    if (data.preparation && data.kind !== 'vial')
+      throw badPreparation('Preparation requires a vial.');
+    if (data.preparation && Number(data.doses_used ?? 0) !== 0)
+      throw badPreparation(
+        'Only unused stock can receive a preparation snapshot.'
+      );
+    const canonical = data.preparation
+      ? preparationValues(data.preparation)
+      : null;
+    if (canonical && data.preparation) {
+      if (
+        (data.concentration_mg_ml !== null &&
+          data.concentration_mg_ml !== undefined &&
+          data.concentration_mg_ml !== canonical.concentration_mg_ml) ||
+        (data.volume_ml !== null &&
+          data.volume_ml !== undefined &&
+          data.volume_ml !== data.preparation.final_volume_ml)
+      ) {
+        throw badPreparation(
+          'Vial concentration and volume must match its preparation.'
+        );
+      }
+      data = {
+        ...data,
+        concentration_mg_ml: canonical.concentration_mg_ml,
+        volume_ml: data.preparation.final_volume_ml,
+      };
+    }
+    data = { ...data, ...resolveBud(data) };
+    const owner = await client.query(
+      'SELECT id FROM medications WHERE id = $1 AND user_id = $2 FOR KEY SHARE',
+      [medicationId, userId]
+    );
+    if (!owner.rows[0]) throw badPreparation('Medication not found.');
     const result = await client.query(
       `INSERT INTO medication_pens (
          medication_id, user_id, kind, label, dose_mg, concentration_mg_ml, volume_ml,
@@ -46,7 +91,48 @@ async function createPen(
         data.custom_fields ? JSON.stringify(data.custom_fields) : null,
       ]
     );
-    return result.rows[0];
+    const pen = result.rows[0];
+    if (data.preparation && canonical) {
+      await client.query(
+        `INSERT INTO medication_preparations (pen_id,user_id,medication_id,mode,mass_value,mass_unit,final_volume_ml,mass_mg,concentration_mg_ml,prepared_date,diluent)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          pen.id,
+          userId,
+          medicationId,
+          data.preparation.mode,
+          data.preparation.mass_value,
+          data.preparation.mass_unit,
+          data.preparation.final_volume_ml,
+          canonical.mass_mg,
+          canonical.concentration_mg_ml,
+          data.preparation.prepared_date,
+          data.preparation.diluent ?? null,
+        ]
+      );
+    }
+    await client.query(
+      'UPDATE medication_pens SET lot_number=$3,storage_location=$4,bud_mode=$5,bud_interval_days=$6,bud_base_date=$7,bud_source=$8 WHERE id=$1 AND user_id=$2',
+      [
+        pen.id,
+        userId,
+        data.lot_number ?? null,
+        data.storage_location ?? null,
+        data.bud_mode ?? null,
+        data.bud_interval_days ?? null,
+        data.bud_base_date ?? null,
+        data.bud_source ?? null,
+      ]
+    );
+    const saved = await client.query(
+      `SELECT ${PEN_COLS} FROM medication_pens WHERE id=$1 AND user_id=$2`,
+      [pen.id, userId]
+    );
+    await client.query('COMMIT');
+    return saved.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
@@ -127,6 +213,88 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
       [id, userId]
     );
     const existing = locked.rows[0];
+    if (!existing) {
+      await client.query('COMMIT');
+      return null;
+    }
+    const snapshot = await client.query(
+      'SELECT * FROM medication_preparations WHERE pen_id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    const prep = snapshot.rows[0];
+    if (prep) {
+      if (data.preparation) {
+        const same =
+          data.preparation.mode === prep.mode &&
+          data.preparation.mass_unit === prep.mass_unit &&
+          data.preparation.mass_value === Number(prep.mass_value) &&
+          data.preparation.final_volume_ml === Number(prep.final_volume_ml) &&
+          data.preparation.prepared_date === prep.prepared_date &&
+          (data.preparation.diluent ?? null) === prep.diluent;
+        if (!same)
+          throw badPreparation('Saved preparation inputs are immutable.');
+      }
+      if (
+        (data.kind !== undefined && data.kind !== 'vial') ||
+        (data.volume_ml !== undefined &&
+          data.volume_ml !== Number(prep.final_volume_ml)) ||
+        (data.concentration_mg_ml !== undefined &&
+          data.concentration_mg_ml !== Number(prep.concentration_mg_ml))
+      ) {
+        throw badPreparation(
+          'Vial concentration and volume must match its immutable preparation.'
+        );
+      }
+    } else if (data.preparation) {
+      const history = await client.query(
+        'SELECT COUNT(*) AS count FROM injection_entries WHERE pen_id=$1 AND user_id=$2',
+        [id, userId]
+      );
+      if (
+        Number(existing.doses_used) !== 0 ||
+        Number(history.rows[0]?.count) > 0
+      )
+        throw badPreparation(
+          'Only unused stock can receive a preparation snapshot.'
+        );
+      if ((data.kind ?? existing.kind) !== 'vial')
+        throw badPreparation('Preparation requires a vial.');
+      const canonical = preparationValues(data.preparation);
+      if (
+        (data.concentration_mg_ml !== null &&
+          data.concentration_mg_ml !== undefined &&
+          data.concentration_mg_ml !== canonical.concentration_mg_ml) ||
+        (data.volume_ml !== null &&
+          data.volume_ml !== undefined &&
+          data.volume_ml !== data.preparation.final_volume_ml)
+      )
+        throw badPreparation(
+          'Vial concentration and volume must match its preparation.'
+        );
+      await client.query(
+        `INSERT INTO medication_preparations (pen_id,user_id,medication_id,mode,mass_value,mass_unit,final_volume_ml,mass_mg,concentration_mg_ml,prepared_date,diluent)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          id,
+          userId,
+          existing.medication_id,
+          data.preparation.mode,
+          data.preparation.mass_value,
+          data.preparation.mass_unit,
+          data.preparation.final_volume_ml,
+          canonical.mass_mg,
+          canonical.concentration_mg_ml,
+          data.preparation.prepared_date,
+          data.preparation.diluent ?? null,
+        ]
+      );
+      data = {
+        ...data,
+        concentration_mg_ml: canonical.concentration_mg_ml,
+        volume_ml: data.preparation.final_volume_ml,
+      };
+    }
+    data = { ...data, ...resolveBud(data, existing) };
     if (existing) {
       const history = await client.query(
         'SELECT COUNT(*) AS count FROM injection_entries WHERE pen_id = $1 AND user_id = $2',
@@ -162,6 +330,12 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
     let index = 3;
 
     const fields: (keyof UpdatePenBody)[] = [
+      'lot_number',
+      'storage_location',
+      'bud_mode',
+      'bud_interval_days',
+      'bud_base_date',
+      'bud_source',
       'kind',
       'label',
       'dose_mg',
@@ -222,11 +396,32 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
 async function deletePen(userId: string, id: string) {
   const client = await getClient(userId);
   try {
-    const result = await client.query(
-      'DELETE FROM medication_pens WHERE id = $1 AND user_id = $2 RETURNING id',
+    await client.query('BEGIN');
+    const pen = await client.query(
+      'SELECT doses_used FROM medication_pens WHERE id=$1 AND user_id=$2 FOR UPDATE',
       [id, userId]
     );
+    const history = await client.query(
+      'SELECT COUNT(*) AS count FROM injection_entries WHERE pen_id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    if (
+      Number(pen.rows[0]?.doses_used) > 0 ||
+      Number(history.rows[0]?.count) > 0
+    ) {
+      throw badPreparation(
+        'Stock with recorded use cannot be removed; retain it for injection history.'
+      );
+    }
+    const result = await client.query(
+      'DELETE FROM medication_pens WHERE id=$1 AND user_id=$2 RETURNING id',
+      [id, userId]
+    );
+    await client.query('COMMIT');
     return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }

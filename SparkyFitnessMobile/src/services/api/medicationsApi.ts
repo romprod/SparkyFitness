@@ -11,6 +11,7 @@ import type {
   CreateScheduleInput,
   UpdateScheduleInput,
   MedicationPen,
+  MedicationPreparationInput,
   InjectionEntry,
   LogInjectionInput,
   UpdateInjectionInput,
@@ -215,7 +216,9 @@ export const listPens = async (
 
 export const createPen = (
   medicationId: string,
-  body: Partial<Omit<MedicationPen, 'id' | 'medication_id' | 'doses_used'>>
+  body: Omit<Partial<MedicationPen>, 'preparation'> & {
+    preparation?: MedicationPreparationInput;
+  }
 ): Promise<MedicationPen> =>
   apiFetch<MedicationPen>({
     endpoint: `/api/v2/medications/${medicationId}/pens`,
@@ -227,7 +230,9 @@ export const createPen = (
 
 export const updatePen = (
   id: string,
-  body: Partial<Omit<MedicationPen, 'id' | 'medication_id'>>
+  body: Omit<Partial<MedicationPen>, 'preparation'> & {
+    preparation?: MedicationPreparationInput;
+  }
 ): Promise<MedicationPen> =>
   apiFetch<MedicationPen>({
     endpoint: `/api/v2/medications/pens/${id}`,

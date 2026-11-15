@@ -60,7 +60,10 @@ it('shows preparation tools without injection logging or history for a non-GLP-1
   expect(screen.getByText('Preparation calculator')).toBeInTheDocument();
   expect(screen.getByLabelText('Kind')).toHaveTextContent('Vial');
   expect(screen.getByLabelText('Dose Strength (mg)')).toHaveValue(0.5);
-  fireEvent.change(screen.getByLabelText('Vial content (mg)'), {
+  fireEvent.change(screen.getByLabelText('Prepared date'), {
+    target: { value: '2026-11-15' },
+  });
+  fireEvent.change(screen.getByLabelText('Vial content'), {
     target: { value: '12' },
   });
   fireEvent.change(screen.getByLabelText('Volume (mL)'), {
@@ -74,7 +77,10 @@ it('shows preparation tools without injection logging or history for a non-GLP-1
     expect.objectContaining({
       kind: 'vial',
       dose_mg: 0.5,
-      concentration_mg_ml: 4,
+      preparation: expect.objectContaining({
+        mass_value: 12,
+        final_volume_ml: 3,
+      }),
     }),
     expect.anything()
   );

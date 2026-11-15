@@ -13,7 +13,7 @@ import type {
   LogInjectionInput,
   UpdateInjectionInput,
   UpdateTitrationStepInput,
-  MedicationPen,
+  MedicationPenWriteInput,
   MedicationSchedule,
   TitrationStep,
   CreateMedicationEntryInput,
@@ -461,7 +461,7 @@ export const useDeleteInjectionEntryMutation = () => {
 export const useCreatePenMutation = (medId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<MedicationPen>) =>
+    mutationFn: (body: MedicationPenWriteInput) =>
       medicationService.createPen(medId, body),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) }),
@@ -481,7 +481,7 @@ export const useCreatePenMutation = (medId: string) => {
 export const useUpdatePenMutation = (medId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<MedicationPen> }) =>
+    mutationFn: ({ id, body }: { id: string; body: MedicationPenWriteInput }) =>
       medicationService.updatePen(id, body),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) }),

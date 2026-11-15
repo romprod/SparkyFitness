@@ -7,6 +7,7 @@ import { useActiveWorkoutBarPadding } from '../components/ActiveWorkoutBar';
 import BottomSheetPicker from '../components/BottomSheetPicker';
 import FormInput from '../components/FormInput';
 import OptionalDateField from '../components/glp1/OptionalDateField';
+import PreparationSummary from '../components/glp1/PreparationSummary';
 import Button from '../components/ui/Button';
 import Switch from '../components/ui/Switch';
 import {
@@ -17,14 +18,15 @@ import {
 } from '../hooks/useGlp1';
 import { useScreenHeader } from '../hooks/useScreenHeader';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
-import { addDays } from '../utils/dateUtils';
 import type { RootStackScreenProps } from '../types/navigation';
-import { calculatePreparation, type MedicationPen } from '@workspace/shared';
+import {
+  calculatePreparation,
+  calculatePreparationValues,
+  type MedicationPen,
+  type MedicationPreparationInput,
+} from '@workspace/shared';
 
 type Glp1PenFormScreenProps = RootStackScreenProps<'Glp1PenForm'>;
-
-/** Days a vial stays usable once opened; matches web's beyond-use date. */
-const BUD_DAYS = 28;
 
 interface FormState {
   kind: 'pen' | 'vial';
@@ -38,6 +40,13 @@ interface FormState {
   reorderFlag: boolean;
   reorderThreshold: string;
   notes: string;
+  lotNumber: string;
+  storageLocation: string;
+  budMode: 'date' | 'interval' | '';
+  budDate: string;
+  budDays: string;
+  budBaseDate: string;
+  budSource: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -52,6 +61,13 @@ const EMPTY_FORM: FormState = {
   reorderFlag: false,
   reorderThreshold: '1',
   notes: '',
+  lotNumber: '',
+  storageLocation: '',
+  budMode: '',
+  budDate: '',
+  budDays: '',
+  budBaseDate: '',
+  budSource: '',
 };
 
 const fromPen = (pen: MedicationPen): FormState => ({
@@ -68,6 +84,13 @@ const fromPen = (pen: MedicationPen): FormState => ({
   reorderThreshold:
     pen.reorder_threshold != null ? String(pen.reorder_threshold) : '1',
   notes: pen.notes ?? '',
+  lotNumber: pen.lot_number ?? '',
+  storageLocation: pen.storage_location ?? '',
+  budMode: pen.bud_mode ?? (pen.bud_date ? 'date' : ''),
+  budDate: pen.bud_date ?? '',
+  budDays: pen.bud_interval_days != null ? String(pen.bud_interval_days) : '',
+  budBaseDate: pen.bud_base_date ?? '',
+  budSource: pen.bud_source ?? '',
 });
 
 /** Empty string -> null; otherwise the number, or NaN when it is not numeric. */
@@ -78,7 +101,7 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
   route,
   navigation,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { medicationId, penId } = route.params;
   const isEditing = !!penId;
   const insets = useSafeAreaInsets();
@@ -108,32 +131,46 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
     []
   );
 
+  const [recordPreparation, setRecordPreparation] = useState(false);
   const [preparationMass, setPreparationMass] = useState('');
+  const [massUnit, setMassUnit] = useState<'mg' | 'mcg'>('mg');
+  const [preparationMode, setPreparationMode] = useState<
+    'reconstituted' | 'premixed'
+  >('reconstituted');
+  const [preparedDate, setPreparedDate] = useState('');
+  const [diluent, setDiluent] = useState('');
+  const canRecordPreparation =
+    !existing?.preparation && (!existing || existing.doses_used === 0);
+  const recordingPreparation =
+    form.kind === 'vial' && canRecordPreparation && recordPreparation;
+  const preparationValues = calculatePreparationValues({
+    mass_value: Number(preparationMass),
+    mass_unit: massUnit,
+    final_volume_ml: Number(form.volume),
+  });
+  const preparationMassMg = preparationValues?.mass_mg;
   const preparation = calculatePreparation(
-    Number(preparationMass),
+    preparationMassMg ?? 0,
     Number(form.volume),
     Number(form.doseMg)
   );
 
   const isSaving = createPen.isPending || updatePen.isPending;
 
-  const handleSave = useCallback(() => {
-    if (isSaving) return;
-    const prep = calculatePreparation(
-      Number(preparationMass),
-      Number(form.volume),
-      Number(form.doseMg)
-    );
+  const handleSave = () => {
+    if (isSaving || (isEditing && !existing)) return;
     if (
-      form.kind === 'vial' &&
-      preparationMass &&
-      (!prep || prep.exceedsVial)
+      recordingPreparation &&
+      (!preparationMassMg ||
+        !Number.isFinite(Number(form.volume)) ||
+        Number(form.volume) <= 0 ||
+        !preparedDate)
     ) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
-        t('medications.preparation.invalid', {
+        t('medications.preparation.invalidRecord', {
           defaultValue:
-            'Enter positive vial content, final volume and dose. The dose must not exceed the vial content.',
+            'Enter positive vial content, a positive final volume and a prepared date.',
         })
       );
       return;
@@ -142,7 +179,9 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
     const dosesTotal = optionalNumber(form.dosesTotal);
     const concentration =
       form.kind === 'vial'
-        ? (prep?.concentrationMgMl ?? optionalNumber(form.concentration))
+        ? recordingPreparation && preparationMassMg
+          ? (preparationValues?.concentration_mg_ml ?? null)
+          : optionalNumber(form.concentration)
         : null;
     const volume = form.kind === 'vial' ? optionalNumber(form.volume) : null;
     const threshold = form.reorderFlag
@@ -158,6 +197,52 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
       );
       return;
     }
+    const budEdited = [
+      'budMode',
+      'budDate',
+      'budDays',
+      'budBaseDate',
+      'budSource',
+    ].some((key) => key in edits);
+    const intervalDays = optionalNumber(form.budDays);
+    if (budEdited && form.budMode === 'date' && !form.budDate) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('medications.preparation.invalidBudDate', {
+          defaultValue: 'Select a beyond-use date or choose Not set.',
+        })
+      );
+      return;
+    }
+    if (
+      budEdited &&
+      form.budMode === 'interval' &&
+      (intervalDays === null ||
+        !Number.isInteger(intervalDays) ||
+        intervalDays < 0 ||
+        !form.budBaseDate ||
+        !form.budSource.trim())
+    ) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('medications.preparation.invalidBud', {
+          defaultValue:
+            'Enter a base date, a whole number of days (zero or more) and the source of that duration.',
+        })
+      );
+      return;
+    }
+    const preparationInput: MedicationPreparationInput | undefined =
+      recordingPreparation
+        ? {
+            mode: preparationMode,
+            mass_value: Number(preparationMass),
+            mass_unit: massUnit,
+            final_volume_ml: Number(form.volume),
+            prepared_date: preparedDate,
+            diluent: diluent.trim() || null,
+          }
+        : undefined;
     const body = {
       kind: form.kind,
       label: form.label.trim() || null,
@@ -167,7 +252,24 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
       doses_total: dosesTotal,
       opened_at: form.openedAt || null,
       expiry_date: form.expiryDate || null,
-      bud_date: form.openedAt ? addDays(form.openedAt, BUD_DAYS) : null,
+      ...(preparationInput ? { preparation: preparationInput } : {}),
+      ...('lotNumber' in edits
+        ? { lot_number: form.lotNumber.trim() || null }
+        : {}),
+      ...('storageLocation' in edits
+        ? { storage_location: form.storageLocation.trim() || null }
+        : {}),
+      ...(budEdited
+        ? {
+            bud_mode: form.budMode || null,
+            bud_date: form.budMode === 'date' ? form.budDate || null : null,
+            bud_interval_days:
+              form.budMode === 'interval' ? intervalDays : null,
+            bud_base_date:
+              form.budMode === 'interval' ? form.budBaseDate || null : null,
+            bud_source: form.budMode ? form.budSource.trim() || null : null,
+          }
+        : {}),
       reorder_flag: form.reorderFlag,
       reorder_threshold: threshold,
       notes: form.notes.trim() || null,
@@ -191,17 +293,7 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
         { onSuccess: () => navigation.goBack(), onError }
       );
     }
-  }, [
-    form,
-    preparationMass,
-    isSaving,
-    penId,
-    medicationId,
-    createPen,
-    updatePen,
-    navigation,
-    t,
-  ]);
+  };
 
   const handleDelete = useCallback(() => {
     if (!penId) return;
@@ -240,6 +332,7 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
       kind: 'primary',
       label: t('common.save', { defaultValue: 'Save' }),
       busy: isSaving,
+      disabled: isEditing && !existing,
       busyLabel: t('common.saving', { defaultValue: 'Saving…' }),
       onPress: handleSave,
     },
@@ -281,12 +374,18 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
           <Text className="text-text-secondary text-sm font-medium">
             {t('medications.glp1.form.kind', { defaultValue: 'Type' })}
           </Text>
-          <BottomSheetPicker
-            value={form.kind}
-            options={kindOptions}
-            onSelect={(v) => setField('kind', v)}
-            title={t('medications.glp1.form.kind', { defaultValue: 'Type' })}
-          />
+          {existing?.preparation ? (
+            <Text className="text-base text-text-primary">
+              {kindOptions.find((option) => option.value === form.kind)?.label}
+            </Text>
+          ) : (
+            <BottomSheetPicker
+              value={form.kind}
+              options={kindOptions}
+              onSelect={(v) => setField('kind', v)}
+              title={t('medications.glp1.form.kind', { defaultValue: 'Type' })}
+            />
+          )}
         </View>
 
         <View className="gap-1.5">
@@ -294,6 +393,9 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
             {t('medications.glp1.form.label', { defaultValue: 'Label' })}
           </Text>
           <FormInput
+            accessibilityLabel={t('medications.glp1.form.label', {
+              defaultValue: 'Label',
+            })}
             value={form.label}
             onChangeText={(v) => setField('label', v)}
           />
@@ -326,29 +428,126 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
           </View>
         </View>
 
-        {form.kind === 'vial' && !isEditing && (
-          <View className="gap-2 rounded-xl border border-chrome-border p-3">
-            <Text className="text-text-secondary text-sm">
-              {t('medications.preparation.mass', {
-                defaultValue: 'Vial content (mg)',
-              })}
-            </Text>
-            <FormInput
-              value={preparationMass}
-              onChangeText={setPreparationMass}
-              keyboardType="decimal-pad"
-            />
-            {preparation && (
-              <Text className="text-text-secondary text-sm">
-                {t('medications.preparation.result', {
-                  defaultValue:
-                    '{{concentration}} mg/mL · {{draw}} mL per entered dose',
-                  concentration: Number(
-                    preparation.concentrationMgMl.toPrecision(6)
-                  ).toString(),
-                  draw: Number(preparation.drawMl.toPrecision(6)).toString(),
-                })}
-              </Text>
+        {form.kind === 'vial' && (
+          <View className="gap-3 rounded-xl border border-chrome-border p-3">
+            {isEditing && (
+              <PreparationSummary preparation={existing?.preparation} />
+            )}
+            {canRecordPreparation && (
+              <View className="flex-row justify-between items-center">
+                <Text className="text-base text-text-primary flex-1">
+                  {t('medications.preparation.record', {
+                    defaultValue: 'Save preparation details',
+                  })}
+                </Text>
+                <Switch
+                  accessibilityLabel={t('medications.preparation.record', {
+                    defaultValue: 'Save preparation details',
+                  })}
+                  value={recordPreparation}
+                  onValueChange={setRecordPreparation}
+                />
+              </View>
+            )}
+            {recordingPreparation && (
+              <>
+                <Text className="text-sm text-text-muted">
+                  {t('medications.preparation.immutableHelp', {
+                    defaultValue:
+                      'Saved preparation inputs cannot be changed. Use the labelled product information; no beyond-use period is assumed.',
+                  })}
+                </Text>
+                <BottomSheetPicker
+                  value={preparationMode}
+                  onSelect={setPreparationMode}
+                  title={t('medications.preparation.mode', {
+                    defaultValue: 'Preparation type',
+                  })}
+                  options={[
+                    {
+                      value: 'reconstituted' as const,
+                      label: t('medications.preparation.reconstituted', {
+                        defaultValue: 'Reconstituted',
+                      }),
+                    },
+                    {
+                      value: 'premixed' as const,
+                      label: t('medications.preparation.premixed', {
+                        defaultValue: 'Premixed',
+                      }),
+                    },
+                  ]}
+                />
+                <Text className="text-sm text-text-secondary">
+                  {t('medications.preparation.massValue', {
+                    defaultValue: 'Labelled vial content',
+                  })}
+                </Text>
+                <FormInput
+                  accessibilityLabel={t('medications.preparation.massValue', {
+                    defaultValue: 'Labelled vial content',
+                  })}
+                  value={preparationMass}
+                  onChangeText={setPreparationMass}
+                  keyboardType="decimal-pad"
+                />
+                <BottomSheetPicker
+                  value={massUnit}
+                  onSelect={setMassUnit}
+                  title={t('medications.preparation.massUnit', {
+                    defaultValue: 'Mass unit',
+                  })}
+                  options={[
+                    {
+                      value: 'mg' as const,
+                      label: t('medications.preparation.unitMg', {
+                        defaultValue: 'mg',
+                      }),
+                    },
+                    {
+                      value: 'mcg' as const,
+                      label: t('medications.preparation.unitMcg', {
+                        defaultValue: 'mcg',
+                      }),
+                    },
+                  ]}
+                />
+                <OptionalDateField
+                  label={t('medications.preparation.preparedDate', {
+                    defaultValue: 'Prepared date',
+                  })}
+                  value={preparedDate}
+                  onChange={setPreparedDate}
+                />
+                <Text className="text-sm text-text-secondary">
+                  {t('medications.preparation.diluent', {
+                    defaultValue: 'Diluent (optional)',
+                  })}
+                </Text>
+                <FormInput
+                  accessibilityLabel={t('medications.preparation.diluent', {
+                    defaultValue: 'Diluent (optional)',
+                  })}
+                  value={diluent}
+                  onChangeText={setDiluent}
+                />
+                {preparation && (
+                  <Text className="text-sm text-text-secondary">
+                    {t('medications.preparation.result', {
+                      defaultValue:
+                        '{{concentration}} mg/mL · {{draw}} mL per entered dose',
+                      concentration:
+                        preparation.concentrationMgMl.toLocaleString(
+                          i18n.language,
+                          { maximumSignificantDigits: 6 }
+                        ),
+                      draw: preparation.drawMl.toLocaleString(i18n.language, {
+                        maximumSignificantDigits: 6,
+                      }),
+                    })}
+                  </Text>
+                )}
+              </>
             )}
           </View>
         )}
@@ -362,23 +561,31 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
               </Text>
               <FormInput
                 value={
-                  preparationMass
-                    ? String(preparation?.concentrationMgMl ?? '')
+                  recordingPreparation
+                    ? String(
+                        preparationMassMg && Number(form.volume) > 0
+                          ? (preparationValues?.concentration_mg_ml ?? null)
+                          : ''
+                      )
                     : form.concentration
                 }
-                editable={!preparationMass}
+                editable={!recordingPreparation && !existing?.preparation}
                 onChangeText={(v) => setField('concentration', v)}
                 keyboardType="decimal-pad"
               />
             </View>
             <View className="flex-1 gap-1.5">
               <Text className="text-text-secondary text-sm font-medium">
-                {t('medications.glp1.form.volume', {
-                  defaultValue: 'Volume (mL)',
+                {t('medications.preparation.finalVolume', {
+                  defaultValue: 'Final volume (mL)',
                 })}
               </Text>
               <FormInput
+                accessibilityLabel={t('medications.preparation.finalVolume', {
+                  defaultValue: 'Final volume (mL)',
+                })}
                 value={form.volume}
+                editable={!existing?.preparation}
                 onChangeText={(v) => setField('volume', v)}
                 keyboardType="decimal-pad"
               />
@@ -398,6 +605,116 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
           value={form.expiryDate}
           onChange={(v) => setField('expiryDate', v)}
         />
+
+        {form.kind === 'vial' && (
+          <>
+            <Text className="text-sm text-text-secondary">
+              {t('medications.preparation.lot', {
+                defaultValue: 'Lot / batch number (optional)',
+              })}
+            </Text>
+            <FormInput
+              accessibilityLabel={t('medications.preparation.lot', {
+                defaultValue: 'Lot / batch number (optional)',
+              })}
+              value={form.lotNumber}
+              onChangeText={(v) => setField('lotNumber', v)}
+            />
+            <Text className="text-sm text-text-secondary">
+              {t('medications.preparation.storage', {
+                defaultValue: 'Storage location (optional)',
+              })}
+            </Text>
+            <FormInput
+              accessibilityLabel={t('medications.preparation.storage', {
+                defaultValue: 'Storage location (optional)',
+              })}
+              value={form.storageLocation}
+              onChangeText={(v) => setField('storageLocation', v)}
+            />
+          </>
+        )}
+        <Text className="text-sm text-text-secondary">
+          {t('medications.preparation.bud', {
+            defaultValue: 'Beyond-use date',
+          })}
+        </Text>
+        <BottomSheetPicker
+          value={form.budMode}
+          onSelect={(v) => setField('budMode', v)}
+          title={t('medications.preparation.bud', {
+            defaultValue: 'Beyond-use date',
+          })}
+          options={[
+            {
+              value: '' as const,
+              label: t('medications.glp1.form.notSet', {
+                defaultValue: 'Not set',
+              }),
+            },
+            {
+              value: 'date' as const,
+              label: t('medications.preparation.budExplicit', {
+                defaultValue: 'Explicit date',
+              }),
+            },
+            {
+              value: 'interval' as const,
+              label: t('medications.preparation.budInterval', {
+                defaultValue: 'Duration from a date',
+              }),
+            },
+          ]}
+        />
+        {form.budMode === 'date' && (
+          <OptionalDateField
+            label={t('medications.preparation.bud', {
+              defaultValue: 'Beyond-use date',
+            })}
+            value={form.budDate}
+            onChange={(v) => setField('budDate', v)}
+          />
+        )}
+        {form.budMode === 'interval' && (
+          <>
+            <OptionalDateField
+              label={t('medications.preparation.budBase', {
+                defaultValue: 'Beyond-use base date',
+              })}
+              value={form.budBaseDate}
+              onChange={(v) => setField('budBaseDate', v)}
+            />
+            <Text className="text-sm text-text-secondary">
+              {t('medications.preparation.budDays', {
+                defaultValue: 'Beyond-use duration (days)',
+              })}
+            </Text>
+            <FormInput
+              accessibilityLabel={t('medications.preparation.budDays', {
+                defaultValue: 'Beyond-use duration (days)',
+              })}
+              value={form.budDays}
+              onChangeText={(v) => setField('budDays', v)}
+              keyboardType="number-pad"
+            />
+          </>
+        )}
+        {form.budMode !== '' && (
+          <>
+            <Text className="text-sm text-text-secondary">
+              {t('medications.preparation.budSource', {
+                defaultValue: 'Beyond-use source / instructions',
+              })}
+            </Text>
+            <FormInput
+              accessibilityLabel={t('medications.preparation.budSource', {
+                defaultValue: 'Beyond-use source / instructions',
+              })}
+              value={form.budSource}
+              onChangeText={(v) => setField('budSource', v)}
+            />
+          </>
+        )}
 
         <View className="flex-row justify-between items-center">
           <Text className="text-base text-text-primary">
