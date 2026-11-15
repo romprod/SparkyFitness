@@ -81,6 +81,8 @@ For a vial with complete records, remaining mass is concentration × prepared vo
 
 If older usage counts do not match linked injections, a dose amount is missing, or preparation details are incomplete, mass stock is unavailable. A historic dose count is not treated as a known mass. Recorded use above the vial content is retained and flagged; it is never silently discarded. These figures describe recorded stock and do not account for unlogged waste, spills or device dead space.
 
+Deleting a medication removes its linked vial/preparation records while retaining stored injection history and its delivered quantities, timestamps, site and notes. The removed medication, vial and preparation references are cleared by database cleanup. Used vials and used preparations cannot be deleted directly while their parent medication remains; application updates cannot detach preparation provenance while its stock still exists. Account deletion retains its existing full cleanup behavior.
+
 ### Syringe draw calculations
 
 Reusable syringes have a name, unit- or mL-graduated scale, units per mL, capacity and smallest measurable increment. Select a syringe and prepared vial in the existing injection form. The preferred syringe can prefill that choice. Syringe settings belong to the device, not to an immutable vial preparation. Removing a syringe clears it as the preferred device and removes its link from historical injections; saved delivered mass, volume and markings remain.
