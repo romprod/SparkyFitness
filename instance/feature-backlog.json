@@ -7,7 +7,7 @@
   "customisation_baseline": "d0dbab307061d938ece4e1bd32308cf2b3a120f6",
   "reference_repository": "https://github.com/kavo91/peptide-pitstop",
   "reference_commit": "1caffbcfaeb4ccaccee9806a37d169e013328528",
-  "scope": "Candidate features for an independently implemented instance fork. Priorities are research recommendations. No new peptide feature has been implemented by this backlog.",
+  "scope": "Source-verified candidate features and delivered/partial source coverage for the independently implemented instance fork. Preparation/device/lab flows are delivered in f6d28c412; invoice ledger and current-dose defaults are implemented/tested with live release identity recorded separately.",
   "items": [
     {
       "id": "D01",
@@ -507,9 +507,12 @@
       "priority": "First",
       "relative_effort": "L",
       "dependencies_and_limits": "Foundation for cost features. Support GBP and retain original currency.",
-      "status": "proposed",
+      "status": "implemented",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/costs-core.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "Frozen source: 413 unique isolated PostgreSQL/permission cases, including focused prepared-content projection replay and actual HTTP/API-key enforcement; fresh/reapplied migration and previous-image baseline compatibility. 37 route/auth/allocation units, 123 coherent web cases with static/build and synthetic full-screen verification, and 42 native source cases/package validation. Live release readback is separate; no owner records/browser or native binary used.",
+      "implementation_scope": "Selected invoice ledger and exact shipping/tax/fees/discount allocation in Medications → Costs; owner-only financial records and expected-owner mutation intent. Editable invoice currency retains the source AUD default. No invoice OCR, automatic inventory creation, FX or aggregate mixed-currency/consumed/waste/course dashboard. Medication and consumable invoice lines are in scope; derived consumable usage (C04) remains deferred."
     },
     {
       "id": "C02",
@@ -521,10 +524,13 @@
       "decision": "Add",
       "priority": "First",
       "relative_effort": "M",
-      "dependencies_and_limits": "Depends on C01/I01. Validate purchased versus linked quantities.",
-      "status": "proposed",
+      "dependencies_and_limits": "Depends on C01/I01. Show purchased versus linked quantities; source overmatching is warning-only, not a hard cap.",
+      "status": "implemented",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/actions/purchases.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "Frozen source: 413 unique isolated PostgreSQL/permission cases, including focused prepared-content projection replay and actual HTTP/API-key enforcement; fresh/reapplied migration and previous-image baseline compatibility. 37 route/auth/allocation units, 123 coherent web cases with static/build and synthetic full-screen verification, and 42 native source cases/package validation. Live release readback is separate; no owner records/browser or native binary used.",
+      "implementation_scope": "Selected matching of existing owned vials to purchased lines and quantity-based per-vial landed allocation; purchased quantity is independent of how many vials are already linked. No automatic vial creation."
     },
     {
       "id": "C03",
@@ -582,9 +588,12 @@
       "priority": "First",
       "relative_effort": "S",
       "dependencies_and_limits": "Depends on C01–C03. Missing price must never become zero cost.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/costs/page.tsx",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "Frozen source: 413 unique isolated PostgreSQL/permission cases, including focused prepared-content projection replay and actual HTTP/API-key enforcement; fresh/reapplied migration and previous-image baseline compatibility. 37 route/auth/allocation units, 123 coherent web cases with static/build and synthetic full-screen verification, and 42 native source cases/package validation. Live release readback is separate; no owner records/browser or native binary used.",
+      "implementation_scope": "Selected bounded uncosted/matching coverage and per-invoice currencies. Missing invoice linkage remains unknown, not free. Prescription fallback and consumed-dose/mixed-currency aggregate dashboards remain deferred."
     },
     {
       "id": "C07",

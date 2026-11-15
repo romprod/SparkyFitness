@@ -12,6 +12,10 @@ import {
   INJECTION_SITES,
 } from '@workspace/shared';
 import Medications from '@/pages/Medications/Medications';
+const mockInvoiceUser = { id: 'owner', activeUserId: 'owner' };
+jest.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ user: mockInvoiceUser, loading: false }),
+}));
 const mockApiCall = jest.fn();
 jest.mock('@/api/api', () => ({
   apiCall: (endpoint: string, options?: unknown) =>
@@ -88,32 +92,47 @@ const syringe = {
   increment: '1',
 };
 let mockGlp1 = true;
+let mockEmptyMedications = false;
 beforeEach(() => {
   localStorage.clear();
   mockGlp1 = true;
+  mockEmptyMedications = false;
+  mockInvoiceUser.activeUserId = 'owner';
   mockApiCall.mockReset();
   mockApiCall.mockImplementation(
     async (
       endpoint: string,
       options?: { params?: Record<string, unknown>; body?: unknown }
     ) => {
+      if (endpoint === '/identity/user')
+        return {
+          authenticatedUserId: mockInvoiceUser.id,
+          activeUserId: mockInvoiceUser.activeUserId,
+        };
+      if (endpoint === '/v2/medication-purchases/vial-costs')
+        return { vials: [] };
+      if (endpoint === '/v2/medication-purchases') return { purchases: [] };
+      if (endpoint === '/v2/medication-purchases/editor-data')
+        return { medications: [], vials: [] };
       if (endpoint === '/v2/medications')
-        return [
-          {
-            id: 'med',
-            name: 'Retatrutide',
-            display_name: 'Synthetic injectable',
-            type_id: 'injection',
-            is_glp1: mockGlp1,
-            is_active: true,
-            is_supplement: false,
-            dose_amount: 0.5,
-            dose_unit: 'mg',
-            custom_fields: { glp1_drug: 'retatrutide' },
-            schedules: [],
-            nutrients: {},
-          },
-        ];
+        return mockEmptyMedications
+          ? []
+          : [
+              {
+                id: 'med',
+                name: 'Retatrutide',
+                display_name: 'Synthetic injectable',
+                type_id: 'injection',
+                is_glp1: mockGlp1,
+                is_active: true,
+                is_supplement: false,
+                dose_amount: 0.5,
+                dose_unit: 'mg',
+                custom_fields: { glp1_drug: 'retatrutide' },
+                schedules: [],
+                nutrients: {},
+              },
+            ];
       if (endpoint.endsWith('/serum-curve')) {
         const profile = resolveGlp1Profile('retatrutide')!;
         return {
@@ -244,4 +263,39 @@ it('keeps Preparation & stock inventory-only through the full Medications route'
     screen.queryByRole('button', { name: 'Manage devices' })
   ).not.toBeInTheDocument();
   expect(screen.queryByText('Log injection')).not.toBeInTheDocument();
+});
+
+it('opens Costs without medication records and offers a consumable-only invoice', async () => {
+  mockEmptyMedications = true;
+  open('/medications?tab=costs');
+  fireEvent.click(await screen.findByRole('button', { name: 'Add invoice' }));
+  await screen.findByRole('heading', { name: 'New invoice' });
+  fireEvent.click(screen.getByRole('button', { name: 'Add consumable' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove line 1' }));
+  expect(screen.getByLabelText('Packs')).toHaveValue('1');
+  expect(screen.queryByLabelText('Medication')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'All' })).not.toBeInTheDocument();
+});
+
+it('keeps an owner Costs entry beside the empty medication disclaimer', async () => {
+  mockEmptyMedications = true;
+  open('/medications?tab=cabinet');
+  fireEvent.click(await screen.findByRole('button', { name: 'Costs' }));
+  expect(
+    await screen.findByRole('button', { name: 'Add invoice' })
+  ).toBeInTheDocument();
+});
+
+it('hides Costs and makes no financial requests in a delegated profile', async () => {
+  mockInvoiceUser.activeUserId = 'another-profile';
+  open('/medications?tab=costs');
+  await screen.findByRole('button', { name: 'Preparation & stock' });
+  expect(
+    screen.queryByRole('button', { name: 'Costs' })
+  ).not.toBeInTheDocument();
+  expect(
+    mockApiCall.mock.calls.some(([endpoint]) =>
+      endpoint.startsWith('/v2/medication-purchases')
+    )
+  ).toBe(false);
 });

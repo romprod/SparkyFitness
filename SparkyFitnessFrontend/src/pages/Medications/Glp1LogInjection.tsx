@@ -4,6 +4,7 @@ import { Syringe } from 'lucide-react';
 import {
   INJECTION_SITES,
   localDateTimeToUtc,
+  utcToLocalDateTimeInput,
   medicationDoseInMg,
   type CalculatedDrawInput,
   positiveDeviceDoseSchema,
@@ -68,7 +69,30 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
         ? String(medicationDoseInMg(med))
         : ''
   );
-  const [injectedAt, setInjectedAt] = useState('');
+  const newTimeDraft = () => {
+    const instant = new Date().toISOString();
+    return {
+      medicationId: medId,
+      value: utcToLocalDateTimeInput(instant, timezone),
+      timezone,
+      automaticInstant: instant as string | null,
+    };
+  };
+  const [timeDraft, setTimeDraft] = useState(newTimeDraft);
+  if (timeDraft.medicationId !== medId) {
+    setTimeDraft(newTimeDraft());
+  } else if (timeDraft.automaticInstant && timeDraft.timezone !== timezone) {
+    // Preferences can load after the form: keep the captured instant, not its
+    // initial browser-zone wall time, when formatting an untouched default.
+    setTimeDraft({
+      ...timeDraft,
+      value: utcToLocalDateTimeInput(timeDraft.automaticInstant, timezone),
+      timezone,
+    });
+  }
+  const injectedAt = timeDraft.value;
+  const setInjectedAt = (value: string) =>
+    setTimeDraft({ ...timeDraft, value, automaticInstant: null });
   const [injectionNotes, setInjectionNotes] = useState('');
   const [penChoice, setPenChoice] = useState<string | null>(null);
   const selectedPen =
@@ -182,7 +206,7 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
           ? { calculated_draw: calculatedInput }
           : { dose_mg: manualDose }),
         injected_at: injectedAt
-          ? localDateTimeToUtc(injectedAt, timezone).toISOString()
+          ? localDateTimeToUtc(injectedAt, timeDraft.timezone).toISOString()
           : undefined,
         pen_id: willDeduct ? effectivePenId : null,
         deduct_pen: willDeduct,
@@ -191,7 +215,7 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
       {
         onSuccess: () => {
           setSelectedSite(null);
-          setInjectedAt('');
+          setTimeDraft(newTimeDraft());
           setInjectionNotes('');
         },
       }

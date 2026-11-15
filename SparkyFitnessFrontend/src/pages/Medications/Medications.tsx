@@ -15,6 +15,7 @@ import {
   Syringe,
   Plus,
   FlaskConical,
+  Receipt,
 } from 'lucide-react';
 import {
   todayInZone,
@@ -45,6 +46,8 @@ import { usePreferences } from '@/contexts/PreferencesContext';
 import type { MedicationDetail } from '@/types/medications';
 import Glp1Coach from './Glp1Coach';
 import PeptideStock from './PeptideStock';
+import MedicationCosts from './MedicationCosts';
+import { useMedicationPurchaseScope } from '@/hooks/useMedicationPurchases';
 import Glp1InventoryManager from './Glp1InventoryManager';
 import Glp1LogInjection from './Glp1LogInjection';
 import Glp1RecentInjections from './Glp1RecentInjections';
@@ -58,14 +61,20 @@ import { formatScheduleDescription } from './medicationUtils';
 
 export default function Medications() {
   const { t } = useTranslation();
+  const purchaseScope = useMedicationPurchaseScope();
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const activeTab =
-    tabParam === 'cabinet' || tabParam === 'stock' || tabParam === 'symptoms'
+    tabParam === 'cabinet' ||
+    tabParam === 'stock' ||
+    tabParam === 'symptoms' ||
+    tabParam === 'costs'
       ? tabParam
       : 'today';
-  const setActiveTab = (tab: 'today' | 'cabinet' | 'stock' | 'symptoms') =>
+  const setActiveTab = (
+    tab: 'today' | 'cabinet' | 'stock' | 'symptoms' | 'costs'
+  ) =>
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
       next.set('tab', tab);
@@ -199,9 +208,22 @@ export default function Medications() {
   const hasExistingData = meds.length > 0 || anySymptoms.length > 0;
   const stillLoading = loadingMeds || loadingSymptoms;
 
-  if (!stillLoading && !hasExistingData && !disclaimerAccepted) {
+  if (
+    !stillLoading &&
+    !hasExistingData &&
+    !disclaimerAccepted &&
+    activeTab !== 'costs'
+  ) {
     return (
-      <MedicationDisclaimer onAccept={() => setDisclaimerAccepted(true)} />
+      <div className="space-y-4">
+        {purchaseScope.ready && (
+          <Button variant="outline" onClick={() => setActiveTab('costs')}>
+            <Receipt className="mr-2 h-4 w-4" />
+            {t('medications.costs.title', 'Costs')}
+          </Button>
+        )}
+        <MedicationDisclaimer onAccept={() => setDisclaimerAccepted(true)} />
+      </div>
     );
   }
 
@@ -268,6 +290,19 @@ export default function Medications() {
               {t('medications.stock.title', 'Preparation & stock')}
             </span>
           </Button>
+          {purchaseScope.ready && (
+            <Button
+              variant={activeTab === 'costs' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab('costs')}
+              className={`rounded-full px-4 h-9 gap-2 transition-all ${activeTab === 'costs' ? 'bg-slate-200/60 dark:bg-muted shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
+            >
+              <Receipt className="w-4 h-4" />
+              <span className="text-xs font-semibold">
+                {t('medications.costs.title', 'Costs')}
+              </span>
+            </Button>
+          )}
           <Button
             variant={activeTab === 'symptoms' ? 'secondary' : 'ghost'}
             size="sm"
@@ -310,12 +345,12 @@ export default function Medications() {
         </div>
 
         {/* Vertical Divider (Desktop Only) */}
-        {activeTab !== 'stock' && (
+        {activeTab !== 'stock' && activeTab !== 'costs' && (
           <div className="hidden lg:block w-px h-6 bg-border" />
         )}
 
         {/* Date Filter */}
-        {activeTab !== 'stock' && (
+        {activeTab !== 'stock' && activeTab !== 'costs' && (
           <div className="shrink-0">
             <DayNavigator
               selectedDate={selectedDate}
@@ -364,6 +399,7 @@ export default function Medications() {
       )}
 
       {activeTab === 'stock' && <PeptideStock meds={meds} />}
+      {activeTab === 'costs' && purchaseScope.ready && <MedicationCosts />}
 
       {activeTab === 'today' && (
         <TodayMedications

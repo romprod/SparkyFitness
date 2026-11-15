@@ -95,6 +95,13 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
           )}
           {isInjectable && (
             <Glp1InventoryCard
+              onCosts={(purchaseId) =>
+                purchaseId
+                  ? navigation.navigate('MedicationPurchaseForm', {
+                      purchaseId,
+                    })
+                  : navigation.navigate('MedicationCosts')
+              }
               medicationId={med.id}
               onAdd={() =>
                 navigation.navigate('Glp1PenForm', { medicationId: med.id })

@@ -171,6 +171,8 @@ import {
   SafePregnancySetup,
   SafeMedicationsList,
   SafeMedicationAdherence,
+  SafeMedicationCosts,
+  SafeMedicationPurchaseForm,
   SafeMedicationEntryEdit,
   SafeMedicationDetail,
   SafeMedicationForm,
@@ -1359,6 +1361,16 @@ function AppContent() {
             name="MedicationsList"
             component={SafeMedicationsList}
             options={createStackScreenOptions(t('screens.medications', { defaultValue: 'Medications' }), { headerBackButtonDisplayMode: 'minimal' })}
+          />
+          <Stack.Screen
+            name="MedicationCosts"
+            component={SafeMedicationCosts}
+            options={createStackScreenOptions(t('medications.costs.title', {defaultValue:'Costs'}), {headerBackButtonDisplayMode:'minimal'})}
+          />
+          <Stack.Screen
+            name="MedicationPurchaseForm"
+            component={SafeMedicationPurchaseForm}
+            options={createStackScreenOptions(t('medications.costs.invoice', {defaultValue:'Invoice'}), {presentation:'modal',headerBackButtonDisplayMode:'minimal',...(Platform.OS === 'android' ? androidModalAnimation : {})})}
           />
           <Stack.Screen
             name="MedicationAdherence"

@@ -8,18 +8,21 @@ import {
 } from '../../utils/glp1';
 import { useMedicationPens } from '../../hooks/useGlp1';
 import { formatDateLabel, getTodayDate } from '../../utils/dateUtils';
+import MedicationVialCostLink from '../medications/MedicationVialCostLink';
 import PreparationSummary from './PreparationSummary';
 
 interface Glp1InventoryCardProps {
   medicationId: string;
   onAdd: () => void;
   onEdit: (penId: string) => void;
+  onCosts?: (purchaseId?: string) => void;
 }
 
 const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
   medicationId,
   onAdd,
   onEdit,
+  onCosts,
 }) => {
   const { t, i18n } = useTranslation();
   const { data: pens = [] } = useMedicationPens(medicationId);
@@ -182,6 +185,9 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
                   )}
                 </View>
               </TouchableOpacity>
+              {pen.kind === 'vial' && onCosts && (
+                <MedicationVialCostLink vialId={pen.id} onOpen={onCosts} />
+              )}
             </View>
           );
         })

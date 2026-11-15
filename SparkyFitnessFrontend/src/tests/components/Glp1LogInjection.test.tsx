@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import {
   computeDraw,
@@ -14,6 +14,7 @@ const mockPreview = jest.fn();
 let mockPens: Partial<MedicationPen>[] = [];
 let mockDefault: string | null = 'syringe';
 let mockFetching = false;
+let mockTimezone = 'Europe/London';
 let mockSyringes: Partial<MedicationSyringe>[] = [];
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: () => ({ data: mockPens }),
@@ -39,7 +40,7 @@ jest.mock('@/hooks/useInjectionSiteSelection', () => ({
   }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
-  usePreferences: () => ({ timezone: 'Europe/London' }),
+  usePreferences: () => ({ timezone: mockTimezone }),
 }));
 jest.mock('@/pages/Medications/InjectionSitePicker', () => ({
   __esModule: true,
@@ -80,6 +81,7 @@ const prep = {
 };
 beforeEach(() => {
   mockLog.mockClear();
+  mockTimezone = 'Europe/London';
   mockDefault = 'syringe';
   mockSyringes = [{ ...syringe, id: 'syringe' }];
   mockFetching = false;
@@ -472,4 +474,91 @@ it('does not invent a pump or use manual injection logging for an unprepared nas
   ).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Log nasal dose' })).toBeDisabled();
   expect(mockPreview.mock.calls.at(-1)?.[1]).toBeNull();
+});
+
+describe('new injection date and time', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-10T23:45:30.456Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const dateInput = (container: HTMLElement) =>
+    container.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+
+  it('starts at the current local clock time rather than the UTC calendar day', () => {
+    const { container } = render(<Glp1LogInjection med={medication} />);
+    expect(dateInput(container)).toHaveValue('2026-07-11T00:45');
+    fireEvent.click(button());
+    expect(mockLog).toHaveBeenCalledWith(
+      expect.objectContaining({ injected_at: '2026-07-10T23:45:00.000Z' }),
+      expect.anything()
+    );
+  });
+
+  it('keeps an explicitly edited time through rerenders and starts a new medication at now', () => {
+    const { container, rerender } = render(
+      <Glp1LogInjection med={medication} />
+    );
+    fireEvent.change(dateInput(container), {
+      target: { value: '2026-07-09T09:15' },
+    });
+    jest.setSystemTime(new Date('2026-07-12T12:30:00Z'));
+    rerender(<Glp1LogInjection med={medication} />);
+    expect(dateInput(container)).toHaveValue('2026-07-09T09:15');
+    fireEvent.click(button());
+    expect(mockLog).toHaveBeenCalledWith(
+      expect.objectContaining({ injected_at: '2026-07-09T08:15:00.000Z' }),
+      expect.anything()
+    );
+    rerender(<Glp1LogInjection med={{ ...medication, id: 'another-med' }} />);
+    expect(dateInput(container)).toHaveValue('2026-07-12T13:30');
+  });
+
+  it('uses a fresh current time on reopening and after successful logging', () => {
+    const first = render(<Glp1LogInjection med={medication} />);
+    first.unmount();
+    jest.setSystemTime(new Date('2026-07-12T12:30:00Z'));
+    const { container } = render(<Glp1LogInjection med={medication} />);
+    expect(dateInput(container)).toHaveValue('2026-07-12T13:30');
+    fireEvent.click(button());
+    jest.setSystemTime(new Date('2026-07-12T13:40:00Z'));
+    act(() => mockLog.mock.calls[0][1].onSuccess());
+    expect(dateInput(container)).toHaveValue('2026-07-12T14:40');
+  });
+});
+
+it('reformats an untouched current-time default when saved timezone preferences load', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-07-10T23:45:30.456Z'));
+  mockTimezone = 'UTC';
+  const { container, rerender } = render(<Glp1LogInjection med={medication} />);
+  const input = () =>
+    container.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+  expect(input()).toHaveValue('2026-07-10T23:45');
+  mockTimezone = 'Asia/Tokyo';
+  rerender(<Glp1LogInjection med={medication} />);
+  expect(input()).toHaveValue('2026-07-11T08:45');
+  fireEvent.click(button());
+  expect(mockLog).toHaveBeenCalledWith(
+    expect.objectContaining({ injected_at: '2026-07-10T23:45:00.000Z' }),
+    expect.anything()
+  );
+  jest.useRealTimers();
+});
+
+it('keeps an explicitly entered datetime and its zone when preferences change', () => {
+  mockTimezone = 'UTC';
+  const { container, rerender } = render(<Glp1LogInjection med={medication} />);
+  const input = () =>
+    container.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+  fireEvent.change(input(), { target: { value: '2026-07-09T09:15' } });
+  mockTimezone = 'Asia/Tokyo';
+  rerender(<Glp1LogInjection med={medication} />);
+  expect(input()).toHaveValue('2026-07-09T09:15');
+  fireEvent.click(button());
+  expect(mockLog).toHaveBeenCalledWith(
+    expect.objectContaining({ injected_at: '2026-07-09T09:15:00.000Z' }),
+    expect.anything()
+  );
 });

@@ -161,7 +161,7 @@ D04/D05 uses separate reusable syringe settings/default and shared decimal half-
 
 D06 uses the canonical preview for syringe/pen/pump presentation and target-unit details, with device capacity and increment from the same response. Keep dose tooling in Cabinet and stock-only tooling in Preparation & stock. L02 compares the latest three explicit imported or manual panels in Labs, preserving stable marker/assay identity and Sparky units/ranges/qualifiers; ungrouped manual/FHIR-labelled results remain in marker history. Do not invent date panels, merge CRP assays or add arbitrary filters. The original matrix is an optional-design capability; Sparky retains its own theme and placement. Source API-only re-preparation and a full generic dose-revision audit remain deferred. Existing I05/D09 reconciliation must not trigger a new spill/priming or generic adjustment ledger.
 
-`pages/Labs/LabComparison.tsx` sits above the existing Labs grid and uses `useLabComparison` / `listLabComparison` over `GET /api/v2/lab-results/panels/latest`. Shared `buildLabComparison` shapes existing imported reports; loading, empty and error states stay within Labs.
+`pages/Labs/LabComparison.tsx` sits above the existing Labs grid and uses `useLabComparison` / `listLabComparison` over `GET /api/v2/lab-results/panels/latest`. Shared `buildLabComparison` shapes explicit imported or manual panels; loading, empty and error states stay within Labs.
 
 `pages/Medications/SyringeDrawFigure.tsx` renders target fill and the existing measurable marking from the canonical preview; `MedicationDrawPreview.tsx` also renders shared target-unit display values.
 
@@ -172,3 +172,9 @@ Preserve the pinned source ad-hoc preview affordance: selected vial/device can s
 ## Prepared medication device flow
 
 Reusable syringe, pen and pump settings are separate from preparations. Global source devices are read-only; account-owned devices use existing medication permissions and the preferred device is owner-scoped. Keep explicit Manual for legacy injection logging, valid preferred/first automatic choice for untouched forms, and no fabricated device. Resolve prepared injection versus nasal administration from the medication route/type on the server; device choice must not change route or GLP-1 model eligibility. Nasal preparation logging requires a pump and stores no injection site. Render figures and markings from matching authoritative preview metadata, never stale manager state. Native source validation is not native binary distribution.
+
+## Private invoice flows
+
+Medications → Costs uses the dedicated owner-only medication-purchases API and shared exact allocation contracts. Bind drafts, requests and retry receipts to the authenticated owner; financial data must not appear in delegated profiles. Financial controls and queries wait for fresh authoritative `/identity/user` proof for this actor/profile; do not treat the transient self fallback from `useAuth` as proof. Keep an uncertain create's original payload/operation ID available for retry rather than creating a new invoice. Revision conflicts require reload/review. Link only existing matching vials; overmatching purchased quantity warns without changing stock. No OCR, automatic inventory creation, consumed/waste/course dashboard or currency conversion is included.
+
+`pages/Medications/MedicationCosts.tsx`, `MedicationPurchaseForm.tsx` and `MedicationVialCostLink.tsx` provide the ledger/editor/stock link, with `api/Medications/purchaseService.ts` and `hooks/useMedicationPurchases.ts`. Keep existing Cabinet dose logging/history and stock tools in their current tabs.

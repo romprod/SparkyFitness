@@ -31,6 +31,7 @@ import {
 } from '@/hooks/useMedications';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import SavedPreparation from './SavedPreparation';
+import MedicationVialCostLink from './MedicationVialCostLink';
 import MedicationBudWarning from './MedicationBudWarning';
 import MedicationPreparationWizard from './MedicationPreparationWizard';
 import type {
@@ -421,6 +422,7 @@ export default function Glp1InventoryManager({
           </div>
         )}
         {p.preparation && <SavedPreparation preparation={p.preparation} />}
+        {p.kind === 'vial' && <MedicationVialCostLink penId={p.id} />}
         {p.kind === 'vial' && (p.preparation || p.doses_used === 0) && (
           <Button
             className="mt-2"

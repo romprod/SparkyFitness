@@ -516,6 +516,8 @@ export type RootStackParamList = {
   WhatsNew: undefined;
   MedicationsList: undefined;
   MedicationAdherence: undefined;
+  MedicationCosts: undefined;
+  MedicationPurchaseForm: { purchaseId?: string };
   MedicationEntryEdit:
     | { entry: MedicationEntry }
     | { injection: InjectionEntry; medicationName?: string };

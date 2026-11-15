@@ -6,6 +6,10 @@ import type { Medication, MedicationPen } from '@/types/medications';
 const mockSave = jest.fn();
 const mockUpdate = jest.fn();
 let mockPens: Partial<MedicationPen>[] = [];
+jest.mock('@/pages/Medications/MedicationVialCostLink', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: () => ({ data: mockPens }),
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),

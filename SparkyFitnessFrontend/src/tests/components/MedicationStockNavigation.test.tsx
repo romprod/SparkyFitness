@@ -2,6 +2,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import Medications from '@/pages/Medications/Medications';
+jest.mock('@/hooks/useMedicationPurchases', () => ({
+  useMedicationPurchaseScope: () => ({ ready: false, ownerId: '' }),
+}));
 jest.mock('@/components/DayNavigator', () => ({
   __esModule: true,
   default: () => null,

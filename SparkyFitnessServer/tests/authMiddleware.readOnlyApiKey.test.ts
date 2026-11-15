@@ -123,6 +123,19 @@ describe('authenticate: read-only API keys (#2678)', () => {
       mockGetApiKeyPermissions.mockResolvedValue(READ_ONLY);
     });
 
+    it('allows owner invoice reads using existing app-wide key scope', async () => {
+      const { res, next } = await run('GET', '/api/v2/medication-purchases');
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBeNull();
+    });
+    it.each(['POST', 'PATCH', 'DELETE'])(
+      'refuses read-only invoice %s',
+      async (method) => {
+        const { res, next } = await run(method, '/api/v2/medication-purchases');
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(403);
+      }
+    );
     it('allows GET requests and marks the request', async () => {
       const { req, res, next } = await run('GET', '/api/foods?search=x');
       expect(next).toHaveBeenCalledTimes(1);

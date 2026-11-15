@@ -1,0 +1,68 @@
+import { apiCall } from '@/api/api';
+import type {
+  MedicationPurchaseCreateInput,
+  MedicationPurchaseDeleteInput,
+  MedicationPurchaseEditorData,
+  MedicationPurchaseUpdateInput,
+  MedicationPurchaseView,
+  MedicationVialCost,
+} from '@workspace/shared';
+
+const base = '/v2/medication-purchases';
+/** Existing nonfinancial identity endpoint, including the authenticated actor. */
+export const getMedicationPurchaseIdentity = (
+  signal?: AbortSignal
+): Promise<{ authenticatedUserId: string; activeUserId: string }> =>
+  apiCall('/identity/user', {
+    method: 'GET',
+    signal,
+    suppressErrorToast: true,
+  });
+export const listMedicationPurchases = (
+  ownerId: string
+): Promise<{ purchases: MedicationPurchaseView[] }> =>
+  apiCall(base, { method: 'GET', params: { expected_owner_id: ownerId } });
+export const getMedicationPurchase = (
+  ownerId: string,
+  id: string
+): Promise<MedicationPurchaseView> =>
+  apiCall(`${base}/${id}`, {
+    method: 'GET',
+    params: { expected_owner_id: ownerId },
+  });
+export const getMedicationPurchaseEditorData = (
+  ownerId: string,
+  purchaseId?: string
+): Promise<MedicationPurchaseEditorData> =>
+  apiCall(`${base}/editor-data`, {
+    method: 'GET',
+    params: {
+      expected_owner_id: ownerId,
+      ...(purchaseId ? { purchase_id: purchaseId } : {}),
+    },
+  });
+export const getMedicationVialCosts = (
+  ownerId: string
+): Promise<{ vials: MedicationVialCost[] }> =>
+  apiCall(`${base}/vial-costs`, {
+    method: 'GET',
+    params: { expected_owner_id: ownerId },
+  });
+export const createMedicationPurchase = (
+  body: MedicationPurchaseCreateInput
+): Promise<MedicationPurchaseView> =>
+  apiCall(base, { method: 'POST', body, suppressErrorToast: true });
+export const updateMedicationPurchase = (
+  id: string,
+  body: MedicationPurchaseUpdateInput
+): Promise<MedicationPurchaseView> =>
+  apiCall(`${base}/${id}`, { method: 'PATCH', body, suppressErrorToast: true });
+export const deleteMedicationPurchase = (
+  id: string,
+  body: MedicationPurchaseDeleteInput
+): Promise<void> =>
+  apiCall(`${base}/${id}`, {
+    method: 'DELETE',
+    body,
+    suppressErrorToast: true,
+  });

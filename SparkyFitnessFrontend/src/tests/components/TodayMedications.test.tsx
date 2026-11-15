@@ -192,3 +192,58 @@ it('deducts a scheduled non-GLP-1 peptide dose with micrograms converted to mg',
     expect.anything()
   );
 });
+
+describe('quick injection prompt time', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-10T23:45:30.456Z'));
+    mockTimezone = 'Asia/Tokyo';
+    mockLogInjection.mockClear();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const renderQuick = (selectedDate: string) => {
+    const med = medWithDose('09:00');
+    med.type_id = 'injection';
+    med.dose_unit = 'mg';
+    return render(
+      <TodayMedications
+        selectedDate={selectedDate}
+        today="2026-07-11"
+        meds={[med]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+  };
+
+  it('captures the current instant when a new current-day prompt opens', () => {
+    renderQuick('2026-07-11');
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    jest.setSystemTime(new Date('2026-07-11T00:10:00Z'));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm injection' }));
+    expect(mockLogInjection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        injected_at: '2026-07-10T23:45:30.456Z',
+        entry_date: '2026-07-11',
+      }),
+      expect.anything()
+    );
+  });
+
+  it('preserves a deliberately selected historical calendar day', () => {
+    renderQuick('2026-07-08');
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm injection' }));
+    expect(mockLogInjection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        injected_at: '2026-07-08T12:00:00.000Z',
+        entry_date: '2026-07-08',
+      }),
+      expect.anything()
+    );
+  });
+});

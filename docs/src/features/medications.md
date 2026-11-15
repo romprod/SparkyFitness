@@ -112,3 +112,11 @@ Use the existing inventory controls to mark stock finished or discarded, or edit
 ### Dose units
 
 Preparation and vial stock use mg and mL. A saved default dose in mcg (including µg/μg) is divided by 1,000 before it fills a dose field in mg or is deducted from stock. Gram doses are multiplied by 1,000. For non-GLP-1 mass-based injectables, the daily Log tab also deducts stock using the scheduled dose amount when one is present. Default volume, device units and unspecified peptide units are never assumed to mean mg. Use the calibrated preparation/device flow to convert supported volume or markings, or enter an explicit mg dose in legacy manual mode. Existing GLP-1 records without a dose unit retain their legacy mg interpretation.
+
+## Medication invoices
+
+The invoice flow is implemented and tested; instance deployment verification is recorded separately. Open **Medications → Costs** to enter an invoice with its own currency, vendor, ordered/received dates, reference and notes. Add medication or consumable lines, quantities and unit prices. Shipping, tax, fees and discounts are entered once; choose allocation by line value, quantity or no allocation and review the resulting landed costs. Currency is editable and defaults to AUD, following the reference app; invoices are not converted or totalled across different currencies.
+
+Match existing vials to medication lines from the invoice or Preparation & stock. The purchased quantity determines the per-vial allocation even when only some vials have been entered. Linking more vials than purchased produces a warning, rather than changing stock or imposing a quantity cap. A linked zero-priced vial is distinct from a vial with no invoice linkage. Unlinking or deleting an invoice preserves vials, preparations, dose history and remaining quantities.
+
+Consumable lines need a description; complete it or remove an unused row. After an uncertain save, retry the same invoice. Reload/review when another change produces a conflict. Invoices are private to the authenticated owner and are not included in medication/report sharing. The selected flow includes no invoice OCR, automatic vial creation, consumed-dose/waste/course dashboard or currency conversion.

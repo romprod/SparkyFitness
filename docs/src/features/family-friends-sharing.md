@@ -130,3 +130,7 @@ If someone else still uses the item — they have logged it, or it sits in their
 ### 7. Meal-to-Meal Composition
 
 A meal's ingredient list can link another reusable meal (e.g. a sauce or side) instead of a plain food. Linking a sub-meal into a parent meal requires the same library access to the sub-meal that reading it directly would require — you cannot link a sub-meal you cannot otherwise view. This check applies independently of, and in addition to, owning the parent meal.
+
+## Medication purchase privacy
+
+Invoice headers, medication/consumable lines, vial associations and operation receipts are private to the authenticated owner. Medication-management and report-sharing grants do not expose them. The Costs API rejects delegated/switched profile contexts; switch back to your own profile to use your invoices. Linking or unlinking an existing vial changes its invoice association only, not its remaining stock or dose history.

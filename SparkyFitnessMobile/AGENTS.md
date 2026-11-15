@@ -503,7 +503,7 @@ D04/D05 uses separate reusable syringe settings/default and shared decimal half-
 
 D06 uses the canonical preview for syringe/pen/pump presentation and target-unit details, with device capacity and increment from the same response. Keep dose tooling in Cabinet and stock-only tooling in Preparation & stock. L02 compares the latest three explicit imported or manual panels in Labs, preserving stable marker/assay identity and Sparky units/ranges/qualifiers; ungrouped manual/FHIR-labelled results remain in marker history. Do not invent date panels, merge CRP assays or add arbitrary filters. The original matrix is an optional-design capability; Sparky retains its own theme and placement. Source API-only re-preparation and a full generic dose-revision audit remain deferred. Existing I05/D09 reconciliation must not trigger a new spill/priming or generic adjustment ledger.
 
-`components/glp1/SyringeVisual.tsx` presents the canonical target preview and same-response capacity. `components/labs/LabComparisonCard.tsx` is mounted in `LabResultsScreen.tsx`; `useLabComparison` in `useLabResults.ts` reads the latest imported reports through `fetchLabComparison` and shares `buildLabComparison` semantics with web.
+`components/glp1/SyringeVisual.tsx` presents the canonical target preview and same-response capacity. `components/labs/LabComparisonCard.tsx` is mounted in `LabResultsScreen.tsx`; `useLabComparison` in `useLabResults.ts` reads the latest explicit imported or manual panels through `fetchLabComparison` and shares `buildLabComparison` semantics with web.
 
 ## Syringe preview flow follow-up
 
@@ -512,3 +512,9 @@ Preserve the pinned source ad-hoc preview affordance: selected vial/device can s
 ## Prepared medication device flow
 
 Reusable syringe, pen and pump settings are separate from preparations. Global source devices are read-only; account-owned devices use existing medication permissions and the preferred device is owner-scoped. Keep explicit Manual for legacy injection logging, valid preferred/first automatic choice for untouched forms, and no fabricated device. Resolve prepared injection versus nasal administration from the medication route/type on the server; device choice must not change route or GLP-1 model eligibility. Nasal preparation logging requires a pump and stores no injection site. Render figures and markings from matching authoritative preview metadata, never stale manager state. Native source validation is not native binary distribution.
+
+## Private invoice flows
+
+Medications → Costs uses the dedicated owner-only medication-purchases API and shared exact allocation contracts. Bind drafts, requests and retry receipts to the authenticated owner; financial data must not appear in delegated profiles. Keep an uncertain create's original payload/operation ID available for retry rather than creating a new invoice. Revision conflicts require reload/review. Link only existing matching vials; overmatching purchased quantity warns without changing stock. No OCR, automatic inventory creation, consumed/waste/course dashboard or currency conversion is included.
+
+`MedicationCostsScreen.tsx` and `MedicationPurchaseFormScreen.tsx` use `components/medications/MedicationPurchaseEditor.tsx`, `hooks/useMedicationPurchases.ts` and `services/api/medicationPurchasesApi.ts` inside the existing Medications stack. Native source tests are not a distributed app binary.

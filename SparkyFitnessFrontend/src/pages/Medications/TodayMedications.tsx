@@ -141,6 +141,7 @@ export default function TodayMedications({
     medication: MedicationDetail;
     doseMg?: number | null;
     takenAt: string;
+    entryDate: string;
     noteKey: string;
     notes: string | null;
   } | null>(null);
@@ -569,6 +570,7 @@ export default function TodayMedications({
               due.schedule.dose_amount ?? due.medication.dose_amount
             ),
         takenAt,
+        entryDate: selectedDate,
         noteKey: due.schedule.id,
         notes: notesVal,
       });
@@ -611,6 +613,7 @@ export default function TodayMedications({
           ? undefined
           : medicationDoseInMg(med, prnSched?.dose_amount ?? med.dose_amount),
         takenAt,
+        entryDate: selectedDate,
         noteKey: schedId,
         notes: notesVal,
       });
@@ -632,12 +635,13 @@ export default function TodayMedications({
 
   const handleConfirmQuickLog = (site: string | null) => {
     if (!pendingInjection) return;
-    const { medication, doseMg, takenAt, noteKey, notes } = pendingInjection;
+    const { medication, doseMg, takenAt, entryDate, noteKey, notes } =
+      pendingInjection;
     logInjectionMutation.mutate(
       {
         medication_id: medication.id,
         injected_at: takenAt,
-        entry_date: selectedDate,
+        entry_date: entryDate,
         deduct_pen: true,
         ...(doseMg === undefined ? {} : { dose_mg: doseMg }),
         site,

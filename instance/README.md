@@ -2,7 +2,7 @@
 
 This fork keeps the existing v1.12.1 customisations in Git and records the peptide feature research as a backlog.
 The baseline contains the existing chart, diary, reporting and Garmin changes.
-Preparation calculations and dose-linked stock are implemented. Preparation records, lot/storage metadata and explicit beyond-use dates extend that foundation; cost and forecast work remains proposed.
+Preparation calculations and dose-linked stock are implemented. Preparation records, lot/storage metadata and explicit beyond-use dates extend that foundation; invoice-ledger/allocation and existing-vial matching are implemented and tested; forecasts remain proposed.
 
 ## Branches and remotes
 
@@ -69,7 +69,9 @@ The [deployed-reference review](deployed-reference-review.md) anchors the broade
 
 The original comparison is pinned to v1.28.1 at [`1caffbcfa`](https://github.com/kavo91/peptide-pitstop/commit/1caffbcfaeb4ccaccee9806a37d169e013328528). The actual deployed reference is [`b305c4c95`](https://github.com/kavo91/peptide-pitstop/commit/b305c4c95f2118051c0e03f719d9330bfe3f9818), active design `current` and optional prescription wizard disabled. All 581 application source files match the earlier review pin. Verify the deployed revision and active flags before claiming parity; exact-source synthetic screens are distinct from an observed signed-in owner account.
 
-Suggested order for selecting small feature branches:
+Current invoice tranche: **C01/C02/bounded C06 invoice ledger, landed-cost allocation and matching existing vials**, inside Medications → Costs with Preparation & stock links. Source implementation, isolated tests and synthetic full-screen verification are complete; live deployment readback is recorded separately. Each invoice retains its editable currency (source default AUD); financial records are owner-only. This tranche adds no OCR, automatic inventory creation, consumed/waste/course dashboard, mixed-currency total or FX conversion. Wider C06 prescription fallback remains deferred. P05/P06 protocol revisions/lifecycle follow before schedule-aware forecasts.
+
+Research dependencies, rather than a list of outstanding implementation tasks:
 
 | Work package                                 | Backlog IDs             | Dependency                                                       |
 | -------------------------------------------- | ----------------------- | ---------------------------------------------------------------- |

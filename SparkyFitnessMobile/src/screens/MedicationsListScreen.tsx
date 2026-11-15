@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCSSVariable } from 'uniwind';
 import { useActiveWorkoutBarPadding } from '../components/ActiveWorkoutBar';
+import { useMedicationCostsAccess } from '../hooks/useMedicationPurchases';
 import { useMedications } from '../hooks/useMedications';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import { useScreenHeader } from '../hooks/useScreenHeader';
@@ -34,6 +35,7 @@ const MedicationsListScreen: React.FC<MedicationsListScreenProps> = ({
   navigation,
 }) => {
   const { t } = useTranslation();
+  const costsAccess = useMedicationCostsAccess();
   const insets = useSafeAreaInsets();
   const usesNativeHeader = useNativeIOSHeadersActive();
   const activeWorkoutBarPadding = useActiveWorkoutBarPadding('stack');
@@ -152,6 +154,25 @@ const MedicationsListScreen: React.FC<MedicationsListScreenProps> = ({
       style={usesNativeHeader ? undefined : { paddingTop: insets.top }}
     >
       {header}
+      {costsAccess.ownerId && (
+        <TouchableOpacity
+          className="mx-4 mb-3 flex-row items-center rounded-xl bg-surface px-4 py-3 shadow-sm"
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('MedicationCosts')}
+        >
+          <View className="flex-1">
+            <Text className="text-base font-semibold text-text-primary">
+              {t('medications.costs.title', { defaultValue: 'Costs' })}
+            </Text>
+            <Text className="mt-0.5 text-xs text-text-secondary">
+              {t('medications.costs.subtitle', {
+                defaultValue: 'Invoices, consumables and matched vial costs',
+              })}
+            </Text>
+          </View>
+          <Icon name="chevron-forward" size={14} color={iconDecorative} />
+        </TouchableOpacity>
+      )}
       {isLoading ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-text-muted text-base">

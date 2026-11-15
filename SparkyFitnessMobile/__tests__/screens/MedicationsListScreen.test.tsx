@@ -8,6 +8,10 @@ import type { MedicationDetail, MedicationSchedule } from '@workspace/shared';
 import type { RootStackScreenProps } from '../../src/types/navigation';
 
 type ScreenProps = RootStackScreenProps<'MedicationsList'>;
+let mockCostsOwner: string | null = 'owner';
+jest.mock('../../src/hooks/useMedicationPurchases', () => ({
+  useMedicationCostsAccess: () => ({ ownerId: mockCostsOwner }),
+}));
 
 jest.mock('../../src/hooks/useMedications', () => ({
   useMedications: jest.fn(),
@@ -155,6 +159,7 @@ function setupScreen(medications: MedicationDetail[]) {
 
 describe('MedicationsListScreen', () => {
   beforeEach(() => {
+    mockCostsOwner = 'owner';
     jest.clearAllMocks();
   });
 
@@ -347,5 +352,15 @@ describe('MedicationsListScreen', () => {
     expect(screen.getByText('Failed to load medications.')).toBeTruthy();
     fireEvent.press(screen.getByText('Retry'));
     expect(refetch).toHaveBeenCalled();
+  });
+  it('Costs remains discoverable with no medications for a consumable-only invoice', () => {
+    const screen = setupScreen([]);
+    fireEvent.press(screen.getByText('Costs'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('MedicationCosts');
+  });
+  it('Costs entry is absent when the account access check is unknown or delegated', () => {
+    mockCostsOwner = null;
+    const screen = setupScreen([]);
+    expect(screen.queryByText('Costs')).toBeNull();
   });
 });
