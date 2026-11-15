@@ -187,7 +187,7 @@ export const useDeleteTitrationStepMutation = (medId: string) => {
 export const useSerumCurve = (medId: string) =>
   useQuery({
     queryKey: medKeys.serumCurve(medId),
-    queryFn: () => medicationService.getSerumCurve(medId),
+    queryFn: () => medicationService.getSerumCurve(medId, { stepDays: 1 / 12 }),
     meta: {
       errorMessage: i18n.t(
         'hooks.useMedications.failedToLoadSerumCurve',
