@@ -1,4 +1,8 @@
-import { parseLabValue, type LabResultResponse } from '@workspace/shared';
+import {
+  exactLabResultValue,
+  parseLabValue,
+  type LabResultResponse,
+} from '@workspace/shared';
 
 // A formatted value is also what a field is prefilled with, so it must parse
 // back unchanged: no grouping ("250,000" would read as 250), Latin digits
@@ -53,11 +57,15 @@ export const formatLabRange = (
   return null;
 };
 
-/** The number with its unit, else the text value. */
-export const labResultText = (result: LabResultResponse): string =>
-  result.value_numeric !== null
-    ? formatLabValue(result.value_numeric, result.unit)
-    : (result.value_text ?? '');
+/** Preserve a qualified/categorical value instead of inventing an exact number. */
+export const labResultText = (
+  result: Pick<LabResultResponse, 'value_numeric' | 'value_text' | 'unit'>
+): string => {
+  const numeric = exactLabResultValue(result);
+  if (numeric !== null) return formatLabValue(numeric, result.unit);
+  const raw = result.value_text ?? '';
+  return raw && result.unit ? `${raw} ${result.unit}` : raw;
+};
 
 /** The base64 payload of a file, without the `data:...;base64,` prefix. */
 export const readFileAsBase64 = (file: File): Promise<string> =>

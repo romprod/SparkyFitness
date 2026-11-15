@@ -189,7 +189,28 @@ describe('formatting', () => {
     );
     expect(
       labResultText(result({ value_numeric: null, value_text: 'Negative' }))
-    ).toBe('Negative');
+    ).toBe('Negative %');
+  });
+});
+
+describe('qualified lab values', () => {
+  it.each(['<3', '>3', '≤3', '≥3', 'Negative'])(
+    'preserves dual-field raw value %s with its unit',
+    (raw) => {
+      const row = result({ value_numeric: 3, value_text: raw, unit: 'mg/L' });
+      expect(labResultText(row)).toBe(`${raw} mg/L`);
+      expect(
+        labResultStatus(row, { ref_range_low: 4, ref_range_high: 5 })
+      ).toBe('unknown');
+      expect(labHistoryPoints([row], 'mg/L')).toEqual([]);
+    }
+  );
+  it('keeps a matching exact numeric raw value locale formatted', () => {
+    expect(
+      labResultText(
+        result({ value_numeric: 1234.5, value_text: '1234.5', unit: 'mg/L' })
+      )
+    ).toBe('1,234.5 mg/L');
   });
 });
 

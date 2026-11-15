@@ -15,7 +15,7 @@ import {
   customMarkerId,
   effectiveLabRange,
   labPresetName,
-  parseLabValue,
+  exactLabResultValue,
   sameLabUnit,
   type LabMarkerLabels,
 } from './labResults.ts';
@@ -41,17 +41,6 @@ const rowId = (r: LabComparisonResult) =>
     : r.custom_marker_id
       ? customMarkerId(r.custom_marker_id)
       : null;
-/** A qualified/text result remains text, never a fabricated exact measurement. */
-function exactNumber(result: LabComparisonResult): number | null {
-  if (result.value_numeric === null || !Number.isFinite(result.value_numeric))
-    return null;
-  if (
-    result.value_text?.trim() &&
-    parseLabValue(result.value_text) !== result.value_numeric
-  )
-    return null;
-  return result.value_numeric;
-}
 function validRange(range: Range) {
   return (
     [range.low, range.high].every(
@@ -122,7 +111,7 @@ export function buildLabComparison(
           improved: null,
         };
       const range = effectiveLabRange(result, fallback);
-      const value = exactNumber(result);
+      const value = exactLabResultValue(result);
       return {
         result,
         unit:
@@ -147,8 +136,8 @@ export function buildLabComparison(
       prior.unit.trim() !== '' &&
       sameLabUnit(now.unit, prior.unit, latest.marker_key)
     ) {
-      const current = exactNumber(now.result),
-        previous = exactNumber(prior.result);
+      const current = exactLabResultValue(now.result),
+        previous = exactLabResultValue(prior.result);
       const range =
         now.range.low !== null || now.range.high !== null
           ? now.range

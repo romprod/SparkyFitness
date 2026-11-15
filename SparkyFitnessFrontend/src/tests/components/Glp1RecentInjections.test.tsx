@@ -10,6 +10,8 @@ import Glp1RecentInjections from '@/pages/Medications/Glp1RecentInjections';
 const mockUpdate = jest.fn();
 const mockPreview = jest.fn();
 let mockEntries: InjectionEntry[] = [];
+let mockTimezone = 'Europe/London';
+let mockTimeFormat = 'HH:mm';
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationInjections: () => ({ data: mockEntries }),
   useUpdateInjectionMutation: () => ({ mutate: mockUpdate, isPending: false }),
@@ -26,7 +28,8 @@ jest.mock('@/hooks/useMedicationSyringes', () => ({
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({
-    timezone: 'Europe/London',
+    timezone: mockTimezone,
+    timeFormat: mockTimeFormat,
     formatDate: (date: string) => date,
   }),
 }));
@@ -41,6 +44,8 @@ const syringe = {
 };
 beforeEach(() => {
   mockUpdate.mockClear();
+  mockTimezone = 'Europe/London';
+  mockTimeFormat = 'HH:mm';
   mockEntries = [
     {
       id: 'entry',
@@ -76,8 +81,9 @@ beforeEach(() => {
   );
 });
 function open() {
-  render(<Glp1RecentInjections med={medication} />);
+  const result = render(<Glp1RecentInjections med={medication} />);
   fireEvent.click(screen.getByRole('button', { name: 'Edit injection entry' }));
+  return result;
 }
 it('omits unchanged dose on metadata edits, including when the original syringe was deleted', () => {
   mockEntries[0]!.syringe_id = null;
@@ -141,4 +147,94 @@ it('keeps a neutral figure for an unchanged calculated entry without reinterpret
   expect(mockPreview).toHaveBeenLastCalledWith(null, null);
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('dose_mg');
+});
+
+it.each(['UTC', 'Asia/Tokyo'])(
+  'preserves timestamp precision and frozen tracking day on notes-only edits in %s',
+  (timezone) => {
+    mockTimezone = timezone;
+    mockEntries[0]!.injected_at = '2026-10-14T23:30:45.678Z';
+    mockEntries[0]!.entry_date = '2026-10-14';
+    open();
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Metadata correction' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(mockUpdate.mock.calls[0][0].body).toEqual({
+      site: 'abdomen_left',
+      notes: 'Metadata correction',
+    });
+  }
+);
+
+it('omits timestamp and frozen tracking day when only the site changes', () => {
+  mockTimezone = 'Asia/Tokyo';
+  mockEntries[0]!.injected_at = '2026-10-14T23:30:45.678Z';
+  mockEntries[0]!.entry_date = '2026-10-14';
+  open();
+  fireEvent.click(screen.getByRole('combobox'));
+  fireEvent.click(screen.getByRole('option', { name: '—' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mockUpdate.mock.calls[0][0].body).toEqual({ site: null, notes: null });
+});
+
+it('omits timestamp and frozen tracking day on an amount-only correction', () => {
+  mockTimezone = 'Asia/Tokyo';
+  mockEntries[0]!.injected_at = '2026-10-14T23:30:45.678Z';
+  mockEntries[0]!.entry_date = '2026-10-14';
+  open();
+  fireEvent.change(screen.getByLabelText('Dose (mg)'), {
+    target: { value: '0.4' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mockUpdate.mock.calls[0][0].body).toEqual({
+    site: 'abdomen_left',
+    dose_mg: 0.4,
+    notes: null,
+  });
+});
+
+it.each(['HH:mm', 'h:mm A'])(
+  'submits an explicitly edited clock segment with the selected %s clock format',
+  (timeFormat) => {
+    mockTimezone = 'Asia/Tokyo';
+    mockTimeFormat = timeFormat;
+    mockEntries[0]!.injected_at = '2026-10-14T23:30:45.678Z';
+    mockEntries[0]!.entry_date = '2026-10-14';
+    open();
+    const minute = screen.getByRole('spinbutton', { name: /minute/i });
+    fireEvent.keyDown(minute, { key: 'ArrowUp' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(mockUpdate.mock.calls[0][0].body).toEqual({
+      site: 'abdomen_left',
+      injected_at: '2026-10-14T23:31:00.000Z',
+      entry_date: '2026-10-15',
+      notes: null,
+    });
+  }
+);
+
+it('submits a deliberately chosen native date/time and resets touch state on reopening', () => {
+  mockTimezone = 'Asia/Tokyo';
+  mockEntries[0]!.injected_at = '2026-10-14T23:30:45.678Z';
+  mockEntries[0]!.entry_date = '2026-10-14';
+  open();
+  const picker = document.querySelector<HTMLInputElement>(
+    'input[type="datetime-local"][aria-hidden="true"]'
+  )!;
+  fireEvent.change(picker, { target: { value: '2026-10-16T18:45' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mockUpdate.mock.calls[0][0].body).toEqual({
+    site: 'abdomen_left',
+    injected_at: '2026-10-16T09:45:00.000Z',
+    entry_date: '2026-10-16',
+    notes: null,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit injection entry' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mockUpdate.mock.calls[1][0].body).toEqual({
+    site: 'abdomen_left',
+    notes: null,
+  });
 });

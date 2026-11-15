@@ -128,6 +128,27 @@ describe('persisted preparation contract', () => {
       repository.updatePen('owner', 'vial', { preparation: prep })
     ).rejects.toThrow('Only unused');
   });
+  it('rejects declaring used stock while attaching a legacy preparation in the same patch', async () => {
+    query
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ rows: [{ kind: 'vial', doses_used: 0 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+      .mockResolvedValueOnce({});
+    await expect(
+      repository.updatePen('owner', 'vial', {
+        preparation: prep,
+        doses_used: 2,
+        label: 'Not saved',
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(query).toHaveBeenCalledWith('ROLLBACK');
+    expect(
+      query.mock.calls.some(([sql]) =>
+        /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)
+      )
+    ).toBe(false);
+  });
   it('preserves injection-linked inventory on deletion', async () => {
     query
       .mockResolvedValueOnce({})

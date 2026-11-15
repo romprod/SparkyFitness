@@ -1,10 +1,18 @@
-import { parseLabValue } from '@workspace/shared';
+import {
+  parseLabValue,
+  exactLabResultValue,
+  labResultStatus,
+  labPlottedResults,
+  labHistoryPoints,
+} from '@workspace/shared';
 import {
   formatLabRange,
   formatLabValue,
   labNumber,
+  labResultText,
   readFileAsBase64,
 } from '@/pages/Labs/labFormat';
+import { result } from './labsTestKit';
 
 describe('labFormat', () => {
   it('keeps the decimals a value was entered with', () => {
@@ -30,6 +38,39 @@ describe('labFormat', () => {
     expect(formatLabRange(null, 200, 'mg/dL')).toBe('≤ 200 mg/dL');
     expect(formatLabRange(40, null, 'mg/dL')).toBe('≥ 40 mg/dL');
     expect(formatLabRange(null, null, '%')).toBeNull();
+  });
+
+  it.each(['<3', '>3', '≤3', '≥3', '<=3', '>=3', 'Negative'])(
+    'preserves %s and excludes its legacy number from flags and plotted points',
+    (raw) => {
+      const saved = result({ value_numeric: 3, value_text: raw });
+      expect(labResultText(saved)).toBe(`${raw} %`);
+      expect(exactLabResultValue(saved)).toBeNull();
+      expect(
+        labResultStatus(saved, { ref_range_low: 4, ref_range_high: 5.6 })
+      ).toBe('unknown');
+      expect(labPlottedResults([saved], '%')).toEqual([]);
+      expect(labHistoryPoints([saved], '%')).toEqual([]);
+      expect(saved.value_numeric).toBe(3);
+      expect(saved.value_text).toBe(raw);
+    }
+  );
+
+  it('keeps ordinary numeric formatting, localized exact text, flags and history unchanged', () => {
+    const saved = result({ value_numeric: 5.1, value_text: '5,1' });
+    expect(exactLabResultValue(saved)).toBe(5.1);
+    expect(labResultText(saved)).toBe('5.1 %');
+    expect(
+      labResultStatus(saved, { ref_range_low: 4, ref_range_high: 5.6 })
+    ).toBe('in_range');
+    expect(labHistoryPoints([saved], '%')).toEqual([
+      { day: '2026-09-12', value: 5.1 },
+    ]);
+    expect(
+      labResultText(
+        result({ value_numeric: null, value_text: 'Negative', unit: '' })
+      )
+    ).toBe('Negative');
   });
 
   it('reads a file as base64 without the data URL prefix', async () => {

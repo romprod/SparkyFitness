@@ -4,6 +4,7 @@ import {
   LAB_MARKER_PRESETS,
   buildLabPickerOptions,
   dropStalePrefilledRange,
+  exactLabResultValue,
   labPresetDefaults,
   labPresetName,
   isDayString,
@@ -134,7 +135,11 @@ const LabResultDialog = ({
   const [picked, setPicked] = useState<Picked | null>(initial.pick);
   const [query, setQuery] = useState('');
   const [date, setDate] = useState(result?.entry_date ?? todayInZone(timezone));
-  const [value, setValue] = useState(text(result?.value_numeric));
+  const [value, setValue] = useState(
+    result && exactLabResultValue(result) === null
+      ? (result.value_text ?? '')
+      : text(result?.value_numeric)
+  );
   const [unit, setUnit] = useState(result?.unit ?? initial.seed?.unit ?? '');
   const [low, setLow] = useState(
     text(result ? result.ref_range_low : initial.seed?.low)
@@ -201,13 +206,13 @@ const LabResultDialog = ({
     const numeric = exactLabValue(value, origin.value);
     const lowBound = exactRangeBound(low, origin.low);
     const highBound = exactRangeBound(high, origin.high);
-    // A result saved as text only (such as "Negative") has no number to show;
-    // its other fields can still be edited, and the text is left as it is.
+    // Untouched opaque text, including a qualifier alongside a legacy numeric
+    // field, keeps both saved value fields when only metadata is edited.
     const textOnly =
       result != null &&
-      result.value_numeric === null &&
+      exactLabResultValue(result) === null &&
       result.value_text != null &&
-      value.trim() === '';
+      value.trim() === result.value_text.trim();
     if ((numeric === null && !textOnly) || (!picked && !result)) {
       setError(t('labs.valueInvalid', 'Enter a marker and a numeric result.'));
       return;

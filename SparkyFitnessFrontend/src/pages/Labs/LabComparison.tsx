@@ -3,9 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import {
   buildLabComparison,
-  parseLabValue,
   sameLabUnit,
-  type LabComparisonResult,
   type LabMarkerLabels,
   type LabMarkerResponse,
   type LabSex,
@@ -21,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatLabRange, formatLabValue } from './labFormat';
+import { formatLabRange, labResultText } from './labFormat';
 
 interface LabComparisonProps {
   panels: Parameters<typeof buildLabComparison>[0];
@@ -31,19 +29,6 @@ interface LabComparisonProps {
   isLoading?: boolean;
   isError?: boolean;
 }
-
-/** Preserve qualified text even on legacy results that also carry a number. */
-const comparisonValue = (result: LabComparisonResult, unit: string): string => {
-  if (
-    result.value_text?.trim() &&
-    (result.value_numeric === null ||
-      parseLabValue(result.value_text) !== result.value_numeric)
-  )
-    return `${result.value_text}${unit ? ` ${unit}` : ''}`;
-  return result.value_numeric !== null
-    ? formatLabValue(result.value_numeric, unit)
-    : (result.value_text ?? '');
-};
 
 /** Read-only comparison of the latest three saved reports. */
 const LabComparison = ({
@@ -182,7 +167,10 @@ const LabComparison = ({
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-1">
                                 <span>
-                                  {comparisonValue(cell.result, cell.unit)}
+                                  {labResultText({
+                                    ...cell.result,
+                                    unit: cell.unit,
+                                  })}
                                 </span>
                                 {(cell.status === 'high' ||
                                   cell.status === 'low') && (

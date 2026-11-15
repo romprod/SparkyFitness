@@ -90,6 +90,21 @@ export const parseLabValue = (text: string): number | null => {
   return Number.isFinite(value) ? value : null;
 };
 
+/** Exact saved numbers only: qualifiers or conflicting text remain opaque text. */
+export const exactLabResultValue = (
+  result: Pick<LabResultResponse, 'value_numeric'> &
+    Partial<Pick<LabResultResponse, 'value_text'>>
+): number | null => {
+  if (result.value_numeric === null || !Number.isFinite(result.value_numeric))
+    return null;
+  if (
+    result.value_text?.trim() &&
+    parseLabValue(result.value_text) !== result.value_numeric
+  )
+    return null;
+  return result.value_numeric;
+};
+
 /** Parses an optional range bound: empty is "no bound", junk is invalid. */
 export const parseRangeBound = (
   text: string
@@ -242,12 +257,15 @@ export const effectiveLabRange = (
 
 /** A result is judged by its own range, else the marker's. */
 export const labResultStatus = (
-  result: Pick<LabResultResponse, 'value_numeric' | 'unit'> & Range,
+  result: Pick<LabResultResponse, 'value_numeric' | 'unit'> &
+    Partial<Pick<LabResultResponse, 'value_text'>> &
+    Range,
   fallback: FallbackRange
 ): LabRangeStatus => {
-  if (result.value_numeric === null) return 'unknown';
+  const value = exactLabResultValue(result);
+  if (value === null) return 'unknown';
   const { low, high } = effectiveLabRange(result, fallback);
-  return labRangeStatus(result.value_numeric, low, high);
+  return labRangeStatus(value, low, high);
 };
 
 export type LabHistoryPoint = {
@@ -256,7 +274,7 @@ export type LabHistoryPoint = {
 };
 
 /**
- * The results a chart plots, oldest first; text-only results are
+ * The results a chart plots, oldest first; qualified or text-only results are
  * dropped. Given a unit, results in another unit are left out too, since
  * values in different units do not share a scale. Results on the same day
  * keep the order they were entered in.
@@ -274,7 +292,7 @@ export const labPlottedResults = (
 ): LabResultResponse[] =>
   results
     .filter((r) => {
-      if (r.value_numeric === null) return false;
+      if (exactLabResultValue(r) === null) return false;
       if (unit === undefined) return true;
       if (r.unit.trim() === '') {
         if (unit.trim() === '') return true;

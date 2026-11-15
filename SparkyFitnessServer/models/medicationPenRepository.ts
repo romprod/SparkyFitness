@@ -265,6 +265,7 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
         [id, userId]
       );
       if (
+        Number(data.doses_used ?? 0) !== 0 ||
         Number(existing.doses_used) !== 0 ||
         Number(history.rows[0]?.count) > 0
       )

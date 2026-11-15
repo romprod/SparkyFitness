@@ -13,6 +13,8 @@ import { buildEntry } from '../helpers/medicationFixtures';
 type ScreenProps = RootStackScreenProps<'MedicationEntryEdit'>;
 
 const mockDrawPreview = jest.fn();
+let mockTimezone = 'UTC';
+let mockTimeSelection = '21:15';
 jest.mock('../../src/hooks/useSyringes', () => ({
   useSyringeDrawPreview: (...args: unknown[]) => mockDrawPreview(...args),
 }));
@@ -27,7 +29,7 @@ jest.mock('../../src/hooks/usePreferences', () => ({
 }));
 jest.mock('../../src/utils/dateUtils', () => ({
   ...jest.requireActual('../../src/utils/dateUtils'),
-  getDeviceTimezone: () => 'UTC',
+  getDeviceTimezone: () => mockTimezone,
 }));
 jest.mock('react-native-toast-message', () => ({
   __esModule: true,
@@ -68,7 +70,7 @@ jest.mock('../../src/components/TimeSheet', () => {
       { onSelectTime }: { onSelectTime: (time: string) => void },
       _ref: unknown
     ) => (
-      <Pressable onPress={() => onSelectTime('21:15')}>
+      <Pressable onPress={() => onSelectTime(mockTimeSelection)}>
         <Text>mock-time-sheet</Text>
       </Pressable>
     )
@@ -111,6 +113,8 @@ function renderScreen(entry = buildEntry()) {
 describe('MedicationEntryEditScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockTimezone = 'UTC';
+    mockTimeSelection = '21:15';
     mockDrawPreview.mockReturnValue({
       data: {
         targetMassMcg: '200',
@@ -352,5 +356,107 @@ describe('MedicationEntryEditScreen', () => {
     fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '');
     expect(screen.getByText('Draw to —')).toBeTruthy();
     expect(screen.queryByText(/^Measured marking:/)).toBeNull();
+  });
+  it.each(['UTC', 'Asia/Tokyo'])(
+    'notes-only edits preserve exact seconds and frozen day in %s for normal and injection entries',
+    (zone) => {
+      mockTimezone = zone;
+      for (const entryType of ['entry', 'injection'] as const) {
+        updateEntryMutate.mockClear();
+        updateInjectionMutate.mockClear();
+        const screen = renderScreen(
+          buildEntry({
+            entry_type: entryType,
+            taken_at: '2026-10-14T23:30:45.678Z',
+            entry_date: '2026-10-14',
+            notes: 'Original note',
+          })
+        );
+        fireEvent.changeText(
+          screen.getByDisplayValue('Original note'),
+          'Updated note'
+        );
+        pressAction(screen, mockNavigation, 'Save');
+        const body = (
+          entryType === 'injection' ? updateInjectionMutate : updateEntryMutate
+        ).mock.calls[0]![0].body;
+        expect(body.notes).toBe('Updated note');
+        expect(body).not.toHaveProperty('injected_at');
+        expect(body).not.toHaveProperty('taken_at');
+        expect(body).not.toHaveProperty('entry_date');
+        screen.unmount();
+      }
+    }
+  );
+
+  it.each(['site', 'dose'] as const)(
+    '%s-only calculated injection edits preserve the original instant and calendar day',
+    (change) => {
+      mockTimezone = 'Asia/Tokyo';
+      const screen = renderScreen(
+        buildEntry({
+          id: 'inj-1',
+          entry_type: 'injection',
+          taken_at: '2026-10-14T23:30:45.678Z',
+          entry_date: '2026-10-14',
+          site: 'stomach_upper_left',
+          pen_id: 'vial',
+          syringe_id: 'syringe',
+          volume_ml: '0.1',
+          dose_input_unit: 'mg',
+          dose_amount_snapshot: 0.1,
+        })
+      );
+      if (change === 'site')
+        fireEvent.press(screen.getByText('opt-stomach_upper_right'));
+      else fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '0.2');
+      pressAction(screen, mockNavigation, 'Save');
+      const body = updateInjectionMutate.mock.calls[0]![0].body;
+      expect(body).not.toHaveProperty('injected_at');
+      expect(body).not.toHaveProperty('entry_date');
+      if (change === 'dose') expect(body.dose_mg).toBe(0.2);
+      else expect(body.site).toBe('stomach_upper_right');
+    }
+  );
+
+  it.each([
+    { zone: 'UTC', day: '2026-10-14', at: '2026-10-14T21:15:00.000Z' },
+    { zone: 'Asia/Tokyo', day: '2026-10-15', at: '2026-10-15T12:15:00.000Z' },
+  ])(
+    'an intentional time selection uses the logged calendar day in $zone',
+    ({ zone, day, at }) => {
+      mockTimezone = zone;
+      const screen = renderScreen(
+        buildEntry({
+          entry_type: 'injection',
+          taken_at: '2026-10-14T23:30:45.678Z',
+          entry_date: day,
+        })
+      );
+      fireEvent.press(screen.getByText('mock-time-sheet'));
+      pressAction(screen, mockNavigation, 'Save');
+      expect(updateInjectionMutate.mock.calls[0]![0].body).toEqual(
+        expect.objectContaining({ injected_at: at, entry_date: day })
+      );
+    }
+  );
+  it('confirming the displayed time without changing it preserves seconds and the frozen travel day', () => {
+    mockTimezone = 'Asia/Tokyo';
+    mockTimeSelection = '08:30';
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        taken_at: '2026-10-14T23:30:45.678Z',
+        entry_date: '2026-10-14',
+      })
+    );
+    fireEvent.press(screen.getByText('mock-time-sheet'));
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'injected_at'
+    );
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'entry_date'
+    );
   });
 });

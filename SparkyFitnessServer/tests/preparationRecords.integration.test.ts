@@ -48,6 +48,49 @@ describe.runIf(process.env.PREPARATION_INTEGRATION === '1')(
         await endPool();
       }
     });
+    it('atomically rejects used-count preparation attachment while retaining legacy count-only and unused attachment writes', async () => {
+      const vial = await stock.createPen(owner, medicationId, {
+        kind: 'vial',
+        label: 'Synthetic unchanged label',
+      });
+      await expect(
+        stock.updatePen(owner, vial.id, {
+          preparation,
+          doses_used: 2,
+          label: 'Must not persist',
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+      const client = await getSystemClient();
+      try {
+        const saved = await client.query(
+          'SELECT v.label,v.doses_used,(SELECT COUNT(*)::int FROM medication_preparations p WHERE p.pen_id=v.id) AS preparation_count FROM medication_pens v WHERE v.id=$1',
+          [vial.id]
+        );
+        expect(saved.rows[0]).toEqual({
+          label: 'Synthetic unchanged label',
+          doses_used: 0,
+          preparation_count: 0,
+        });
+      } finally {
+        client.release();
+      }
+      const countOnly = await stock.updatePen(owner, vial.id, {
+        doses_used: 2,
+      });
+      expect(countOnly.doses_used).toBe(2);
+      expect(countOnly.preparation).toBeNull();
+      for (const explicitZero of [false, true]) {
+        const unused = await stock.createPen(owner, medicationId, {
+          kind: 'vial',
+        });
+        const attached = await stock.updatePen(owner, unused.id, {
+          preparation,
+          ...(explicitZero ? { doses_used: 0 } : {}),
+        });
+        expect(attached.preparation.mass_mg).toBe(12);
+        expect(attached.doses_used).toBe(0);
+      }
+    });
     it('round-trips canonical snapshot, protects provenance and scopes owners', async () => {
       const pen = await stock.createPen(owner, medicationId, {
         kind: 'vial',

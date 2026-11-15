@@ -10,6 +10,8 @@ A marker is one thing a lab measures, such as HbA1c, LDL or vitamin D. SparkyFit
 
 The **Latest three imported reports** section in Lab results is a read-only marker-by-panel table, newest first. Manual results are not grouped into invented panels. Reports use their recorded collection date; an absent date remains unknown, and a differing result date is shown with that cell. Missing results show a dash. Each result keeps its recorded unit, range and qualifiers; a displayed threshold such as `<` or `>` is not an exact measurement. The comparison does not convert incompatible units or add a date/filter workflow. Existing marker identities and assay distinctions remain separate. Movement toward the reference range is indicated only for comparable exact results; incompatible units, qualified values or invalid ranges do not produce a numerical trend claim. The direction compares distance outside the newest available reference interval with the immediately preceding displayed report. Existing marker charts and result editing remain available.
 
+Saved qualified or categorical result text stays visible in the latest marker and history as well as the report comparison. A threshold or category is not treated as an exact number for range badges or plotted chart points.
+
 ## Adding a result
 
 Choose **Add lab result**, pick a marker (or type a new name to create your own), then enter the date, the result, the unit and, if your report prints one, the reference range. The unit and range start from your latest result for that marker, or from the built-in default (the default range uses the sex on your profile when it differs by sex). Labs differ, so use the range printed on your report: it is saved with that result.

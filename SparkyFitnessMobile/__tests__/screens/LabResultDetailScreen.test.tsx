@@ -214,4 +214,28 @@ describe('LabResultDetailScreen', () => {
     // Newest first, so the first Delete is the 2026-09-12 result.
     expect(mutate).toHaveBeenCalledWith('e2', expect.anything());
   });
+  it('shows qualified dual-field text in latest/history without exact flags, chart points or false unit notices', () => {
+    jest.mocked(useLabHistory).mockReturnValue({
+      data: [
+        result({
+          value_numeric: 3,
+          value_text: '<3',
+          unit: '%',
+          ref_range_low: 4,
+          ref_range_high: 5,
+        }),
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    } as never);
+    const { getAllByText, queryByText, UNSAFE_root } = render(
+      <LabResultDetailScreen navigation={navigation} route={route} />
+    );
+    expect(getAllByText('<3 %')).toHaveLength(2);
+    expect(queryByText('Low')).toBeNull();
+    expect(queryByText(/not plotted/)).toBeNull();
+    const chart = UNSAFE_root.findByType('LabHistoryChart' as never);
+    expect(chart.props.points).toEqual([]);
+  });
 });

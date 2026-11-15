@@ -448,6 +448,43 @@ describe('Labs page', () => {
     expect(api.createLabResult).not.toHaveBeenCalled();
   });
 
+  it.each(['<3', '>3', '≤3', '≥3', 'Negative'])(
+    'keeps %s consistent in latest, history and metadata editing without an exact-number claim',
+    async (raw) => {
+      const saved = result({ value_numeric: 3, value_text: raw });
+      api.listLatestLabResults.mockResolvedValue([saved]);
+      api.listLabResults.mockResolvedValue([saved]);
+      api.updateLabResult.mockResolvedValue(saved);
+      renderPage();
+      const marker = await screen.findByRole('button', {
+        name: `HbA1c 2026-09-12 ${raw} %`,
+      });
+      fireEvent.click(marker);
+      await waitFor(() =>
+        expect(screen.getAllByText(`${raw} %`)).toHaveLength(2)
+      );
+      expect(screen.queryByText('Low')).not.toBeInTheDocument();
+      expect(screen.queryByText('High')).not.toBeInTheDocument();
+      expect(screen.queryByText('In range')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/result in another unit is not plotted/)
+      ).not.toBeInTheDocument();
+      fireEvent.click(
+        first(await screen.findAllByRole('button', { name: 'Edit' }))
+      );
+      expect(screen.getByLabelText('Result', { exact: true })).toHaveValue(raw);
+      fireEvent.change(screen.getByLabelText('Notes'), {
+        target: { value: 'Synthetic review note' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(api.updateLabResult).toHaveBeenCalledTimes(1));
+      const body = first(api.updateLabResult.mock.calls)[1];
+      expect(body).not.toHaveProperty('value_numeric');
+      expect(body).not.toHaveProperty('value_text');
+      expect(body.notes).toBe('Synthetic review note');
+    }
+  );
+
   it('edits the notes of a text-only result and keeps its text', async () => {
     api.listLabResults.mockResolvedValue([
       result({ value_numeric: null, value_text: 'Negative', unit: '' }),

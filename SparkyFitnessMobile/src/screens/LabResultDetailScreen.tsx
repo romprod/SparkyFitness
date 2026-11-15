@@ -28,6 +28,7 @@ import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import { formatDateLabel } from '../utils/dateUtils';
 import {
   effectiveLabRange,
+  exactLabResultValue,
   formatLabRange,
   formatLabValue,
   labHistoryPoints,
@@ -145,7 +146,8 @@ const LabResultDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     ? effectiveLabRange(newestPlotted, fallback)
     : { low: null, high: null };
   const otherUnitCount =
-    results.filter((r) => r.value_numeric !== null).length - points.length;
+    results.filter((r) => exactLabResultValue(r) !== null).length -
+    points.length;
   const { low, high } = effectiveLabRange(latest, fallback);
   const range = formatLabRange(low, high, unit);
 
@@ -268,6 +270,7 @@ const LabResultDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             {results.length > 0 && (
               <View className="bg-surface rounded-xl overflow-hidden">
                 {results.map((result, index) => {
+                  const exactValue = exactLabResultValue(result);
                   const resultRange = formatLabRange(
                     result.ref_range_low,
                     result.ref_range_high,
@@ -282,11 +285,8 @@ const LabResultDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                     >
                       <View className="flex-1 mr-3">
                         <Text className="text-text-primary text-base font-semibold">
-                          {result.value_numeric !== null
-                            ? formatLabValue(
-                                result.value_numeric,
-                                result.unit || unit
-                              )
+                          {exactValue !== null
+                            ? formatLabValue(exactValue, result.unit || unit)
                             : labResultText(result)}
                         </Text>
                         <Text className="text-text-muted text-xs mt-0.5">

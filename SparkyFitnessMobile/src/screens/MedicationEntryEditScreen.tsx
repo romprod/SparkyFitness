@@ -66,6 +66,7 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
   const [timeOfDay, setTimeOfDay] = useState(() =>
     entryTimeOfDay(entry.taken_at, timezone)
   );
+  const [timeTouched, setTimeTouched] = useState(false);
   const [status, setStatus] = useState<MedicationEntryStatus>(entry.status);
   const [site, setSite] = useState(entry.site ?? NO_SITE);
   const [notes, setNotes] = useState(entry.notes ?? '');
@@ -111,7 +112,9 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
   const handleSave = useCallback(() => {
     if (isSaving || drawBlocked) return;
     const entryDay = entry.entry_date.slice(0, 10);
-    const takenAt = editedTakenAt(entryDay, timeOfDay, timezone);
+    const timeChange = timeTouched
+      ? { at: editedTakenAt(entryDay, timeOfDay, timezone), day: entryDay }
+      : null;
     const trimmedNotes = notes.trim() || null;
 
     const onSuccess = () => {
@@ -136,8 +139,9 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
 
     if (isInjection) {
       const body: UpdateInjectionInput = {
-        injected_at: takenAt,
-        entry_date: entryDay,
+        ...(timeChange
+          ? { injected_at: timeChange.at, entry_date: timeChange.day }
+          : {}),
         site: site === NO_SITE ? null : site,
         notes: trimmedNotes,
         ...(calculatedInjection && doseChanged
@@ -147,8 +151,9 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
       updateInjection.mutate({ id: entry.id, body }, { onSuccess, onError });
     } else {
       const body: UpdateMedicationEntryInput = {
-        taken_at: takenAt,
-        entry_date: entryDay,
+        ...(timeChange
+          ? { taken_at: timeChange.at, entry_date: timeChange.day }
+          : {}),
         notes: trimmedNotes,
         ...(canEditStatus ? { status } : {}),
       };
@@ -162,6 +167,7 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
     doseText,
     entry,
     timeOfDay,
+    timeTouched,
     timezone,
     notes,
     isInjection,
@@ -354,7 +360,12 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
         ref={timeSheetRef}
         value={timeOfDay}
         timeFormat={preferences?.time_format}
-        onSelectTime={setTimeOfDay}
+        onSelectTime={(time) => {
+          if (time !== timeOfDay) {
+            setTimeOfDay(time);
+            setTimeTouched(true);
+          }
+        }}
       />
     </View>
   );

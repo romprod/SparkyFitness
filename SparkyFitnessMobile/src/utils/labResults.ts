@@ -1,4 +1,4 @@
-import type { LabResultResponse } from '@workspace/shared';
+import { exactLabResultValue, type LabResultResponse } from '@workspace/shared';
 import { formatLocalizedNumber } from '../localization';
 
 // The range, unit, status and marker logic is shared with the web app.
@@ -12,6 +12,7 @@ export {
   sameLabUnit,
   dropStalePrefilledRange,
   effectiveLabRange,
+  exactLabResultValue,
   labResultStatus,
   labPlottedResults,
   labHistoryPoints,
@@ -65,8 +66,11 @@ export const formatLabRange = (
 export const formatLabValue = (value: number, unit: string): string =>
   unit ? `${labNumber(value)} ${unit}` : labNumber(value);
 
-/** The value to show for a result: the number with its unit, else the text. */
-export const labResultText = (result: LabResultResponse): string =>
-  result.value_numeric !== null
-    ? formatLabValue(result.value_numeric, result.unit)
-    : (result.value_text ?? '');
+/** Exact numbers retain locale formatting; qualified/categorical text stays opaque. */
+export const labResultText = (result: LabResultResponse): string => {
+  const value = exactLabResultValue(result);
+  if (value !== null) return formatLabValue(value, result.unit);
+  return result.value_text
+    ? [result.value_text, result.unit].filter(Boolean).join(' ')
+    : '';
+};

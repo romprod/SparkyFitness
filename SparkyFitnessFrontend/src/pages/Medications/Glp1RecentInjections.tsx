@@ -59,6 +59,7 @@ export default function Glp1RecentInjections({
   const [editSite, setEditSite] = useState('');
   const [editDoseMg, setEditDoseMg] = useState('');
   const [editInjectedAt, setEditInjectedAt] = useState('');
+  const [editTimeTouched, setEditTimeTouched] = useState(false);
   const [editNotes, setEditNotes] = useState('');
 
   const syringesQ = useMedicationSyringes();
@@ -113,6 +114,7 @@ export default function Glp1RecentInjections({
     setEditSite(inj.site ?? 'none');
     setEditDoseMg(inj.dose_mg != null ? String(inj.dose_mg) : '');
     setEditInjectedAt(utcToLocalDateTimeInput(inj.injected_at, timezone));
+    setEditTimeTouched(false);
     setEditNotes(inj.notes ?? '');
   };
 
@@ -126,7 +128,7 @@ export default function Glp1RecentInjections({
           ...(amountChanged
             ? { dose_mg: editDoseMg ? Number(editDoseMg) : null }
             : {}),
-          ...(editInjectedAt
+          ...(editTimeTouched && editInjectedAt
             ? {
                 injected_at: localDateTimeToUtc(
                   editInjectedAt,
@@ -257,7 +259,10 @@ export default function Glp1RecentInjections({
                 <DateTimeInput
                   aria-labelledby="glp1-edit-injected-at-label"
                   value={editInjectedAt}
-                  onChange={setEditInjectedAt}
+                  onChange={(value) => {
+                    setEditInjectedAt(value);
+                    setEditTimeTouched(true);
+                  }}
                 />
               </div>
             </div>

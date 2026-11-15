@@ -5,6 +5,7 @@ import {
   LAB_MARKER_PRESETS,
   buildLabMarkers,
   effectiveLabRange,
+  exactLabResultValue,
   labHistoryPoints,
   labMarkerQueryFromId,
   labPlottedResults,
@@ -103,7 +104,8 @@ const Labs = () => {
     ? labHistoryPoints(results, selected.unit, selected.ref_range_unit)
     : [];
   const notPlotted =
-    results.filter((r) => r.value_numeric !== null).length - plotted.length;
+    results.filter((r) => exactLabResultValue(r) !== null).length -
+    plotted.length;
   const range = selected
     ? effectiveLabRange(plotted[plotted.length - 1] ?? null, {
         ref_range_low: selected.ref_range_low,
@@ -140,7 +142,7 @@ const Labs = () => {
         <h1 className="text-2xl font-semibold">
           {t('nav.labs', 'Lab results')}
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <FileUp className="mr-2 h-4 w-4" />
             {t('labs.import.cta', 'Import from a report')}
