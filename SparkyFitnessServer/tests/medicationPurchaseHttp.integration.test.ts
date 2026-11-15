@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 // @ts-expect-error TS7016 supertest has no declarations in this workspace.
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
+import { medicationCostAnalyticsSchema } from '@workspace/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getSystemClient, endPool } from '../db/poolManager.js';
 
@@ -21,7 +22,7 @@ describe.runIf(process.env.PURCHASE_HTTP_INTEGRATION === '1')(
     const payload = (expected_owner_id = owner) => ({
       expected_owner_id,
       operation_id: randomUUID(),
-      ordered_date: '2026-11-15',
+      ordered_date: new Date().toISOString().slice(0, 10),
       currency: 'AUD',
       items: [
         {
@@ -60,6 +61,16 @@ describe.runIf(process.env.PURCHASE_HTTP_INTEGRATION === '1')(
             [owner]
           )
         ).rows[0].id;
+        const vial = (
+          await c.query(
+            "INSERT INTO medication_pens(user_id,medication_id,kind,label,label_mass_mg,doses_used) VALUES($1,$2,'vial','Synthetic analytics stock','3.000000000000000001',1) RETURNING id",
+            [owner, med]
+          )
+        ).rows[0].id;
+        await c.query(
+          'INSERT INTO injection_entries(user_id,medication_id,pen_id,injected_at,entry_date,dose_mg) VALUES($1,$2,$3,NOW(),CURRENT_DATE,0.1)',
+          [owner, med, vial]
+        );
         await c.query(
           "INSERT INTO family_access(owner_user_id,family_user_id,family_email,access_permissions,is_active,status) VALUES($1,$2,$3,$4::jsonb,true,'active')",
           [
@@ -218,6 +229,101 @@ describe.runIf(process.env.PURCHASE_HTTP_INTEGRATION === '1')(
         ).status
       ).toBe(403);
       expect(await count()).toBe(before);
+    });
+    it('serves every source window to full and read-only owner keys with the shared runtime DTO', async () => {
+      for (const window of ['3', '6', '12', 'all'])
+        for (const key of [fullKey, readKey]) {
+          const response = await request(app)
+            .get('/api/v2/medication-purchases/analytics')
+            .set('x-api-key', key)
+            .query({ window, expected_owner_id: owner });
+          expect(response.status).toBe(200);
+          expect(
+            medicationCostAnalyticsSchema.safeParse(response.body).success
+          ).toBe(true);
+          expect(response.body.window.key === window).toBe(true);
+          expect(
+            response.body.rows.some(
+              (row: { medication_id: string }) => row.medication_id === med
+            )
+          ).toBe(true);
+        }
+      const defaultResponse = await request(app)
+        .get('/api/v2/medication-purchases/analytics')
+        .set('x-api-key', readKey);
+      expect(defaultResponse.status).toBe(200);
+      expect(defaultResponse.body.window.key).toBe('12');
+    });
+    it('keeps analytics private for switched, delegated and foreign-owner requests with existing unauthenticated401', async () => {
+      expect(
+        (
+          await request(app)
+            .get('/api/v2/medication-purchases/analytics')
+            .set('x-api-key', delegateKey)
+            .set('Cookie', `sparky_active_user_id=${owner}`)
+        ).status
+      ).toBe(403);
+      expect(
+        (
+          await request(app)
+            .get('/api/v2/medication-purchases/analytics')
+            .set('x-api-key', delegateKey)
+            .set('x-on-behalf-of-user-id', owner)
+        ).status
+      ).toBe(403);
+      expect(
+        (
+          await request(app)
+            .get('/api/v2/medication-purchases/analytics')
+            .set('x-api-key', fullKey)
+            .query({ expected_owner_id: delegate })
+        ).status
+      ).toBe(403);
+      expect(
+        (await request(app).get('/api/v2/medication-purchases/analytics'))
+          .status
+      ).toBe(401);
+    });
+    it('analytics reads leave explicit stock metadata, dose history and invoice state byte-for-byte unchanged', async () => {
+      const snapshot = async () => {
+        const c = await getSystemClient();
+        try {
+          const hashes: string[] = [];
+          for (const table of [
+            'medication_pens',
+            'injection_entries',
+            'medication_purchases',
+            'medication_purchase_items',
+            'medication_purchase_vials',
+            'medication_purchase_operations',
+          ]) {
+            hashes.push(
+              (
+                await c.query(
+                  `SELECT md5(COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]')) AS hash FROM public.${table} t WHERE user_id=$1`,
+                  [owner]
+                )
+              ).rows[0].hash
+            );
+          }
+          return hashes;
+        } finally {
+          c.release();
+        }
+      };
+      const before = await snapshot();
+      for (const key of [fullKey, readKey])
+        expect(
+          (
+            await request(app)
+              .get('/api/v2/medication-purchases/analytics')
+              .set('x-api-key', key)
+              .query({ window: 'all', expected_owner_id: owner })
+          ).status
+        ).toBe(200);
+      expect(
+        (await snapshot()).every((hash, index) => hash === before[index])
+      ).toBe(true);
     });
   }
 );

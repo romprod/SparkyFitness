@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { medicationVialLabelMassSchema } from '../api/MedicationStockMetadata.api.zod.ts';
 
 export const medicationPensIdSchema = z.string().or(z.number());
 
@@ -8,6 +9,7 @@ export const medicationPensSchema = z.object({
   user_id: z.string(),
   kind: z.string(),
   label: z.string().nullable().optional(),
+  label_mass_mg: medicationVialLabelMassSchema.nullable().optional(),
   dose_mg: z.number().nullable().optional(),
   concentration_mg_ml: z.number().nullable().optional(),
   volume_ml: z.number().nullable().optional(),
@@ -39,6 +41,7 @@ export const medicationPensInitializerSchema = z.object({
   user_id: z.string().optional(),
   kind: z.string().optional(),
   label: z.string().nullable().optional(),
+  label_mass_mg: medicationVialLabelMassSchema.nullable().optional(),
   dose_mg: z.number().nullable().optional(),
   concentration_mg_ml: z.number().nullable().optional(),
   volume_ml: z.number().nullable().optional(),

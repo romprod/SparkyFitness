@@ -1,5 +1,10 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import { useAuth, type User } from '@/hooks/useAuth';
 export { HttpApiError } from '@/api/api';
 const clearedIdentities = new WeakSet<User>();
@@ -16,6 +21,7 @@ function identityGeneration(user: User | null) {
 }
 import * as api from '@/api/Medications/purchaseService';
 import type {
+  MedicationCostWindow,
   MedicationPurchaseCreateInput,
   MedicationPurchaseDeleteInput,
   MedicationPurchaseUpdateInput,
@@ -25,6 +31,8 @@ export const medicationPurchaseKeys = {
   all: ['medication-purchases'] as const,
   identity: (owner: string, generation: number) =>
     ['medication-purchases', owner, 'identity', generation] as const,
+  analytics: (owner: string, window: MedicationCostWindow) =>
+    ['medication-purchases', owner, 'analytics', window] as const,
   list: (owner: string) => ['medication-purchases', owner, 'list'] as const,
   detail: (owner: string, id: string) =>
     ['medication-purchases', owner, 'detail', id] as const,
@@ -145,8 +153,7 @@ export const useSaveMedicationPurchase = () => {
             body as MedicationPurchaseUpdateInput
           )
         : api.createMedicationPurchase(body as MedicationPurchaseCreateInput),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: medicationPurchaseKeys.all }),
+    onSuccess: () => invalidateMedicationPurchaseData(client),
   });
 };
 export const useDeleteMedicationPurchase = () => {
@@ -159,7 +166,31 @@ export const useDeleteMedicationPurchase = () => {
       id: string;
       body: MedicationPurchaseDeleteInput;
     }) => api.deleteMedicationPurchase(id, body),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: medicationPurchaseKeys.all }),
+    onSuccess: () => invalidateMedicationPurchaseData(client),
   });
 };
+
+export const useMedicationCostAnalytics = (
+  owner: string,
+  window: MedicationCostWindow,
+  enabled: boolean
+) =>
+  useQuery({
+    queryKey: medicationPurchaseKeys.analytics(owner, window),
+    queryFn: ({ signal }) =>
+      api.getMedicationCostAnalytics(owner, window, signal),
+    enabled,
+    gcTime: Infinity,
+  });
+
+/** Refresh derived financial data without invalidating authoritative identity proof. */
+export const invalidateMedicationPurchaseData = (
+  client: QueryClient,
+  kinds?: readonly string[]
+) =>
+  client.invalidateQueries({
+    predicate: (query) =>
+      query.queryKey[0] === 'medication-purchases' &&
+      query.queryKey[2] !== 'identity' &&
+      (!kinds || kinds.includes(String(query.queryKey[2]))),
+  });

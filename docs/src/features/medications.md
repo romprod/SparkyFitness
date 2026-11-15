@@ -120,3 +120,9 @@ The invoice flow is implemented and tested; instance deployment verification is 
 Match existing vials to medication lines from the invoice or Preparation & stock. The purchased quantity determines the per-vial allocation even when only some vials have been entered. Linking more vials than purchased produces a warning, rather than changing stock or imposing a quantity cap. A linked zero-priced vial is distinct from a vial with no invoice linkage. Unlinking or deleting an invoice preserves vials, preparations, dose history and remaining quantities.
 
 Consumable lines need a description; complete it or remove an unused row. After an uncertain save, retry the same invoice. Reload/review when another change produces a conflict. Invoices are private to the authenticated owner and are not included in medication/report sharing. The selected flow includes no invoice OCR, automatic vial creation, consumed-dose/waste/course dashboard or currency conversion.
+
+## Consumed-cost report
+
+The report is implemented and tested, with instance deployment verification recorded separately. It adds By medication Spend, Per dose and Per mg with costed/uncosted dose coverage inside Costs. Source 3/6/12-month and All windows default to 12 months and affect the report only; your complete invoice ledger remains visible.
+
+An optional explicit vial labelled mass is separate from preparation and remaining stock. No existing vial is backfilled from its preparation, concentration, volume or dose counts. Changing the labelled mass or invoice price changes the current report retrospectively; it does not alter physical stock or recorded doses. Known zero/negative cost is not the same as an unknown rate. Mixed currencies make the affected metric unavailable with a warning, without conversion or a new grouping workflow. Consumable usage, waste, prescription estimates and inclusive total cost per dose are outside this selected report.

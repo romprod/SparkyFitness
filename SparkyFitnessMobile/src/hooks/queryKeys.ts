@@ -471,6 +471,7 @@ export const symptomFreeDaysQueryKey = (fromDate: string, toDate: string) =>
 
 // --- Medications ---
 export const medicationsRootQueryKey = ['medications'] as const;
+export const medicationPurchasesRootQueryKey = ['medicationPurchases'] as const;
 export const medicationsListQueryKey = (opts?: { activeOnly?: boolean }) =>
   ['medications', 'list', opts ?? {}] as const;
 export const medicationDetailQueryKey = (id: string) =>

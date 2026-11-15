@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import {
   useMedicationCostsAccess,
+  useMedicationCostAnalytics,
   useMedicationPurchases,
   useMedicationPurchase,
   useMedicationPurchaseEditorData,
@@ -13,6 +14,7 @@ const owner = '11111111-1111-4111-8111-111111111111',
   other = '22222222-2222-4222-8222-222222222222';
 jest.mock('../../src/services/api/medicationPurchasesApi', () => ({
   getMedicationCostIdentity: jest.fn(),
+  getMedicationCostAnalytics: jest.fn(),
   listMedicationPurchases: jest.fn(async () => ({ purchases: [] })),
   getMedicationPurchase: jest.fn(),
   getMedicationPurchaseEditorData: jest.fn(async () => ({
@@ -41,6 +43,7 @@ test('unknown or delegated identity makes zero financial requests, including sto
     () => {
       const access = useMedicationCostsAccess();
       useMedicationPurchases(access.ownerId);
+      useMedicationCostAnalytics(access.ownerId, '12');
       useMedicationPurchase(access.ownerId, 'invoice');
       useMedicationPurchaseEditorData(access.ownerId);
       useMedicationVialCosts(access.ownerId);
@@ -60,6 +63,7 @@ test('unknown or delegated identity makes zero financial requests, including sto
   await waitFor(() => expect(result.current.isLoading).toBe(false));
   expect(result.current.ownerId).toBeNull();
   expect(api.listMedicationPurchases).not.toHaveBeenCalled();
+  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
   expect(api.getMedicationPurchase).not.toHaveBeenCalled();
   expect(api.getMedicationPurchaseEditorData).not.toHaveBeenCalled();
   expect(api.getMedicationVialCosts).not.toHaveBeenCalled();
@@ -214,6 +218,64 @@ test('instance switch with identical owner UUID drops financial data before relo
     expect(result.current.list?.purchases[0]?.id).toBe('invoice-server-b')
   );
   expect(oldScope()).toBe(false);
+  unmount();
+  client.clear();
+});
+
+test('a late report response for12months cannot replace the selected3month window', async () => {
+  jest.mocked(api.getMedicationCostIdentity).mockResolvedValue({
+    authenticatedUserId: owner,
+    activeUserId: owner,
+    configId: 'server',
+    serverUrl: 'https://example.test',
+  });
+  let resolveOld!: (
+    value: import('@workspace/shared').MedicationCostAnalytics
+  ) => void;
+  jest
+    .mocked(api.getMedicationCostAnalytics)
+    .mockImplementation(async (_context, window) =>
+      window === '12'
+        ? new Promise((done) => {
+            resolveOld = done;
+          })
+        : {
+            window: {
+              key: window,
+              from_date: '2026-01-01',
+              to_date: '2026-11-15',
+            },
+            rows: [],
+          }
+    );
+  const client = createTestQueryClient();
+  const { result, rerender, unmount } = renderHook(
+    ({
+      window,
+    }: {
+      window: import('@workspace/shared').MedicationCostWindow;
+    }) => {
+      const access = useMedicationCostsAccess();
+      return useMedicationCostAnalytics(access.ownerId, window);
+    },
+    { initialProps: { window: '12' }, wrapper: createQueryWrapper(client) }
+  );
+  await waitFor(() =>
+    expect(api.getMedicationCostAnalytics).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerId: owner }),
+      '12',
+      expect.any(AbortSignal)
+    )
+  );
+  rerender({ window: '3' });
+  await waitFor(() => expect(result.current.data?.window.key).toBe('3'));
+  await act(async () =>
+    resolveOld({
+      window: { key: '12', from_date: '2025-11-15', to_date: '2026-11-15' },
+      rows: [],
+    })
+  );
+  expect(result.current.data?.window.key).toBe('3');
   unmount();
   client.clear();
 });

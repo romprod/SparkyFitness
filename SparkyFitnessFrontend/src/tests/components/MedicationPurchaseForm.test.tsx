@@ -368,3 +368,21 @@ it('does not invent content for a legacy vial without saved preparation', () => 
   ).toBeInTheDocument();
   expect(screen.queryByText(/Prepared content:/)).not.toBeInTheDocument();
 });
+
+it('prefers an explicit vial label amount over preparation content in matching labels', () => {
+  render(
+    <MedicationPurchaseForm
+      {...props()}
+      data={{
+        medications: data.medications,
+        vials: [
+          { ...data.vials[0]!, label_mass_mg: '20', prepared_mass_mg: '10' },
+        ],
+      }}
+    />
+  );
+  expect(
+    screen.getByRole('checkbox', { name: /Vial label amount: 20 mg/ })
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Prepared content: 10 mg/)).not.toBeInTheDocument();
+});

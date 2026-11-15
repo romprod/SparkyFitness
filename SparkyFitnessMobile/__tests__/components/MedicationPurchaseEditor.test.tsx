@@ -459,3 +459,54 @@ test('same-label vials retain known saved preparation mass and legacy unknown ge
   act(() => mockSave());
   expect(mockCreate.mock.calls[0][0].items[0].vial_ids).toEqual([second]);
 });
+
+test('explicit vial label is preferred over preparation content, while null labels retain prepared or human fallback', () => {
+  const common = {
+    ...data.vials[0]!,
+    label: 'Same vial',
+    lot_number: 'Same lot',
+    status: 'sealed',
+    expiry_date: '2027-01-01',
+  };
+  const editorData = {
+    ...data,
+    vials: [
+      {
+        ...common,
+        id: vial,
+        label_mass_mg: '10.123456789012345678901',
+        prepared_mass_mg: '20',
+      },
+      { ...common, id: second, label_mass_mg: null, prepared_mass_mg: '20' },
+      {
+        ...common,
+        id: '77777777-7777-4777-8777-777777777777',
+        label_mass_mg: null,
+        prepared_mass_mg: null,
+      },
+    ],
+  };
+  const view = render(
+    <MedicationPurchaseEditor
+      ownerId={owner}
+      data={editorData}
+      isScopeCurrent={() => true}
+      onClose={jest.fn()}
+      onReload={jest.fn()}
+    />
+  );
+  const explicit =
+    'Same vial · Vial label amount: 10.123456789012345678901 mg · sealed · Same lot · 2027-01-01';
+  expect(view.getByLabelText(explicit)).toBeTruthy();
+  expect(
+    view.getByLabelText(
+      'Same vial · Prepared content: 20 mg · sealed · Same lot · 2027-01-01'
+    )
+  ).toBeTruthy();
+  expect(
+    view.getByLabelText('Same vial · sealed · Same lot · 2027-01-01')
+  ).toBeTruthy();
+  fireEvent(view.getByLabelText(explicit), 'valueChange', true);
+  act(() => mockSave());
+  expect(mockCreate.mock.calls[0][0].items[0].vial_ids).toEqual([vial]);
+});

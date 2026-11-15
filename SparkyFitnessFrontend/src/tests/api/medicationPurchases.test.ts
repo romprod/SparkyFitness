@@ -59,3 +59,21 @@ it('obtains an abortable proof from the existing nonfinancial identity endpoint'
     suppressErrorToast: true,
   });
 });
+
+it('sends the owner-bound reporting window and validates its canonical response', async () => {
+  const response = {
+    window: { key: '3', from_date: '2026-08-15', to_date: '2026-11-15' },
+    rows: [],
+  };
+  jest.mocked(apiCall).mockResolvedValueOnce(response);
+  const signal = new AbortController().signal;
+  await expect(
+    purchases.getMedicationCostAnalytics('owner', '3', signal)
+  ).resolves.toEqual(response);
+  expect(apiCall).toHaveBeenCalledWith('/v2/medication-purchases/analytics', {
+    method: 'GET',
+    params: { expected_owner_id: 'owner', window: '3' },
+    signal,
+    suppressErrorToast: true,
+  });
+});

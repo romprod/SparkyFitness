@@ -26,6 +26,7 @@ import type { RootStackScreenProps } from '../types/navigation';
 import {
   resolvePreparedMedicationRoute,
   deviceDoseSchema,
+  medicationVialLabelMassSchema,
   type MedicationPen,
   type MedicationPreparationCreationInput,
 } from '@workspace/shared';
@@ -36,6 +37,7 @@ interface FormState {
   kind: 'pen' | 'vial';
   status: MedicationPen['status'];
   label: string;
+  labelMassMg: string;
   doseMg: string;
   concentration: string;
   volume: string;
@@ -58,6 +60,7 @@ const EMPTY_FORM: FormState = {
   kind: 'vial',
   status: 'sealed',
   label: '',
+  labelMassMg: '',
   doseMg: '',
   concentration: '',
   volume: '',
@@ -80,6 +83,7 @@ const fromPen = (pen: MedicationPen): FormState => ({
   kind: pen.kind,
   status: pen.status,
   label: pen.label ?? '',
+  labelMassMg: pen.label_mass_mg ?? '',
   doseMg: pen.dose_mg != null ? String(pen.dose_mg) : '',
   concentration:
     pen.concentration_mg_ml != null ? String(pen.concentration_mg_ml) : '',
@@ -170,6 +174,26 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
   const handleSave = () => {
     if (isSaving || correcting || (isEditing && !existing)) return;
     if (recordingPreparation && (!creationInput || !creationReady)) return;
+    const labelEdited = 'labelMassMg' in edits;
+    let labelMassMg: string | null = null;
+    if ((!isEditing && form.kind === 'vial') || labelEdited) {
+      if (form.labelMassMg.trim()) {
+        const parsed = medicationVialLabelMassSchema.safeParse(
+          form.labelMassMg
+        );
+        if (!parsed.success) {
+          Alert.alert(
+            t('common.error', { defaultValue: 'Error' }),
+            t('medications.stock.invalidLabelMass', {
+              defaultValue:
+                'Enter a positive finite vial label amount in mg, or leave it blank.',
+            })
+          );
+          return;
+        }
+        labelMassMg = parsed.data;
+      }
+    }
     const doseMg = optionalNumber(form.doseMg);
     const dosesTotal = optionalNumber(form.dosesTotal);
     const concentration =
@@ -231,16 +255,34 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
       return;
     }
     const preparationInput = recordingPreparation ? creationInput : null;
+    const original = existing ? fromPen(existing) : null;
+    const convertsToPen =
+      !!existing && existing.kind !== form.kind && form.kind === 'pen';
     const body = {
       kind: form.kind,
       ...('status' in edits && form.status !== existing?.status
         ? { status: form.status, lifecycle_intent: true }
         : {}),
       label: form.label.trim() || null,
-      dose_mg: doseMg,
-      concentration_mg_ml: concentration,
-      volume_ml: volume,
-      doses_total: dosesTotal,
+      ...(isEditing && labelEdited
+        ? { label_mass_mg: labelMassMg }
+        : !isEditing && form.kind === 'vial' && labelMassMg !== null
+          ? { label_mass_mg: labelMassMg }
+          : {}),
+      ...(!original || form.doseMg !== original.doseMg
+        ? { dose_mg: doseMg }
+        : {}),
+      ...(!original ||
+      form.concentration !== original.concentration ||
+      convertsToPen
+        ? { concentration_mg_ml: concentration }
+        : {}),
+      ...(!original || form.volume !== original.volume || convertsToPen
+        ? { volume_ml: volume }
+        : {}),
+      ...(!original || form.dosesTotal !== original.dosesTotal
+        ? { doses_total: dosesTotal }
+        : {}),
       opened_at: form.openedAt || null,
       expiry_date: form.expiryDate || null,
       ...(preparationInput ? { preparation: preparationInput } : {}),
@@ -419,12 +461,47 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
             <BottomSheetPicker
               value={form.kind}
               options={kindOptions}
-              onSelect={(v) => setField('kind', v)}
+              onSelect={(v) => {
+                if (v !== 'vial' && form.labelMassMg.trim()) {
+                  Alert.alert(
+                    t('common.error', { defaultValue: 'Error' }),
+                    t('medications.stock.clearBeforeKind', {
+                      defaultValue:
+                        'Clear the vial label amount before changing the stock type.',
+                    })
+                  );
+                  return;
+                }
+                setField('kind', v);
+              }}
               title={t('medications.glp1.form.kind', { defaultValue: 'Type' })}
             />
           )}
         </View>
 
+        {form.kind === 'vial' && (
+          <View className="gap-1.5">
+            <Text className="text-sm font-medium text-text-secondary">
+              {t('medications.stock.labelMass', {
+                defaultValue: 'Vial label amount (mg)',
+              })}
+            </Text>
+            <FormInput
+              accessibilityLabel={t('medications.stock.labelMass', {
+                defaultValue: 'Vial label amount (mg)',
+              })}
+              value={form.labelMassMg}
+              onChangeText={(value) => setField('labelMassMg', value)}
+              keyboardType="decimal-pad"
+            />
+            <Text className="text-xs text-text-secondary">
+              {t('medications.stock.labelMassHelp', {
+                defaultValue:
+                  'Optional total printed on the vial. Enter it independently; it is not a dose amount or a calculated preparation amount.',
+              })}
+            </Text>
+          </View>
+        )}
         <View className="gap-1.5">
           <Text className="text-text-secondary text-sm font-medium">
             {t('medications.glp1.form.label', { defaultValue: 'Label' })}
@@ -508,6 +585,7 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
             )}
             {recordingPreparation && (
               <PreparationCreationWizard
+                labelMassMg={form.labelMassMg}
                 target={preparationTarget}
                 administrationRoute={preparationRoute}
                 initialDate={isEditing ? '' : getTodayDate()}

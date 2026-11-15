@@ -4,8 +4,10 @@ import {
   medicationPurchaseCreateSchema,
   medicationPurchaseUpdateSchema,
   medicationPurchaseDeleteSchema,
+  medicationCostAnalyticsQuerySchema,
 } from '@workspace/shared';
 import * as purchases from '../../models/medicationPurchaseRepository.js';
+import { getMedicationCostAnalytics } from '../../models/medicationCostAnalyticsRepository.js';
 import { authenticate } from '../../middleware/authMiddleware.js';
 
 /** Existing app-wide owner API-key semantics apply: read-only keys may read self,
@@ -69,6 +71,21 @@ router.get('/editor-data', async (req, res, next) => {
 router.get('/vial-costs', async (req, res, next) => {
   try {
     res.json({ vials: await purchases.getVialCosts(req.userId) });
+  } catch (error) {
+    next(error);
+  }
+});
+/** Owner-only estimates from current invoice links and explicit labelled mass. */
+router.get('/analytics', async (req, res, next) => {
+  try {
+    const query = medicationCostAnalyticsQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res
+        .status(400)
+        .json({ error: 'Invalid request', details: query.error.flatten() });
+      return;
+    }
+    res.json(await getMedicationCostAnalytics(req.userId, query.data.window));
   } catch (error) {
     next(error);
   }

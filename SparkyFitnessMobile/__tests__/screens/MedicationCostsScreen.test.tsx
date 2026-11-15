@@ -8,6 +8,8 @@ let mockOwner: string | null = 'owner',
   mockCurrent = true;
 let mockRows: MedicationPurchaseView[] = [];
 const mockRemove = jest.fn();
+const mockAnalytics = jest.fn();
+const mockLedgerQuery = jest.fn();
 jest.mock('../../src/hooks/useMedicationPurchases', () => ({
   useMedicationCostsAccess: () => ({
     ownerId: mockOwner,
@@ -16,11 +18,25 @@ jest.mock('../../src/hooks/useMedicationPurchases', () => ({
     isLoading: false,
     isError: false,
   }),
-  useMedicationPurchases: () => ({
-    data: { purchases: mockRows },
-    isLoading: false,
-    isError: false,
-  }),
+  useMedicationCostAnalytics: (owner: string, window: string) => {
+    mockAnalytics(owner, window);
+    return {
+      data: {
+        window: { key: window, from_date: '2026-01-01', to_date: '2026-11-15' },
+        rows: [],
+      },
+      isFetching: false,
+      isError: false,
+    };
+  },
+  useMedicationPurchases: (...args: unknown[]) => {
+    mockLedgerQuery(...args);
+    return {
+      data: { purchases: mockRows },
+      isLoading: false,
+      isError: false,
+    };
+  },
   useMedicationPurchaseMutations: () => ({
     remove: { mutate: mockRemove, isPending: false },
   }),
@@ -143,4 +159,18 @@ test('foreign context never renders cached financial rows or Add invoice', () =>
   expect(
     view.getByText('Costs are available only for your own account.')
   ).toBeTruthy();
+});
+
+test('report window changes leave the invoice ledger unfiltered', () => {
+  mockRows = [purchase('AUD', '1.21')];
+  const view = setup();
+  expect(mockAnalytics).toHaveBeenLastCalledWith('owner', '12');
+  fireEvent.press(view.getByText('3 months'));
+  expect(mockAnalytics).toHaveBeenLastCalledWith('owner', '3');
+  expect(view.getByText('AUD 1.21')).toBeTruthy();
+  expect(
+    mockLedgerQuery.mock.calls.every(
+      (call) => call.length === 1 && call[0] === 'owner'
+    )
+  ).toBe(true);
 });

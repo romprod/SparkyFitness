@@ -1,6 +1,6 @@
 # Database Security & RLS Tiers
 
-_Last updated: 2026-10-20_
+_Last updated: 2026-11-15_
 
 SparkyFitness uses PostgreSQL Row-Level Security (RLS) to enforce strict data isolation between accounts, caregivers, family members, and third-party integrations (API keys). This document covers the security design, context switching mechanism, and the three-tier database table classifications.
 
@@ -245,3 +245,7 @@ These tables store global configuration settings, lookup values, and reference m
 ## Private medication invoices
 
 The four medication-purchase tables use the authenticated actor (`authenticated_user_id()`), not delegated medication permissions. The dedicated `/api/v2/medication-purchases` API also rejects switched/delegated contexts. Financial visibility is not granted by `can_manage_medications` or `can_view_reports`. Existing owner read-only API keys may read their own invoices; writes still require an owner write-capable key/session and expected-owner assertion. Operation receipts allow owner SELECT/INSERT only, retain their opaque purchase ID after invoice deletion and are removed by account cleanup. This changes no application-wide API-key permissions.
+
+### Consumed-cost extension
+
+Explicit vial `label_mass_mg` remains medication metadata under the existing `medication_pens` medication RLS; it is not a new owner-only financial table. The derived Costs response stays authenticated-owner-only and does not grant financial access to medication/report delegates. No new RLS table or permission domain is introduced by this extension.

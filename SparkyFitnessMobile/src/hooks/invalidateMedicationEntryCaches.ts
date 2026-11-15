@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   glucoseContextQueryKeyRoot,
   medicationsRootQueryKey,
+  medicationPurchasesRootQueryKey,
   medicationEntriesQueryKey,
   dailySummaryRootQueryKey,
 } from './queryKeys';
@@ -25,5 +26,8 @@ export function invalidateMedicationEntryCaches(
   void queryClient.invalidateQueries({ queryKey: glucoseContextQueryKeyRoot });
   void queryClient.invalidateQueries({ queryKey: medicationEntriesQueryKey() });
   void queryClient.invalidateQueries({ queryKey: medicationsRootQueryKey });
+  void queryClient.invalidateQueries({
+    queryKey: medicationPurchasesRootQueryKey,
+  });
   void queryClient.invalidateQueries({ queryKey: dailySummaryRootQueryKey });
 }

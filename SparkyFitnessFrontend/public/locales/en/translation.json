@@ -1147,6 +1147,30 @@
       "uncertain": "The save result is unconfirmed. Retry this same invoice before editing it.",
       "reloadFailed": "Could not reload the invoice and matching stock. Your draft is kept.",
       "preparedContent": "Prepared content: {{mass}} mg"
+    },
+    "costReport": {
+      "mixedSpend": "Spend is unavailable because its contributors use different currencies.",
+      "mixedUsage": "Rates are unavailable because their contributors use different currencies.",
+      "title": "By medication",
+      "window": "Reporting window",
+      "all": "All",
+      "note": "Rates use current purchase and vial label data. Uncosted doses are excluded.",
+      "loading": "Loading cost report…",
+      "loadFailed": "Could not load the cost report.",
+      "mixed": "Mixed currencies: affected figures are hidden.",
+      "empty": "Nothing bought or dosed in this reporting window.",
+      "table": "Medication cost report",
+      "spend": "Spend",
+      "perDose": "Per dose",
+      "perMg": "Per mg",
+      "counts": "{{costed}} costed doses · {{uncosted}} uncosted"
+    },
+    "labelMass": {
+      "label": "Vial label amount (mg)",
+      "help": "Optional total printed on the vial, independent of the dose and preparation content.",
+      "clearForPen": "Clear the vial label amount before changing this stock to a pen.",
+      "invalid": "Enter a finite positive amount, or leave it blank if unknown.",
+      "matching": "Vial label amount: {{mass}} mg"
     }
   },
   "nav": {

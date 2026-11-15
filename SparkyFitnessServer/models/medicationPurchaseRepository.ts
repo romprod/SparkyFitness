@@ -19,7 +19,10 @@ import { getClient, dbContextStorage } from '../db/poolManager.js';
 import { encrypt, decrypt, ENCRYPTION_KEY } from '../security/encryption.js';
 const problem = (message: string, statusCode = 400) =>
   Object.assign(new Error(message), { statusCode, status: statusCode });
-function assertOwner(userId: string, expectedOwnerId?: string) {
+export function assertMedicationFinancialOwner(
+  userId: string,
+  expectedOwnerId?: string
+) {
   const actor = dbContextStorage.getStore()?.authenticatedUserId ?? userId;
   if (
     actor !== userId ||
@@ -30,6 +33,7 @@ function assertOwner(userId: string, expectedOwnerId?: string) {
       403
     );
 }
+const assertOwner = assertMedicationFinancialOwner;
 interface Envelope {
   encryptedText: string | null;
   iv: string | null;
@@ -187,7 +191,7 @@ export async function getEditorData(
     const vials = await client.query<
       MedicationPurchaseEditorData['vials'][number]
     >(
-      "SELECT p.id,p.medication_id,m.name AS medication_name,p.label,prep.mass_mg::text AS prepared_mass_mg,p.status,p.lot_number,p.expiry_date::text,v.purchase_item_id FROM medication_pens p JOIN medications m ON m.id=p.medication_id AND m.user_id=p.user_id LEFT JOIN medication_preparations prep ON prep.pen_id=p.id AND prep.user_id=p.user_id AND prep.medication_id=p.medication_id LEFT JOIN medication_purchase_vials v ON v.pen_id=p.id AND v.user_id=p.user_id LEFT JOIN medication_purchase_items i ON i.id=v.purchase_item_id AND i.user_id=v.user_id WHERE p.user_id=$1 AND p.kind='vial' AND (v.pen_id IS NULL OR i.purchase_id=$2) ORDER BY p.status,m.name,p.id",
+      "SELECT p.id,p.medication_id,m.name AS medication_name,p.label,p.label_mass_mg::text,prep.mass_mg::text AS prepared_mass_mg,p.status,p.lot_number,p.expiry_date::text,v.purchase_item_id FROM medication_pens p JOIN medications m ON m.id=p.medication_id AND m.user_id=p.user_id LEFT JOIN medication_preparations prep ON prep.pen_id=p.id AND prep.user_id=p.user_id AND prep.medication_id=p.medication_id LEFT JOIN medication_purchase_vials v ON v.pen_id=p.id AND v.user_id=p.user_id LEFT JOIN medication_purchase_items i ON i.id=v.purchase_item_id AND i.user_id=v.user_id WHERE p.user_id=$1 AND p.kind='vial' AND (v.pen_id IS NULL OR i.purchase_id=$2) ORDER BY p.status,m.name,p.id",
       [userId, purchaseId ?? null]
     );
     return { medications: medications.rows, vials: vials.rows };

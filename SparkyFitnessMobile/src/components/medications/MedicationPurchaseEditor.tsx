@@ -613,12 +613,17 @@ export default function MedicationPurchaseEditor({
                       id: vial.id,
                       label: [
                         vial.label || vial.medication_name,
-                        vial.prepared_mass_mg != null
-                          ? t('medications.costs.preparedContent', {
-                              defaultValue: 'Prepared content: {{value}} mg',
-                              value: vial.prepared_mass_mg,
+                        vial.label_mass_mg != null
+                          ? t('medications.stock.labelMassSummary', {
+                              defaultValue: 'Vial label amount: {{value}} mg',
+                              value: vial.label_mass_mg,
                             })
-                          : null,
+                          : vial.prepared_mass_mg != null
+                            ? t('medications.costs.preparedContent', {
+                                defaultValue: 'Prepared content: {{value}} mg',
+                                value: vial.prepared_mass_mg,
+                              })
+                            : null,
                         vial.status,
                         vial.lot_number,
                         vial.expiry_date,

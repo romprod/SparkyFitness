@@ -1,5 +1,7 @@
 import type {
   MedicationPurchaseCreateInput,
+  MedicationCostAnalytics,
+  MedicationCostWindow,
   MedicationPurchaseDeleteInput,
   MedicationPurchaseEditorData,
   MedicationPurchaseUpdateInput,
@@ -163,3 +165,9 @@ export const deleteMedicationPurchase = (
     body,
     logResponseBody: false,
   });
+
+export const getMedicationCostAnalytics = (
+  context: MedicationCostContext,
+  window: MedicationCostWindow,
+  signal?: AbortSignal
+) => read<MedicationCostAnalytics>('/analytics', context, signal, { window });

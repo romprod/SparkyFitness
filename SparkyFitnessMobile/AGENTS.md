@@ -518,3 +518,9 @@ Reusable syringe, pen and pump settings are separate from preparations. Global s
 Medications → Costs uses the dedicated owner-only medication-purchases API and shared exact allocation contracts. Bind drafts, requests and retry receipts to the authenticated owner; financial data must not appear in delegated profiles. Keep an uncertain create's original payload/operation ID available for retry rather than creating a new invoice. Revision conflicts require reload/review. Link only existing matching vials; overmatching purchased quantity warns without changing stock. No OCR, automatic inventory creation, consumed/waste/course dashboard or currency conversion is included.
 
 `MedicationCostsScreen.tsx` and `MedicationPurchaseFormScreen.tsx` use `components/medications/MedicationPurchaseEditor.tsx`, `hooks/useMedicationPurchases.ts` and `services/api/medicationPurchasesApi.ts` inside the existing Medications stack. Native source tests are not a distributed app binary.
+
+## Consumed-cost report and labelled mass
+
+`components/medications/MedicationCostReport.tsx` is mounted in `MedicationCostsScreen`; `useMedicationPurchases.ts` and `medicationPurchasesApi.ts` read the shared analytics contract. Keep owner/identity gates, analytics-only 3/6/12/All windows defaulting to 12 and the full invoice list. Optional exact label mass stays separate in existing vial/preparation forms. Dose, label/vial, invoice and preparation-correction mutations invalidate analytics across all owner windows; use the existing cache helpers. No new navigation, currency conversion or native binary distribution is implied.
+
+For existing stock edits, omit untouched physical/count fields rather than echoing numeric DTO values during a label-only change; this preserves legacy stored precision and concurrent counts. Keep explicit label metadata separate from preparation correction.

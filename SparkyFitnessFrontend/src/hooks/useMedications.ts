@@ -4,6 +4,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
+import { invalidateMedicationPurchaseData } from '@/hooks/useMedicationPurchases';
 import * as medicationService from '@/api/Medications/medicationService';
 import { reportKeys } from '@/api/keys/reports';
 import { dailyProgressKeys, diaryReportKeys } from '@/api/keys/diary';
@@ -90,6 +91,7 @@ export const useCorrectPreparationMutation = (medId: string) => {
 // refreshes without a manual page reload. refetchType: 'all' also refreshes the
 // cache while the Reports tab isn't mounted (e.g. editing from Cabinet or Symptoms).
 const invalidateReports = (queryClient: QueryClient) => {
+  void invalidateMedicationPurchaseData(queryClient, ['analytics', 'editor']);
   void queryClient.invalidateQueries({ queryKey: ['glucoseContext'] });
   return queryClient.invalidateQueries({
     queryKey: reportKeys.all,
@@ -519,6 +521,7 @@ export const useCreatePenMutation = (medId: string) => {
     mutationFn: (body: MedicationPenWriteInput) =>
       medicationService.createPen(medId, body),
     onSuccess: () => {
+      void invalidateMedicationPurchaseData(queryClient);
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
       queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
     },
@@ -541,6 +544,7 @@ export const useUpdatePenMutation = (medId: string) => {
     mutationFn: ({ id, body }: { id: string; body: MedicationPenWriteInput }) =>
       medicationService.updatePen(id, body),
     onSuccess: () => {
+      void invalidateMedicationPurchaseData(queryClient);
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
       queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
     },
@@ -562,6 +566,7 @@ export const useDeletePenMutation = (medId: string) => {
   return useMutation({
     mutationFn: (id: string) => medicationService.deletePen(id),
     onSuccess: () => {
+      void invalidateMedicationPurchaseData(queryClient);
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
       queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
     },

@@ -111,6 +111,15 @@ beforeEach(() => {
         };
       if (endpoint === '/v2/medication-purchases/vial-costs')
         return { vials: [] };
+      if (endpoint === '/v2/medication-purchases/analytics')
+        return {
+          window: {
+            key: options?.params?.['window'] ?? '12',
+            from_date: '2025-11-15',
+            to_date: '2026-11-15',
+          },
+          rows: [],
+        };
       if (endpoint === '/v2/medication-purchases') return { purchases: [] };
       if (endpoint === '/v2/medication-purchases/editor-data')
         return { medications: [], vials: [] };

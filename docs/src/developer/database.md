@@ -480,3 +480,7 @@ WHERE tablename = 'table_name';
 - **ANALYZE**: Update table statistics
 - **Index maintenance**: Rebuild indexes if needed
 - **Log rotation**: Rotate and archive database logs
+
+### Explicit vial label mass
+
+Migration `20261115233000_medication_vial_label_mass.sql` adds nullable `medication_pens.label_mass_mg`, with no default or backfill. A known value belongs to a vial and is positive/finite. This is explicit label metadata for cost-rate attribution, independent of preparation/physical-balance fields. No new table is introduced.

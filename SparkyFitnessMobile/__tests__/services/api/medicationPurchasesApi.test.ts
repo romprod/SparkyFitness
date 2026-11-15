@@ -1,5 +1,6 @@
 import {
   getMedicationCostIdentity,
+  getMedicationCostAnalytics,
   listMedicationPurchases,
   getMedicationPurchaseEditorData,
   createMedicationPurchase,
@@ -156,4 +157,21 @@ test('late identity from instance A cannot grant financial access after switchin
     activeUserId: context.ownerId,
   });
   await expect(pending).rejects.toThrow('account changed');
+});
+
+test('analytics sends only canonical report window plus bound owner, leaving ledger request independent', async () => {
+  await getMedicationCostAnalytics(context, '3');
+  expect(apiFetch).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      endpoint: `/api/v2/medication-purchases/analytics?expected_owner_id=${context.ownerId}&window=3`,
+      serverConfig: config,
+      logResponseBody: false,
+    })
+  );
+  await listMedicationPurchases(context);
+  expect(apiFetch).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      endpoint: `/api/v2/medication-purchases?expected_owner_id=${context.ownerId}`,
+    })
+  );
 });

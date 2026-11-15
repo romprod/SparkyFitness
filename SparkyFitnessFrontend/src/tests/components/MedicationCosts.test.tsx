@@ -27,6 +27,7 @@ jest.mock('@/contexts/PreferencesContext', () => ({
 }));
 jest.mock('@/api/Medications/purchaseService', () => ({
   getMedicationPurchaseIdentity: jest.fn(),
+  getMedicationCostAnalytics: jest.fn(),
   listMedicationPurchases: jest.fn(),
   getMedicationPurchase: jest.fn(),
   getMedicationPurchaseEditorData: jest.fn(),
@@ -87,6 +88,12 @@ beforeEach(() => {
   };
   rows = [];
   jest.clearAllMocks();
+  jest
+    .mocked(api.getMedicationCostAnalytics)
+    .mockImplementation(async (_owner, window) => ({
+      window: { key: window, from_date: '2025-11-15', to_date: '2026-11-15' },
+      rows: [],
+    }));
   jest
     .mocked(api.getMedicationPurchaseIdentity)
     .mockImplementation(async () => ({
@@ -299,4 +306,29 @@ it('keeps the dirty draft if either part of the explicit reload fails', async ()
   expect(screen.getByLabelText('Notes')).toHaveValue(
     'Synthetic retained draft'
   );
+});
+
+it('keeps all invoice cards and old edit links independent of report windows', async () => {
+  rows = [view({ ordered_date: '2020-01-01', reference: 'SYN-OLDER' })];
+  open();
+  await screen.findByText('Synthetic supplier · SYN-OLDER');
+  expect(screen.getByRole('button', { name: '12m' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  fireEvent.click(screen.getByRole('button', { name: '3m' }));
+  await waitFor(() =>
+    expect(api.getMedicationCostAnalytics).toHaveBeenLastCalledWith(
+      mockUser.id,
+      '3',
+      expect.any(AbortSignal)
+    )
+  );
+  expect(
+    screen.getByText('Synthetic supplier · SYN-OLDER')
+  ).toBeInTheDocument();
+  expect(api.listMedicationPurchases).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await screen.findByRole('heading', { name: 'Edit invoice' });
+  expect(screen.getByLabelText('Ordered')).toHaveValue('2020-01-01');
 });

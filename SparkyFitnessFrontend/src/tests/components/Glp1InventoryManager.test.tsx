@@ -299,9 +299,233 @@ it('can deliberately discard or reopen stock without rewriting its quantity', as
     expect.objectContaining({
       status: 'in_use',
       lifecycle_intent: true,
-      volume_ml: 3,
-      concentration_mg_ml: 4,
     })
   );
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('volume_ml');
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'concentration_mg_ml'
+  );
   expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('doses_used');
+});
+
+it('reopens exact vial label mass independently and omits it on unrelated edits', () => {
+  mockPens = [
+    {
+      id: 'vial',
+      kind: 'vial',
+      status: 'in_use',
+      doses_used: 1,
+      label_mass_mg: '20.00000000000000000001',
+      dose_mg: 0.5,
+      preparation: {
+        id: 'prep',
+        mode: 'reconstituted',
+        mass_value: 10,
+        mass_unit: 'mg',
+        mass_mg: 10,
+        concentration_mg_ml: 5,
+        final_volume_ml: 2,
+        prepared_date: '2026-11-15',
+        created_at: '',
+      },
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  expect(screen.getByLabelText('Vial label amount (mg)')).toHaveValue(
+    '20.00000000000000000001'
+  );
+  fireEvent.change(screen.getByLabelText('Lot number'), {
+    target: { value: 'SYN-LOT' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  const body = mockUpdate.mock.calls[0][0].body;
+  expect(body).not.toHaveProperty('label_mass_mg');
+  expect(body).not.toHaveProperty('preparation');
+  expect(body).not.toHaveProperty('doses_used');
+  expect(body).not.toHaveProperty('dose_mg');
+});
+it('sends an explicit null only when the saved label amount is cleared', () => {
+  mockPens = [
+    {
+      id: 'vial',
+      kind: 'vial',
+      status: 'sealed',
+      doses_used: 0,
+      label_mass_mg: '20',
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.change(screen.getByLabelText('Vial label amount (mg)'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate.mock.calls[0][0].body.label_mass_mg).toBeNull();
+});
+it('creates vial label metadata as an exact raw string without prefilling a dose or preparation amount', async () => {
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  fireEvent.pointerDown(screen.getByLabelText('Kind'), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(await screen.findByRole('option', { name: 'Vial' }));
+  expect(screen.getByLabelText('Vial label amount (mg)')).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('Vial label amount (mg)'), {
+    target: { value: '20.00000000000000000001' },
+  });
+  fireEvent.click(
+    screen.getAllByRole('button', { name: 'Add Inventory' }).at(-1)!
+  );
+  expect(mockSave.mock.calls[0][0].label_mass_mg).toBe(
+    '20.00000000000000000001'
+  );
+  expect(mockSave.mock.calls[0][0].dose_mg).toBe(0.6);
+});
+it.each(['0', '-1', 'Infinity', 'mistyped'])(
+  'rejects invalid explicit vial label amount %s',
+  (value) => {
+    mockPens = [{ id: 'vial', kind: 'vial', status: 'sealed', doses_used: 0 }];
+    render(<Glp1InventoryManager med={med} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+    fireEvent.change(screen.getByLabelText('Vial label amount (mg)'), {
+      target: { value },
+    });
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  }
+);
+
+it('requires an explicit label clear before converting labelled vial stock to a pen', async () => {
+  mockPens = [
+    {
+      id: 'vial',
+      kind: 'vial',
+      status: 'sealed',
+      doses_used: 0,
+      label_mass_mg: '20',
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.pointerDown(screen.getByLabelText('Kind'), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(await screen.findByRole('option', { name: 'Pen' }));
+  expect(screen.getByLabelText('Vial label amount (mg)')).toHaveValue('20');
+  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Vial label amount (mg)'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate.mock.calls[0][0].body).toMatchObject({
+    kind: 'pen',
+    label_mass_mg: null,
+  });
+});
+
+it('preserves exact legacy physical values behind a lossy DTO during a label-only edit', () => {
+  const stored: Record<string, string | null> = {
+    dose_mg: '0.123456789012345678901',
+    concentration_mg_ml: '5.123456789012345678901',
+    volume_ml: '2.123456789012345678901',
+    doses_total: '23',
+    label_mass_mg: null,
+  };
+  const before = { ...stored };
+  mockPens = [
+    {
+      id: 'legacy-precise',
+      kind: 'vial',
+      status: 'sealed',
+      doses_used: 0,
+      dose_mg: Number(stored['dose_mg']),
+      concentration_mg_ml: Number(stored['concentration_mg_ml']),
+      volume_ml: Number(stored['volume_ml']),
+      doses_total: Number(stored['doses_total']),
+    },
+  ];
+  mockUpdate.mockImplementationOnce(
+    ({ body }: { body: Record<string, unknown> }) => {
+      for (const field of Object.keys(stored)) {
+        if (field in body)
+          stored[field] = body[field] === null ? null : String(body[field]);
+      }
+    }
+  );
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.change(screen.getByLabelText('Vial label amount (mg)'), {
+    target: { value: '20.00000000000000000001' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  const body = mockUpdate.mock.calls[0][0].body;
+  for (const field of [
+    'dose_mg',
+    'concentration_mg_ml',
+    'volume_ml',
+    'doses_total',
+  ]) {
+    expect(body).not.toHaveProperty(field);
+    expect(stored[field]).toBe(before[field]);
+  }
+  expect(stored['label_mass_mg']).toBe('20.00000000000000000001');
+});
+
+it('retains a deliberate physical edit while omitting the other untouched values', () => {
+  mockPens = [
+    {
+      id: 'vial',
+      kind: 'vial',
+      status: 'sealed',
+      doses_used: 0,
+      dose_mg: 0.5,
+      concentration_mg_ml: 5,
+      volume_ml: 2,
+      doses_total: 20,
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.change(screen.getByLabelText(/Dose strength.*mg/i), {
+    target: { value: '0.75' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  const body = mockUpdate.mock.calls[0][0].body;
+  expect(body.dose_mg).toBe(0.75);
+  expect(body).not.toHaveProperty('concentration_mg_ml');
+  expect(body).not.toHaveProperty('volume_ml');
+  expect(body).not.toHaveProperty('doses_total');
+});
+
+it('preserves hidden concentration and volume on an unchanged legacy pen', () => {
+  mockPens = [
+    {
+      id: 'legacy-pen',
+      kind: 'pen',
+      status: 'sealed',
+      doses_used: 0,
+      dose_mg: 0.5,
+      concentration_mg_ml: 5.123456789012345,
+      volume_ml: 2.123456789012345,
+      doses_total: 4,
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.change(screen.getByLabelText('Lot number'), {
+    target: { value: 'SYN-PEN-LOT' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  const body = mockUpdate.mock.calls[0][0].body;
+  expect(body.lot_number).toBe('SYN-PEN-LOT');
+  for (const field of [
+    'dose_mg',
+    'concentration_mg_ml',
+    'volume_ml',
+    'doses_total',
+  ])
+    expect(body).not.toHaveProperty(field);
 });

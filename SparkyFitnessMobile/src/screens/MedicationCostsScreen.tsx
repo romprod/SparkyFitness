@@ -15,6 +15,7 @@ import { useScreenHeader } from '../hooks/useScreenHeader';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import { useActiveWorkoutBarPadding } from '../components/ActiveWorkoutBar';
 import Button from '../components/ui/Button';
+import MedicationCostReport from '../components/medications/MedicationCostReport';
 import { ApiError } from '../services/api/errors';
 import { formatDateLabel } from '../utils/dateUtils';
 import type { RootStackScreenProps } from '../types/navigation';
@@ -131,6 +132,12 @@ export default function MedicationCostsScreen({
           >
             {error.text}
           </Text>
+        )}
+        {access.ownerId && (
+          <MedicationCostReport
+            key={access.scopeKey}
+            ownerId={access.ownerId}
+          />
         )}
         {!access.ownerId ? (
           <>

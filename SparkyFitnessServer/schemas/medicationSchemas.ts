@@ -1,5 +1,8 @@
 import { calculatedDrawInputSchema } from '@workspace/shared';
-import { medicationPreparationInputSchema } from '@workspace/shared';
+import {
+  medicationPreparationInputSchema,
+  medicationVialLabelMassSchema,
+} from '@workspace/shared';
 import { z } from 'zod/v4';
 import { optionalNullableNumber, optionalNullableInt } from './schema.utils.js';
 
@@ -127,6 +130,7 @@ export type UpdateScheduleBody = z.infer<typeof UpdateScheduleBodySchema>;
 // Pens / vials
 // --------------------------------------------------------------------------
 const PenFieldsSchema = z.object({
+  label_mass_mg: medicationVialLabelMassSchema.nullable().optional(),
   preparation: medicationPreparationInputSchema.optional(),
   lifecycle_intent: z.boolean().optional(),
   lot_number: z.string().trim().max(500).nullable().optional(),
@@ -152,7 +156,20 @@ const PenFieldsSchema = z.object({
   source: z.string().optional(),
   custom_fields: customFields,
 });
-export const CreatePenBodySchema = PenFieldsSchema.loose();
+export const CreatePenBodySchema = PenFieldsSchema.loose().superRefine(
+  (data, context) => {
+    if (
+      data.label_mass_mg !== null &&
+      data.label_mass_mg !== undefined &&
+      data.kind !== 'vial'
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['label_mass_mg'],
+        message: 'A vial label amount requires vial stock.',
+      });
+  }
+);
 export type CreatePenBody = z.infer<typeof CreatePenBodySchema>;
 export const UpdatePenBodySchema = PenFieldsSchema.partial().loose();
 export type UpdatePenBody = z.infer<typeof UpdatePenBodySchema>;

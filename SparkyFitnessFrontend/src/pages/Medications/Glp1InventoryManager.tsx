@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
-import { todayInZone, addDays, medicationDoseInMg } from '@workspace/shared';
+import {
+  todayInZone,
+  addDays,
+  medicationDoseInMg,
+  medicationVialLabelMassSchema,
+} from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +36,7 @@ import {
 } from '@/hooks/useMedications';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import SavedPreparation from './SavedPreparation';
+import VialLabelMassField from './VialLabelMassField';
 import MedicationVialCostLink from './MedicationVialCostLink';
 import MedicationBudWarning from './MedicationBudWarning';
 import MedicationPreparationWizard from './MedicationPreparationWizard';
@@ -69,6 +75,15 @@ export default function Glp1InventoryManager({
   const [status, setStatus] = useState<MedicationPen['status']>('sealed');
   const [kind, setKind] = useState<'pen' | 'vial'>('pen');
   const [label, setLabel] = useState('');
+  const [labelMass, setLabelMass] = useState('');
+  const [labelMassTouched, setLabelMassTouched] = useState(false);
+  const labelMassRelevant =
+    kind === 'vial' || editingPen?.label_mass_mg != null;
+  const labelMassValid =
+    !labelMassRelevant ||
+    !labelMass.trim() ||
+    (kind === 'vial' &&
+      medicationVialLabelMassSchema.safeParse(labelMass).success);
   const [inventoryDoseMg, setInventoryDoseMg] = useState(
     medicationDoseInMg(med) != null ? String(medicationDoseInMg(med)) : ''
   );
@@ -137,6 +152,8 @@ export default function Glp1InventoryManager({
     setStatus('sealed');
     setKind('pen');
     setLabel('');
+    setLabelMass('');
+    setLabelMassTouched(false);
     setInventoryDoseMg(
       medicationDoseInMg(med) != null ? String(medicationDoseInMg(med)) : ''
     );
@@ -177,6 +194,8 @@ export default function Glp1InventoryManager({
     setBudSource(pen.bud_source ?? '');
     setKind(pen.kind);
     setLabel(pen.label ?? '');
+    setLabelMass(pen.label_mass_mg ?? '');
+    setLabelMassTouched(false);
     setInventoryDoseMg(pen.dose_mg != null ? String(pen.dose_mg) : '');
     setConcentration(
       pen.concentration_mg_ml != null ? String(pen.concentration_mg_ml) : ''
@@ -194,7 +213,7 @@ export default function Glp1InventoryManager({
   };
 
   const handleSaveInventory = () => {
-    if (!budValid) return;
+    if (!budValid || !labelMassValid) return;
     const body: MedicationPenWriteInput = {
       kind,
       label: label.trim() || null,
@@ -217,6 +236,10 @@ export default function Glp1InventoryManager({
         reorderFlag && reorderThreshold ? Number(reorderThreshold) : null,
       notes: notes.trim() || null,
     };
+    if (kind === 'vial' || editingPen?.label_mass_mg != null) {
+      if (editingPen ? labelMassTouched : !!labelMass.trim())
+        body.label_mass_mg = labelMass.trim() || null;
+    }
     if (
       editingPen &&
       budMode ===
@@ -238,6 +261,29 @@ export default function Glp1InventoryManager({
     if (editingPen?.preparation) {
       delete body.concentration_mg_ml;
       delete body.volume_ml;
+    }
+    if (editingPen) {
+      // Legacy numeric DTOs may already be rounded. Untouched text must never
+      // rewrite the server's original physical values during a metadata edit.
+      const convertingVialToPen = editingPen.kind === 'vial' && kind === 'pen';
+      const physicalFields = {
+        dose_mg: inventoryDoseMg,
+        concentration_mg_ml: convertingVialToPen ? '' : concentration,
+        volume_ml: convertingVialToPen ? '' : volume,
+        doses_total: dosesTotal,
+      };
+      for (const field of Object.keys(
+        physicalFields
+      ) as (keyof typeof physicalFields)[]) {
+        const original =
+          editingPen[field] == null ? '' : String(editingPen[field]);
+        const hiddenOnUnchangedPen =
+          editingPen.kind === 'pen' &&
+          kind === 'pen' &&
+          (field === 'concentration_mg_ml' || field === 'volume_ml');
+        if (hiddenOnUnchangedPen || physicalFields[field] === original)
+          delete body[field];
+      }
     }
 
     const onSuccess = () => {
@@ -611,6 +657,17 @@ export default function Glp1InventoryManager({
               </div>
             </div>
 
+            {labelMassRelevant && (
+              <VialLabelMassField
+                id="inv-label-mass"
+                value={labelMass}
+                onChange={(value) => {
+                  setLabelMass(value);
+                  setLabelMassTouched(true);
+                }}
+                conflictsWithPen={kind === 'pen'}
+              />
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="inv-dose">
@@ -913,7 +970,7 @@ export default function Glp1InventoryManager({
             </Button>
             <Button
               onClick={handleSaveInventory}
-              disabled={savePending || !budValid}
+              disabled={savePending || !budValid || !labelMassValid}
             >
               {savePending
                 ? t('common.saving', 'Saving...')

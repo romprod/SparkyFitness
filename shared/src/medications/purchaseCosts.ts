@@ -147,3 +147,19 @@ export function normalizePurchaseDecimal(value: string): string | null {
     return null;
   }
 }
+
+/** Source rate precision: three decimals for nonzero sub-unit rates, otherwise two. */
+export function formatPurchaseRate(
+  value: string | null,
+  currency: string | null
+): string {
+  if (value === null || currency === null) return '—';
+  try {
+    const rate = new D(value);
+    if (!rate.isFinite()) return '—';
+    const small = rate.abs().gt(0) && rate.abs().lt(1);
+    return `${currency} ${rate.toFixed(small ? 3 : 2)}`;
+  } catch {
+    return '—';
+  }
+}

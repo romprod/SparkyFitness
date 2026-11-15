@@ -170,6 +170,7 @@ export interface MedicationPurchaseEditorData {
     medication_id: string;
     medication_name: string;
     label: string | null;
+    label_mass_mg?: string | null;
     /** Current saved preparation content; null when no preparation is recorded. */
     prepared_mass_mg?: string | null;
     status: string;

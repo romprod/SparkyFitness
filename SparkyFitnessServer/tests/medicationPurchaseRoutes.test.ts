@@ -15,6 +15,8 @@ const repository = vi.hoisted(() => ({
   deletePurchase: vi.fn(),
 }));
 vi.mock('../models/medicationPurchaseRepository.js', () => repository);
+const analytics = vi.hoisted(() => ({ getMedicationCostAnalytics: vi.fn() }));
+vi.mock('../models/medicationCostAnalyticsRepository.js', () => analytics);
 import router, {
   requirePurchaseOwner,
 } from '../routes/v2/medicationPurchaseRoutes.js';
@@ -106,6 +108,57 @@ describe('invoice route integration', () => {
       (await request(routed(other)).get('/api/v2/medication-purchases')).status
     ).toBe(403);
     expect(repository.listPurchases).not.toHaveBeenCalled();
+  });
+  it.each(['3', '6', '12', 'all'])(
+    'routes analytics %s before invoice IDs with explicit owner binding',
+    async (window) => {
+      const value = {
+        window: { key: window, from_date: '2026-01-01', to_date: '2026-11-15' },
+        rows: [],
+      };
+      analytics.getMedicationCostAnalytics.mockResolvedValue(value);
+      const response = await request(routed())
+        .get('/api/v2/medication-purchases/analytics')
+        .query({ window, expected_owner_id: owner });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(value);
+      expect(analytics.getMedicationCostAnalytics).toHaveBeenCalledWith(
+        owner,
+        window
+      );
+      expect(repository.getPurchase).not.toHaveBeenCalled();
+    }
+  );
+  it.each([undefined, 'invalid'])(
+    'uses the source default window for %s',
+    async (window) => {
+      analytics.getMedicationCostAnalytics.mockResolvedValue({ rows: [] });
+      const response = await request(routed())
+        .get('/api/v2/medication-purchases/analytics')
+        .query(window ? { window } : {});
+      expect(response.status).toBe(200);
+      expect(analytics.getMedicationCostAnalytics).toHaveBeenCalledWith(
+        owner,
+        '12'
+      );
+    }
+  );
+  it('denies delegated or foreign-owner analytics before the read model', async () => {
+    expect(
+      (
+        await request(routed(other)).get(
+          '/api/v2/medication-purchases/analytics'
+        )
+      ).status
+    ).toBe(403);
+    expect(
+      (
+        await request(routed())
+          .get('/api/v2/medication-purchases/analytics')
+          .query({ expected_owner_id: other })
+      ).status
+    ).toBe(403);
+    expect(analytics.getMedicationCostAnalytics).not.toHaveBeenCalled();
   });
   it('rejects missing expected owner or revision on writes', async () => {
     expect(

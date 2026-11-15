@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import MedicationCostReport from './MedicationCostReport';
 import MedicationPurchaseForm from './MedicationPurchaseForm';
 const notice =
   'whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10';
@@ -149,6 +150,7 @@ function OwnedCosts({
           {t('medications.costs.addInvoice', 'Add invoice')}
         </Button>
       </div>
+      <MedicationCostReport ownerId={ownerId} />
       {purchases.isLoading && <p>{t('common.loading', 'Loading…')}</p>}
       {purchases.isError && (
         <Badge variant="destructive" className={notice}>

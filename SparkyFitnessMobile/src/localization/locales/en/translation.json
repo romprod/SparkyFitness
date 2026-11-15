@@ -2071,7 +2071,13 @@
       "injectionTrackerSubtitle": "Log injections, review history and manage vial stock",
       "status": "Inventory status",
       "retired": "Retired stock",
-      "active": "Active stock"
+      "active": "Active stock",
+      "labelMassSummary": "Vial label amount: {{value}} mg",
+      "invalidLabelMass": "Enter a positive finite vial label amount in mg, or leave it blank.",
+      "labelMassUnknown": "Vial label amount: not recorded",
+      "clearBeforeKind": "Clear the vial label amount before changing the stock type.",
+      "labelMass": "Vial label amount (mg)",
+      "labelMassHelp": "Optional total printed on the vial. Enter it independently; it is not a dose amount or a calculated preparation amount."
     },
     "syringes": {
       "title": "Syringes",
@@ -2228,7 +2234,22 @@
       "costUnavailable": "Invoice cost unavailable",
       "invoiceUnitCost": "Invoice · {{value}} per vial",
       "uncosted": "Uncosted · view Costs",
-      "preparedContent": "Prepared content: {{value}} mg"
+      "preparedContent": "Prepared content: {{value}} mg",
+      "window3": "3 months",
+      "window6": "6 months",
+      "window12": "12 months",
+      "windowAll": "All",
+      "byMedication": "By medication",
+      "reportCaption": "Rates use current invoice prices and vial label amounts, and only costed doses. The report window does not filter the invoice ledger.",
+      "reportLoading": "Loading medication cost report…",
+      "reportFailed": "Unable to load the medication cost report.",
+      "reportEmpty": "Nothing bought or dosed in this window.",
+      "spend": "Spend",
+      "perMg": "Per mg",
+      "costedCounts": "{{costed}} costed doses · {{uncosted}} uncosted",
+      "spendMixed": "Spend is unavailable because contributing invoices use different currencies.",
+      "usageMixed": "Dose and mg rates are unavailable because costed doses use different currencies.",
+      "ratePerDose": "Per dose"
     }
   },
   "scheduleSummary": {

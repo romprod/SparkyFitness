@@ -1,3 +1,7 @@
+import {
+  medicationCostAnalyticsSchema,
+  type MedicationCostWindow,
+} from '@workspace/shared';
 import { apiCall } from '@/api/api';
 import type {
   MedicationPurchaseCreateInput,
@@ -66,3 +70,17 @@ export const deleteMedicationPurchase = (
     body,
     suppressErrorToast: true,
   });
+
+export const getMedicationCostAnalytics = async (
+  ownerId: string,
+  window: MedicationCostWindow,
+  signal?: AbortSignal
+) =>
+  medicationCostAnalyticsSchema.parse(
+    await apiCall(`${base}/analytics`, {
+      method: 'GET',
+      params: { expected_owner_id: ownerId, window },
+      signal,
+      suppressErrorToast: true,
+    })
+  );

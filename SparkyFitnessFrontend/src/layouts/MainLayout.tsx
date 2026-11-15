@@ -45,7 +45,6 @@ import { useActiveUser } from '@/contexts/ActiveUserContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useMealTypes } from '@/hooks/Diary/useMealTypes';
-import { useCurrentVersionQuery } from '@/hooks/useGeneralQueries';
 import { useCycleSettings } from '@/hooks/useCycle';
 import { cn } from '@/lib/utils';
 import { getGridClassNormal } from '@/utils/layout';
@@ -69,11 +68,7 @@ interface MainLayoutProps {
   onStartOnboarding?: () => void;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({
-  onShowAboutDialog,
-  onShowNewReleaseDialog,
-  onStartOnboarding,
-}) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ onStartOnboarding }) => {
   const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -87,7 +82,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({
   const { getDateRelationToToday, loggingLevel } = usePreferences();
   debug(loggingLevel, 'MainLayout: Component rendered.');
 
-  const { data: appVersion } = useCurrentVersionQuery();
   const [isAddCompOpen, setIsAddCompOpen] = useState(false);
   const [isMealTypeSelectOpen, setIsMealTypeSelectOpen] = useState(false);
 
@@ -659,8 +653,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         title={t('foodDiary.selectMealType', 'Select Meal Type')}
       />
 
-      <footer className="text-center text-muted-foreground text-sm py-4">
-        {isMobile ? (
+      {isMobile && (
+        <footer className="text-center text-muted-foreground text-sm py-4">
           <div className="flex flex-col items-center gap-2 mb-14">
             <div className="flex flex-wrap justify-center gap-2">
               <GitHubStarCounter owner="CodeWithCJ" repo="SparkyFitness" />
@@ -678,48 +672,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({
                 icon={Languages}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="cursor-pointer underline bg-transparent border-0 p-0 text-inherit font-normal text-sm"
-                onClick={onShowAboutDialog}
-              >
-                {t('nav.sparkyFitnessV', 'SparkyFitness v{{version}}', {
-                  version: appVersion?.version ?? '',
-                })}
-              </button>
-              <span>•</span>
-              <button
-                type="button"
-                className="cursor-pointer underline hover:text-foreground bg-transparent border-0 p-0 text-inherit font-normal text-sm"
-                onClick={onShowNewReleaseDialog}
-              >
-                {t('release.whatsNew', "What's New")}
-              </button>
-            </div>
           </div>
-        ) : (
-          <div className="flex justify-center items-center gap-4">
-            <button
-              type="button"
-              className="cursor-pointer underline bg-transparent border-0 p-0 text-inherit font-normal text-sm"
-              onClick={onShowAboutDialog}
-            >
-              {t('nav.sparkyFitnessV', 'SparkyFitness v{{version}}', {
-                version: appVersion?.version ?? '',
-              })}
-            </button>
-            <span>•</span>
-            <button
-              type="button"
-              className="cursor-pointer underline hover:text-foreground bg-transparent border-0 p-0 text-inherit font-normal text-sm"
-              onClick={onShowNewReleaseDialog}
-            >
-              {t('release.whatsNew', "What's New")}
-            </button>
-          </div>
-        )}
-      </footer>
+        </footer>
+      )}
     </div>
   );
 };

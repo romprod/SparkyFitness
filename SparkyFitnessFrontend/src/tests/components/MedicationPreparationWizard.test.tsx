@@ -392,3 +392,44 @@ it('shows a known correction deficit as zero available with a warning instead of
     screen.getByRole('button', { name: 'Confirm and save' })
   ).toBeEnabled();
 });
+
+it('keeps new-vial label metadata blank until explicitly entered and reviews/submits it separately', () => {
+  render(<MedicationPreparationWizard med={medication} onClose={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  change('Powder in the vial', '10');
+  expect(screen.getByLabelText('Vial label amount (mg)')).toHaveValue('');
+  review();
+  expect(
+    screen.getByText(/Vial label amount \(mg\): Not recorded/)
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+  change('Vial label amount (mg)', '20.00000000000000000001');
+  review();
+  expect(screen.getByText(/20\.00000000000000000001/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  expect(mockCreate.mock.calls[0][0].label_mass_mg).toBe(
+    '20.00000000000000000001'
+  );
+  expect(mockCreate.mock.calls[0][0].preparation).not.toHaveProperty(
+    'label_mass_mg'
+  );
+});
+it('does not write or edit independent label metadata during preparation correction', () => {
+  render(
+    <MedicationPreparationWizard
+      med={medication}
+      pen={{ ...pen, label_mass_mg: '20' }}
+      onClose={jest.fn()}
+    />
+  );
+  expect(
+    screen.queryByLabelText('Vial label amount (mg)')
+  ).not.toBeInTheDocument();
+  change('Powder in the vial', '8');
+  review();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  expect(mockCorrect.mock.calls[0][0].body).not.toHaveProperty('label_mass_mg');
+  expect(mockCorrect.mock.calls[0][0].body.preparation).not.toHaveProperty(
+    'label_mass_mg'
+  );
+});

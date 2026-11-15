@@ -550,8 +550,11 @@ export default function MedicationPurchaseForm({
                           />
                           <span className="min-w-0 break-words">
                             {vial.label || vial.medication_name}
-                            {vial.prepared_mass_mg != null &&
-                              ` · ${t('medications.costs.preparedContent', 'Prepared content: {{mass}} mg', { mass: vial.prepared_mass_mg })}`}
+                            {vial.label_mass_mg != null
+                              ? ` · ${t('medications.labelMass.matching', 'Vial label amount: {{mass}} mg', { mass: vial.label_mass_mg })}`
+                              : vial.prepared_mass_mg != null
+                                ? ` · ${t('medications.costs.preparedContent', 'Prepared content: {{mass}} mg', { mass: vial.prepared_mass_mg })}`
+                                : null}
                             {vial.lot_number &&
                               ` · ${t('medications.costs.lot', 'Lot')} ${vial.lot_number}`}{' '}
                             · {vial.status.replaceAll('_', ' ')}

@@ -9,6 +9,7 @@ import {
   type DeviceDose,
   type PreparedMedicationRoute,
   medicationPreparationInputSchema,
+  medicationVialLabelMassSchema,
   type MedicationPreparationCreationInput,
 } from '@workspace/shared';
 import Button from '../ui/Button';
@@ -25,8 +26,10 @@ export default function PreparationCreationWizard({
   onChange,
   target = null,
   administrationRoute = 'injection',
+  labelMassMg = '',
 }: {
   target?: DeviceDose | null;
+  labelMassMg?: string;
   administrationRoute?: PreparedMedicationRoute;
   initialDate: string;
   initialVolume: string;
@@ -36,6 +39,7 @@ export default function PreparationCreationWizard({
   ) => void;
 }) {
   const { t } = useTranslation();
+  const vialLabel = medicationVialLabelMassSchema.safeParse(labelMassMg);
   const devices = useSyringes();
   const eligible =
     devices.data?.syringes.filter((device) =>
@@ -111,6 +115,21 @@ export default function PreparationCreationWizard({
                 defaultValue: 'Prepared date: {{date}}',
                 date: draft.preparedDate,
               })}
+            </Text>
+            <Text className="text-sm text-text-secondary">
+              {vialLabel.success
+                ? t('medications.stock.labelMassSummary', {
+                    defaultValue: 'Vial label amount: {{value}} mg',
+                    value: vialLabel.data,
+                  })
+                : labelMassMg.trim()
+                  ? t('medications.stock.invalidLabelMass', {
+                      defaultValue:
+                        'Enter a positive finite vial label amount in mg, or leave it blank.',
+                    })
+                  : t('medications.stock.labelMassUnknown', {
+                      defaultValue: 'Vial label amount: not recorded',
+                    })}
             </Text>
             <SyringeDrawPreview
               data={preview.draw ?? undefined}

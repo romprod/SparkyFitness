@@ -1,0 +1,218 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  formatPurchaseMoney,
+  formatPurchaseRate,
+  type MedicationCostWindow,
+} from '@workspace/shared';
+import { useMedicationCostAnalytics } from '@/hooks/useMedicationPurchases';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+
+export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
+  const { t } = useTranslation();
+  const [window, setWindow] = useState<MedicationCostWindow>('12');
+  const report = useMedicationCostAnalytics(ownerId, window, true);
+  const mismatched = !!report.data && report.data.window.key !== window;
+  const data =
+    !report.isFetching && !report.isError && !mismatched
+      ? report.data
+      : undefined;
+  const mixed = data?.rows.some(
+    (row) => row.spend_mixed_currency || row.usage_mixed_currency
+  );
+  const mixedSpend = t(
+    'medications.costReport.mixedSpend',
+    'Spend is unavailable because its contributors use different currencies.'
+  );
+  const mixedUsage = t(
+    'medications.costReport.mixedUsage',
+    'Rates are unavailable because their contributors use different currencies.'
+  );
+  return (
+    <Card>
+      <CardHeader className="space-y-3">
+        <CardTitle>
+          {t('medications.costReport.title', 'By medication')}
+        </CardTitle>
+        <div
+          role="group"
+          aria-label={t('medications.costReport.window', 'Reporting window')}
+          className="flex flex-wrap gap-1"
+        >
+          {(['3', '6', '12', 'all'] as const).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={window === value ? 'secondary' : 'ghost'}
+              aria-pressed={window === value}
+              onClick={() => setWindow(value)}
+            >
+              {value === 'all'
+                ? t('medications.costReport.all', 'All')
+                : `${value}m`}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'medications.costReport.note',
+            'Rates use current purchase and vial label data. Uncosted doses are excluded.'
+          )}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {report.isFetching && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t('medications.costReport.loading', 'Loading cost report…')}
+          </p>
+        )}
+        {(report.isError || mismatched) && (
+          <div className="space-y-2">
+            <Badge
+              variant="destructive"
+              className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+            >
+              {t(
+                'medications.costReport.loadFailed',
+                'Could not load the cost report.'
+              )}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => report.refetch()}
+            >
+              {t('common.retry', 'Retry')}
+            </Button>
+          </div>
+        )}
+        {mixed && (
+          <Badge
+            variant="destructive"
+            className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+          >
+            {t(
+              'medications.costReport.mixed',
+              'Mixed currencies: affected figures are hidden.'
+            )}
+          </Badge>
+        )}
+        {data &&
+          (data.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t(
+                'medications.costReport.empty',
+                'Nothing bought or dosed in this reporting window.'
+              )}
+            </p>
+          ) : (
+            <div
+              className="overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              role="region"
+              tabIndex={0}
+              aria-label={t(
+                'medications.costReport.table',
+                'Medication cost report'
+              )}
+            >
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="min-w-36 p-3 font-medium">
+                      {t('medications.costs.medication', 'Medication')}
+                    </th>
+                    <th className="min-w-24 p-3 text-right font-medium">
+                      {t('medications.costReport.spend', 'Spend')}
+                    </th>
+                    <th className="min-w-24 p-3 text-right font-medium">
+                      {t('medications.costReport.perDose', 'Per dose')}
+                    </th>
+                    <th className="min-w-24 p-3 text-right font-medium">
+                      {t('medications.costReport.perMg', 'Per mg')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((row) => (
+                    <tr
+                      key={row.medication_id}
+                      className="border-b last:border-b-0"
+                    >
+                      <td className="p-3">
+                        <span className="break-words font-medium">
+                          {row.medication_name}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {t(
+                            'medications.costReport.counts',
+                            '{{costed}} costed doses · {{uncosted}} uncosted',
+                            {
+                              costed: row.costed_doses,
+                              uncosted: row.uncosted_doses,
+                            }
+                          )}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right tabular-nums">
+                        <span
+                          title={
+                            row.spend_mixed_currency ? mixedSpend : undefined
+                          }
+                        >
+                          {row.spend_present &&
+                          row.spend !== null &&
+                          row.spend_currency !== null &&
+                          !row.spend_mixed_currency
+                            ? formatPurchaseMoney(row.spend, row.spend_currency)
+                            : '—'}
+                        </span>
+                        {row.spend_mixed_currency && (
+                          <span className="sr-only">{mixedSpend}</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-right tabular-nums">
+                        <span
+                          title={
+                            row.usage_mixed_currency ? mixedUsage : undefined
+                          }
+                        >
+                          {row.usage_mixed_currency
+                            ? '—'
+                            : formatPurchaseRate(
+                                row.cost_per_dose,
+                                row.usage_currency
+                              )}
+                        </span>
+                        {row.usage_mixed_currency && (
+                          <span className="sr-only">{mixedUsage}</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-right tabular-nums">
+                        <span
+                          title={
+                            row.usage_mixed_currency ? mixedUsage : undefined
+                          }
+                        >
+                          {row.usage_mixed_currency
+                            ? '—'
+                            : formatPurchaseRate(
+                                row.cost_per_mg,
+                                row.usage_currency
+                              )}
+                        </span>
+                        {row.usage_mixed_currency && (
+                          <span className="sr-only">{mixedUsage}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+      </CardContent>
+    </Card>
+  );
+}

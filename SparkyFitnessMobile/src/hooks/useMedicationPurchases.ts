@@ -2,11 +2,13 @@ import { useRef, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   MedicationPurchaseCreateInput,
+  MedicationCostWindow,
   MedicationPurchaseDeleteInput,
   MedicationPurchaseUpdateInput,
 } from '@workspace/shared';
 import {
   getMedicationCostIdentity,
+  getMedicationCostAnalytics,
   listMedicationPurchases,
   getMedicationPurchase,
   getMedicationPurchaseEditorData,
@@ -18,10 +20,11 @@ import {
   type MedicationCostContext,
 } from '../services/api/medicationPurchasesApi';
 import { useRefetchOnFocus } from './useRefetchOnFocus';
+import { medicationPurchasesRootQueryKey } from './queryKeys';
 import i18n from '../localization/i18n';
 
 const accessKey = ['medicationCostAccess'] as const;
-const root = ['medicationPurchases'] as const;
+const root = medicationPurchasesRootQueryKey;
 export function useMedicationCostsAccess() {
   const client = useQueryClient();
   const access = useQuery({
@@ -219,4 +222,29 @@ export function useMedicationPurchaseMutations(
       onError: invalidate,
     }),
   };
+}
+
+export function useMedicationCostAnalytics(
+  owner: string | null,
+  window: MedicationCostWindow
+) {
+  const context = useCostContext(owner);
+  const query = useQuery({
+    queryKey: [
+      ...root,
+      owner,
+      context?.configId,
+      context?.serverUrl,
+      'analytics',
+      window,
+    ],
+    queryFn: ({ signal }) =>
+      getMedicationCostAnalytics(requireContext(context), window, signal),
+    enabled: !!context,
+    placeholderData: undefined,
+    retry: false,
+    staleTime: 0,
+  });
+  useRefetchOnFocus(query.refetch, !!context);
+  return query;
 }

@@ -24,6 +24,7 @@ import {
 } from '../services/api/medicationsApi';
 import {
   medicationsRootQueryKey,
+  medicationPurchasesRootQueryKey,
   medicationsListQueryKey,
   medicationDetailQueryKey,
   medicationEntriesQueryKey,
@@ -97,6 +98,9 @@ export function useCreateMedication() {
     mutationFn: (body: CreateMedicationInput) => createMedication(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: medicationsRootQueryKey });
+      void queryClient.invalidateQueries({
+        queryKey: medicationPurchasesRootQueryKey,
+      });
     },
   });
 }
@@ -108,6 +112,9 @@ export function useUpdateMedication() {
       updateMedication(id, body),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: medicationsRootQueryKey });
+      void queryClient.invalidateQueries({
+        queryKey: medicationPurchasesRootQueryKey,
+      });
       queryClient.invalidateQueries({
         queryKey: medicationDetailQueryKey(variables.id),
       });
@@ -121,6 +128,9 @@ export function useDeleteMedication() {
     mutationFn: (id: string) => deleteMedication(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: medicationsRootQueryKey });
+      void queryClient.invalidateQueries({
+        queryKey: medicationPurchasesRootQueryKey,
+      });
     },
   });
 }

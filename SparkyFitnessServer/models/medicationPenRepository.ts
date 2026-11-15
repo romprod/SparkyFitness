@@ -17,7 +17,7 @@ import type {
 const PREPARATION_SQL = `(SELECT (to_jsonb(p) - 'user_id' - 'medication_id' - 'pen_id') || jsonb_build_object('label_concentration_value',p.label_concentration_value::text,'exact',jsonb_build_object('mass_value',p.mass_value::text,'mass_mg',p.mass_mg::text,'concentration_mg_ml',p.concentration_mg_ml::text,'final_volume_ml',p.final_volume_ml::text))
   FROM medication_preparations p WHERE p.pen_id = medication_pens.id
     AND p.user_id = medication_pens.user_id AND p.medication_id = medication_pens.medication_id)`;
-const PEN_COLS = `id, medication_id, user_id, kind, label, dose_mg, concentration_mg_ml,
+const PEN_COLS = `id, medication_id, user_id, kind, label, label_mass_mg::text, dose_mg, concentration_mg_ml,
   volume_ml, doses_total, doses_used, status, finished_at, opened_at, expiry_date, bud_date,
   reorder_flag, reorder_threshold, notes, source, custom_fields, created_at, updated_at,
   lot_number, storage_location, bud_mode, bud_interval_days, bud_base_date, bud_source,
@@ -31,6 +31,12 @@ async function createPen(
   const client = await getClient(userId);
   try {
     await client.query('BEGIN');
+    if (
+      data.label_mass_mg !== null &&
+      data.label_mass_mg !== undefined &&
+      data.kind !== 'vial'
+    )
+      throw badPreparation('A vial label amount requires vial stock.');
     if (data.preparation && data.kind !== 'vial')
       throw badPreparation('Preparation requires a vial.');
     if (data.preparation && Number(data.doses_used ?? 0) !== 0)
@@ -72,10 +78,10 @@ async function createPen(
       `INSERT INTO medication_pens (
          medication_id, user_id, kind, label, dose_mg, concentration_mg_ml, volume_ml,
          doses_total, doses_used, status, opened_at, expiry_date, bud_date,
-         reorder_flag, reorder_threshold, notes, source, custom_fields)
+         reorder_flag, reorder_threshold, notes, source, custom_fields, label_mass_mg)
        VALUES ($1,$2, COALESCE($3,'pen'),$4,$5,$6,$7,$8, COALESCE($9,0),
          COALESCE($10,'sealed'),$11,$12,$13, COALESCE($14, FALSE),$15,$16,
-         COALESCE($17,'manual'), COALESCE($18,'{}'::jsonb))
+         COALESCE($17,'manual'), COALESCE($18,'{}'::jsonb),$19)
        RETURNING ${PEN_COLS}`,
       [
         medicationId,
@@ -96,6 +102,7 @@ async function createPen(
         data.notes ?? null,
         data.source ?? null,
         data.custom_fields ? JSON.stringify(data.custom_fields) : null,
+        data.label_mass_mg ?? null,
       ]
     );
     const pen = result.rows[0];
@@ -247,6 +254,18 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
       await client.query('COMMIT');
       return null;
     }
+    const labelMass =
+      data.label_mass_mg === undefined
+        ? existing.label_mass_mg
+        : data.label_mass_mg;
+    if (
+      (data.kind ?? existing.kind) !== 'vial' &&
+      labelMass !== null &&
+      labelMass !== undefined
+    )
+      throw badPreparation(
+        'Clear the vial label amount before changing this stock to a pen.'
+      );
     const snapshot = await client.query(
       'SELECT * FROM medication_preparations WHERE pen_id=$1 AND user_id=$2',
       [id, userId]
@@ -388,6 +407,7 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
     let index = 3;
 
     const fields: (keyof UpdatePenBody)[] = [
+      'label_mass_mg',
       'lot_number',
       'storage_location',
       'bud_mode',

@@ -275,9 +275,11 @@ test('retiring and reopening send deliberate lifecycle intent without changing q
     expect.objectContaining({
       status: 'discarded',
       lifecycle_intent: true,
-      volume_ml: 2,
-      concentration_mg_ml: 5,
     })
+  );
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('volume_ml');
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'concentration_mg_ml'
   );
   view.unmount();
   mockUpdate.mockClear();
@@ -289,7 +291,6 @@ test('retiring and reopening send deliberate lifecycle intent without changing q
     expect.objectContaining({
       status: 'in_use',
       lifecycle_intent: true,
-      volume_ml: 2,
     })
   );
 });
@@ -346,4 +347,149 @@ test('creation review calculates estimated yield from the actual dose and one sa
   expect(view.getByText('Measured marking: 20 Units')).toBeTruthy();
   expect(view.getByText('Estimated doses in vial: 10')).toBeTruthy();
   expect(mockCreate).not.toHaveBeenCalled();
+});
+
+test('new preparation keeps independent vial label blank and does not infer it from prepared content', () => {
+  const view = screen();
+  expect(view.getByLabelText('Vial label amount (mg)').props.value).toBe('');
+  fireEvent.press(view.getByText('Next'));
+  fireEvent.changeText(view.getByLabelText('Labelled vial content'), '10');
+  fireEvent.changeText(view.getByLabelText('Final volume (mL)'), '2');
+  fireEvent.press(view.getByText('Review preparation'));
+  expect(view.getByText('Vial label amount: not recorded')).toBeTruthy();
+  expect(view.getByLabelText('Vial label amount (mg)').props.value).toBe('');
+  act(() => mockSave());
+  expect(mockCreate.mock.calls[0][0].body).not.toHaveProperty('label_mass_mg');
+});
+test('new preparation reviews and creates explicit exact label only as top-level stock metadata', () => {
+  const view = screen();
+  fireEvent.changeText(
+    view.getByLabelText('Vial label amount (mg)'),
+    '10.123456789012345678901'
+  );
+  fireEvent.press(view.getByText('Next'));
+  fireEvent.changeText(view.getByLabelText('Labelled vial content'), '20');
+  fireEvent.changeText(view.getByLabelText('Final volume (mL)'), '2');
+  fireEvent.press(view.getByText('Review preparation'));
+  expect(
+    view.getByText('Vial label amount: 10.123456789012345678901 mg')
+  ).toBeTruthy();
+  act(() => mockSave());
+  const body = mockCreate.mock.calls[0][0].body;
+  expect(body.label_mass_mg).toBe('10.123456789012345678901');
+  expect(body.preparation.mass_value).toBe('20');
+  expect(body.preparation).not.toHaveProperty('label_mass_mg');
+});
+test('untouched exact existing vial label is omitted, and explicit clearing sends null without changing stock inputs', () => {
+  mockPens = [{ ...legacy, label_mass_mg: '10.123456789012345678901' }];
+  const view = screen(true);
+  expect(view.getByLabelText('Vial label amount (mg)').props.value).toBe(
+    '10.123456789012345678901'
+  );
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('label_mass_mg');
+  fireEvent.changeText(view.getByLabelText('Vial label amount (mg)'), '');
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[1][0].body.label_mass_mg).toBeNull();
+  for (const field of [
+    'dose_mg',
+    'concentration_mg_ml',
+    'volume_ml',
+    'doses_total',
+    'doses_used',
+  ])
+    expect(mockUpdate.mock.calls[1][0].body).not.toHaveProperty(field);
+});
+test.each(['0', '-1', 'Infinity', 'not a number'])(
+  'rejects invalid explicit vial label %s',
+  (value) => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockPens = [legacy];
+    const view = screen(true);
+    fireEvent.changeText(view.getByLabelText('Vial label amount (mg)'), value);
+    act(() => mockSave());
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenCalledWith(
+      'Error',
+      'Enter a positive finite vial label amount in mg, or leave it blank.'
+    );
+    alert.mockRestore();
+  }
+);
+test('a known label must be explicitly cleared before changing vial to pen', () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  mockPens = [{ ...legacy, label_mass_mg: '10' }];
+  const view = screen(true);
+  fireEvent.press(view.getByText('Pen'));
+  expect(view.getByLabelText('Vial label amount (mg)')).toBeTruthy();
+  fireEvent.changeText(view.getByLabelText('Vial label amount (mg)'), '');
+  fireEvent.press(view.getByText('Pen'));
+  expect(view.queryByLabelText('Vial label amount (mg)')).toBeNull();
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({ kind: 'pen', label_mass_mg: null })
+  );
+  alert.mockRestore();
+});
+
+test('label-only legacy edit never echoes lossy numeric DTO projections into exact stored physical values', () => {
+  const stored = {
+    dose_mg: '0.123456789123456789',
+    concentration_mg_ml: '10.123456789123456789',
+    volume_ml: '2.123456789123456789',
+    doses_total: '4',
+    doses_used: '1',
+  };
+  mockPens = [
+    {
+      ...legacy,
+      dose_mg: Number(stored.dose_mg),
+      concentration_mg_ml: Number(stored.concentration_mg_ml),
+      volume_ml: Number(stored.volume_ml),
+      doses_total: 4,
+      doses_used: 1,
+    },
+  ];
+  expect(String(mockPens[0]!.concentration_mg_ml)).not.toBe(
+    stored.concentration_mg_ml
+  );
+  const view = screen(true);
+  fireEvent.changeText(view.getByLabelText('Vial label amount (mg)'), '10');
+  act(() => mockSave());
+  const patch = mockUpdate.mock.calls[0][0].body;
+  expect(patch.label_mass_mg).toBe('10');
+  for (const field of Object.keys(stored))
+    expect(patch).not.toHaveProperty(field);
+  expect({
+    ...stored,
+    ...Object.fromEntries(
+      Object.entries(patch).filter(([key]) => key in stored)
+    ),
+  }).toEqual(stored);
+});
+test('physical values explicitly changed or cleared remain in the stock edit request', () => {
+  mockPens = [legacy];
+  const view = screen(true);
+  fireEvent.changeText(view.getByLabelText('Final volume (mL)'), '3.5');
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body.volume_ml).toBe(3.5);
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'concentration_mg_ml'
+  );
+  fireEvent.changeText(view.getByLabelText('Final volume (mL)'), '');
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[1][0].body.volume_ml).toBeNull();
+});
+test('vial-to-pen conversion explicitly clears vial-only physical fields', () => {
+  mockPens = [legacy];
+  const view = screen(true);
+  fireEvent.press(view.getByText('Pen'));
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({
+      kind: 'pen',
+      concentration_mg_ml: null,
+      volume_ml: null,
+    })
+  );
 });

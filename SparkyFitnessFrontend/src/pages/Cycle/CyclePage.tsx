@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCycleSettings } from '@/hooks/useCycle';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Info } from 'lucide-react';
 import CycleToday from './CycleToday';
 import PregnancyToday from './pregnancy/PregnancyToday';
 import CycleOnboarding from './CycleOnboarding';
@@ -43,22 +42,6 @@ export default function CyclePage() {
             'Track, understand, and sync with your body.'
           )}
         </p>
-      </div>
-
-      {/* Beta Notice */}
-      <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3 sm:p-4 flex items-start gap-3">
-        <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-        <div>
-          <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-            {t('cycle.beta.title', 'Initial Beta Release')}
-          </h4>
-          <p className="text-xs text-amber-700/90 dark:text-amber-300/80 mt-0.5">
-            {t(
-              'cycle.beta.description',
-              'Please expect some rough edges. If you spot any bugs or issues, raise them on GitHub to help us improve!'
-            )}
-          </p>
-        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

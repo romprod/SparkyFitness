@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   addDays,
+  medicationVialLabelMassSchema,
   calculatePreparationValues,
   previewPreparationCreation,
   positiveDeviceDoseSchema,
@@ -20,6 +21,7 @@ import {
   type MedicationPreparationCorrectionInput,
 } from '@workspace/shared';
 import MedicationDrawPreview from './MedicationDrawPreview';
+import VialLabelMassField from './VialLabelMassField';
 import { useMedicationSyringes } from '@/hooks/useMedicationSyringes';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import {
@@ -149,6 +151,11 @@ export default function MedicationPreparationWizard({
   );
   const [diluent, setDiluent] = useState(saved?.diluent ?? '');
   const [label, setLabel] = useState(pen?.label ?? '');
+  const [labelMass, setLabelMass] = useState('');
+  const labelMassValid =
+    !!pen ||
+    !labelMass.trim() ||
+    medicationVialLabelMassSchema.safeParse(labelMass).success;
   const [budMode, setBudMode] = useState<'none' | 'date' | 'interval'>(
     pen?.bud_mode ?? (pen?.bud_date ? 'date' : 'none')
   );
@@ -267,7 +274,7 @@ export default function MedicationPreparationWizard({
   const openReview = () => {
     correct.reset?.();
     setAttempted(null);
-    if (!preparationValid || !budValid) return;
+    if (!preparationValid || !budValid || !labelMassValid) return;
     if (correcting) {
       setReviewInput({
         expected_revision: currentRevision,
@@ -279,7 +286,7 @@ export default function MedicationPreparationWizard({
     setStep(3);
   };
   const save = () => {
-    if (pending || !preparationValid || !budValid) return;
+    if (pending || !preparationValid || !budValid || !labelMassValid) return;
     if (correcting) {
       if (!reviewInput || !review?.can_confirm) return;
       if (
@@ -326,6 +333,7 @@ export default function MedicationPreparationWizard({
         attach.mutate({ id: pen.id, body }, { onSuccess: onClose });
       } else {
         body.status = 'in_use';
+        if (labelMass.trim()) body.label_mass_mg = labelMass.trim();
         body.dose_mg = medicationDoseInMg(med);
         body.opened_at = preparedDate;
         create.mutate(body, { onSuccess: onClose });
@@ -435,6 +443,13 @@ export default function MedicationPreparationWizard({
                 label,
                 setLabel
               )}
+            {!pen && (
+              <VialLabelMassField
+                id="preparation-label-mass"
+                value={labelMass}
+                onChange={setLabelMass}
+              />
+            )}
             {mode === 'reconstituted' ? (
               <>
                 {field(
@@ -791,6 +806,13 @@ export default function MedicationPreparationWizard({
                 </p>
               </div>
             )}
+            {!pen && (
+              <p className="text-sm break-words">
+                {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
+                {labelMass.trim() ||
+                  t('medications.preparation.notRecorded', 'Not recorded')}
+              </p>
+            )}
             <p className="text-sm">
               {t('medications.preparation.preparedDate', 'Prepared date')}:{' '}
               {preparedDate}
@@ -833,6 +855,7 @@ export default function MedicationPreparationWizard({
               disabled={
                 !preparationValid ||
                 !budValid ||
+                !labelMassValid ||
                 (correcting && pensQ.isFetching)
               }
               onClick={openReview}
