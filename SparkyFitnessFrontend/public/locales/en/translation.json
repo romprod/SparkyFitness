@@ -905,6 +905,16 @@
       "help": "Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.",
       "result": "{{concentration}} mg/mL · {{draw}} mL per entered dose",
       "exceeds": "The entered dose exceeds the vial content."
+    },
+    "stock": {
+      "title": "Preparation & stock",
+      "description": "Prepare vials, calculate draw volumes and track stock for any injectable peptide or medication. No GLP-1 setting is needed.",
+      "select": "Peptide / medication",
+      "add": "Add peptide / injectable",
+      "empty": "Add your peptide as an injection to start. Existing injectable medications appear here automatically.",
+      "prepare": "Prepare a vial",
+      "calculator": "Preparation calculator",
+      "subtitle": "Vial preparation, draw calculations, stock and injection history"
     }
   },
   "nav": {

@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Syringe } from 'lucide-react';
-import { INJECTION_SITES, localDateTimeToUtc } from '@workspace/shared';
+import {
+  INJECTION_SITES,
+  localDateTimeToUtc,
+  medicationDoseInMg,
+} from '@workspace/shared';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import InjectionSitePicker from './InjectionSitePicker';
 import { useInjectionSiteSelection } from '@/hooks/useInjectionSiteSelection';
@@ -44,7 +48,7 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
   );
 
   const [doseMg, setDoseMg] = useState(
-    med.dose_amount != null ? String(med.dose_amount) : ''
+    medicationDoseInMg(med) != null ? String(medicationDoseInMg(med)) : ''
   );
   const [injectedAt, setInjectedAt] = useState('');
   const [injectionNotes, setInjectionNotes] = useState('');
@@ -57,7 +61,7 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
       {
         medication_id: medId,
         site,
-        dose_mg: doseMg ? Number(doseMg) : (med.dose_amount ?? null),
+        dose_mg: doseMg ? Number(doseMg) : medicationDoseInMg(med),
         injected_at: injectedAt
           ? localDateTimeToUtc(injectedAt, timezone).toISOString()
           : undefined,
@@ -117,7 +121,9 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
               value={doseMg}
               onChange={(e) => setDoseMg(e.target.value)}
               placeholder={
-                med.dose_amount != null ? String(med.dose_amount) : '0'
+                medicationDoseInMg(med) != null
+                  ? String(medicationDoseInMg(med))
+                  : '0'
               }
             />
           </div>

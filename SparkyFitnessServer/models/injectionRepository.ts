@@ -1,3 +1,4 @@
+import { medicationDoseInMg } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreateInjectionBody,
@@ -52,15 +53,24 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
     let resolvedDoseMg = data.dose_mg ?? null;
     if (resolvedDoseMg === null) {
       const doseResult = await client.query(
-        `SELECT COALESCE(
+        `SELECT
            (SELECT dose_mg FROM medication_titration_steps
              WHERE user_id = $1 AND medication_id = $2 AND status = 'active'
-             ORDER BY step_order DESC LIMIT 1),
-           (SELECT dose_amount FROM medications WHERE id = $2 AND user_id = $1)
-         ) AS dose_mg`,
+             ORDER BY step_order DESC LIMIT 1) AS dose_mg,
+           m.dose_amount, m.dose_unit, m.is_glp1
+         FROM medications m WHERE m.id = $2 AND m.user_id = $1`,
         [userId, data.medication_id]
       );
-      resolvedDoseMg = doseResult.rows[0]?.dose_mg ?? null;
+      const defaults = doseResult.rows[0] as
+        | {
+            dose_mg: number | null;
+            dose_amount: number | null;
+            dose_unit: string | null;
+            is_glp1: boolean;
+          }
+        | undefined;
+      resolvedDoseMg =
+        defaults?.dose_mg ?? (defaults ? medicationDoseInMg(defaults) : null);
     }
 
     const injection = await client.query(

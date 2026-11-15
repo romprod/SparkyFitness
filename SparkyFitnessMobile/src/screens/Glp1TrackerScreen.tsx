@@ -37,9 +37,10 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
   const selectedDate = useDiaryDateStore((s) => s.selectedDate);
   const { data: med, isLoading } = useMedicationDetail(medicationId);
 
-  const title = t('medications.glp1.tracker.title', {
-    defaultValue: 'GLP-1 tracker',
-  });
+  const title =
+    med?.type_id === 'injection'
+      ? t('medications.stock.title', { defaultValue: 'Preparation & stock' })
+      : t('medications.glp1.tracker.title', { defaultValue: 'GLP-1 tracker' });
   const header = useScreenHeader({
     title,
     nativeTitle: title,
@@ -73,9 +74,13 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
           <Text className="text-2xl font-bold text-text-primary mb-3">
             {med.name}
           </Text>
-          <Glp1CheckInCard key={selectedDate} date={selectedDate} />
+          {med.is_glp1 && (
+            <Glp1CheckInCard key={selectedDate} date={selectedDate} />
+          )}
           {isInjectable && <Glp1LogInjectionCard med={med} />}
-          <Glp1SerumCard medicationId={med.id} title={med.name} />
+          {med.is_glp1 && (
+            <Glp1SerumCard medicationId={med.id} title={med.name} />
+          )}
           {isInjectable && (
             <Glp1InventoryCard
               medicationId={med.id}
@@ -90,20 +95,22 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
               }
             />
           )}
-          <Glp1TitrationCard
-            medicationId={med.id}
-            onAdd={() =>
-              navigation.navigate('Glp1TitrationForm', {
-                medicationId: med.id,
-              })
-            }
-            onEdit={(stepId) =>
-              navigation.navigate('Glp1TitrationForm', {
-                medicationId: med.id,
-                stepId,
-              })
-            }
-          />
+          {med.is_glp1 && (
+            <Glp1TitrationCard
+              medicationId={med.id}
+              onAdd={() =>
+                navigation.navigate('Glp1TitrationForm', {
+                  medicationId: med.id,
+                })
+              }
+              onEdit={(stepId) =>
+                navigation.navigate('Glp1TitrationForm', {
+                  medicationId: med.id,
+                  stepId,
+                })
+              }
+            />
+          )}
           {isInjectable && <Glp1RecentInjectionsCard medicationId={med.id} />}
           <MedicalDisclaimer />
         </ScrollView>

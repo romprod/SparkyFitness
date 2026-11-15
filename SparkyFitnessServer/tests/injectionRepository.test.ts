@@ -163,6 +163,37 @@ describe('injectionRepository', () => {
       expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     });
 
+    it.each([
+      ['mcg', 500, 0.5],
+      ['mg', 0.5, 0.5],
+      ['mL', 0.5, null],
+    ])(
+      'resolves non-GLP-1 %s defaults without changing the meaning of the unit',
+      async (unit, amount, expected) => {
+        mockClient.query
+          .mockResolvedValueOnce({})
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                dose_mg: null,
+                dose_amount: amount,
+                dose_unit: unit,
+                is_glp1: false,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({ rows: [{ id: injectionId }] })
+          .mockResolvedValueOnce({});
+        await injectionRepository.createInjection(userId, {
+          medication_id: medicationId,
+        });
+        const insert = mockClient.query.mock.calls.find(([sql]) =>
+          String(sql).includes('INSERT INTO injection_entries')
+        );
+        expect(insert?.[1]?.[6]).toBe(expected);
+      }
+    );
+
     it('resolves a missing dose from titration/medication defaults', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN

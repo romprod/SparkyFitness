@@ -369,4 +369,5 @@ export {
 export {
   calculatePreparation,
   calculateVialStock,
+  medicationDoseInMg,
 } from './medications/preparation.ts';

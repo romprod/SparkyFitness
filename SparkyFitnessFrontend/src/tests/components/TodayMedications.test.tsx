@@ -30,6 +30,7 @@ jest.mock('@/contexts/ActiveUserContext', () => ({
 }));
 
 const mockCreateEntry = jest.fn();
+const mockLogInjection = jest.fn();
 const idleMutation = () => ({ mutate: jest.fn(), isPending: false });
 jest.mock('@/hooks/useMedications', () => ({
   useCreateMedicationEntryMutation: () => ({
@@ -38,14 +39,23 @@ jest.mock('@/hooks/useMedications', () => ({
   }),
   useUpdateMedicationEntryMutation: () => idleMutation(),
   useDeleteMedicationEntryMutation: () => idleMutation(),
-  useLogGlpInjectionEntryMutation: () => idleMutation(),
+  useLogGlpInjectionEntryMutation: () => ({
+    mutate: mockLogInjection,
+    isPending: false,
+  }),
   useUpdateInjectionEntryMutation: () => idleMutation(),
   useDeleteInjectionEntryMutation: () => idleMutation(),
 }));
 
 // Children with their own data hooks, not under test here.
 jest.mock('@/pages/Medications/GlpDailyCheckIn', () => () => null);
-jest.mock('@/pages/Medications/Glp1QuickLogDialog', () => () => null);
+jest.mock(
+  '@/pages/Medications/Glp1QuickLogDialog',
+  () =>
+    ({ onConfirm }: { onConfirm: (site: string) => void }) => (
+      <button onClick={() => onConfirm('left_thigh')}>Confirm injection</button>
+    )
+);
 jest.mock('@/pages/Medications/MedicationLogCalendar', () => () => null);
 
 const medWithDose = (timeOfDay: string): MedicationDetail => ({
@@ -145,5 +155,40 @@ describe('TodayMedications scheduled doses', () => {
         expect.anything()
       );
     }
+  );
+});
+
+it('deducts a scheduled non-GLP-1 peptide dose with micrograms converted to mg', () => {
+  mockLogInjection.mockClear();
+  const med = medWithDose('09:00');
+  med.type_id = 'injection';
+  med.is_glp1 = false;
+  med.dose_unit = 'mcg';
+  med.dose_amount = 500;
+  med.schedules = (med.schedules ?? []).map((s) => ({
+    ...s,
+    dose_amount: 250,
+  }));
+  render(
+    <TodayMedications
+      selectedDate="2026-11-15"
+      today="2026-11-15"
+      meds={[med]}
+      entries={[]}
+      recentEntries={[]}
+      loadingMeds={false}
+      loadingEntries={false}
+      onSelectDate={jest.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm injection' }));
+  expect(mockLogInjection).toHaveBeenCalledWith(
+    expect.objectContaining({
+      medication_id: med.id,
+      dose_mg: 0.25,
+      deduct_pen: true,
+    }),
+    expect.anything()
   );
 });

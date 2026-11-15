@@ -1,7 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
-import { todayInZone, addDays, calculatePreparation } from '@workspace/shared';
+import {
+  todayInZone,
+  addDays,
+  calculatePreparation,
+  medicationDoseInMg,
+} from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -53,7 +58,7 @@ export default function Glp1InventoryManager({
   const [kind, setKind] = useState<'pen' | 'vial'>('pen');
   const [label, setLabel] = useState('');
   const [inventoryDoseMg, setInventoryDoseMg] = useState(
-    med.dose_amount != null ? String(med.dose_amount) : ''
+    medicationDoseInMg(med) != null ? String(medicationDoseInMg(med)) : ''
   );
   const [concentration, setConcentration] = useState('');
   const [volume, setVolume] = useState('');
@@ -107,7 +112,9 @@ export default function Glp1InventoryManager({
     setEditingPen(null);
     setKind('pen');
     setLabel('');
-    setInventoryDoseMg(med.dose_amount != null ? String(med.dose_amount) : '');
+    setInventoryDoseMg(
+      medicationDoseInMg(med) != null ? String(medicationDoseInMg(med)) : ''
+    );
     setConcentration('');
     setVolume('');
     setPreparationMass('');
@@ -119,8 +126,9 @@ export default function Glp1InventoryManager({
     setNotes('');
   };
 
-  const openAddDialog = () => {
+  const openAddDialog = (vial = false) => {
     resetForm();
+    if (vial) setKind('vial');
     setInventoryOpen(true);
   };
 
@@ -191,12 +199,19 @@ export default function Glp1InventoryManager({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between text-base">
-            <span>
-              {t('medications.glp1.penInventory', 'Pen / vial inventory')}
-            </span>
-            <Button variant="outline" size="sm" onClick={openAddDialog}>
-              {t('medications.glp1.addInventory', 'Add Inventory')}
-            </Button>
+            <span>{t('medications.stock.title', 'Preparation & stock')}</span>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => openAddDialog(true)}>
+                {t('medications.stock.prepare', 'Prepare a vial')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openAddDialog()}
+              >
+                {t('medications.glp1.addInventory', 'Add Inventory')}
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -493,7 +508,9 @@ export default function Glp1InventoryManager({
                   value={inventoryDoseMg}
                   onChange={(e) => setInventoryDoseMg(e.target.value)}
                   placeholder={
-                    med.dose_amount != null ? String(med.dose_amount) : '0'
+                    medicationDoseInMg(med) != null
+                      ? String(medicationDoseInMg(med))
+                      : '0'
                   }
                 />
               </div>
@@ -516,6 +533,9 @@ export default function Glp1InventoryManager({
 
             {kind === 'vial' && !editingPen && (
               <div className="space-y-2 rounded-md border p-3">
+                <p className="text-sm font-medium">
+                  {t('medications.stock.calculator', 'Preparation calculator')}
+                </p>
                 <Label htmlFor="prep-mass">
                   {t('medications.preparation.mass', 'Vial content (mg)')}
                 </Label>

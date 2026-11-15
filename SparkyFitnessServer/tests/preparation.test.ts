@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculatePreparation,
   calculateVialStock,
+  medicationDoseInMg,
 } from '../../shared/src/medications/preparation.ts';
 describe('preparation and mass stock', () => {
   it('converts labelled mass and final volume into concentration and draw', () => {
@@ -57,4 +58,26 @@ it('rejects invalid stock inputs at the API boundary', () => {
       dose_mg: -0.5,
     }).success
   ).toBe(false);
+});
+
+describe('peptide dose units', () => {
+  it.each(['mcg', 'ug', 'µg', 'μg'])('converts %s to mg', (unit) => {
+    expect(medicationDoseInMg({ dose_amount: 500, dose_unit: unit })).toBe(0.5);
+  });
+  it('keeps mg, converts grams, and honours a schedule override', () => {
+    expect(medicationDoseInMg({ dose_amount: 0.5, dose_unit: 'mg' })).toBe(0.5);
+    expect(medicationDoseInMg({ dose_amount: 0.001, dose_unit: 'g' })).toBe(1);
+    expect(
+      medicationDoseInMg({ dose_amount: 500, dose_unit: 'mcg' }, 250)
+    ).toBe(0.25);
+  });
+  it('never treats volume, syringe units or an unspecified peptide unit as mg', () => {
+    for (const unit of ['mL', 'units', null, ''])
+      expect(
+        medicationDoseInMg({ dose_amount: 5, dose_unit: unit })
+      ).toBeNull();
+    expect(
+      medicationDoseInMg({ dose_amount: 0.5, dose_unit: null, is_glp1: true })
+    ).toBe(0.5);
+  });
 });

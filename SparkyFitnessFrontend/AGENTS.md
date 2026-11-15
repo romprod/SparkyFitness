@@ -1,6 +1,6 @@
 # AGENTS.md
 
-_Last updated: 2026-11-08_
+_Last updated: 2026-11-15_
 
 SparkyFitness Frontend is the React web app for the SparkyFitness monorepo. Use this file as the primary guide for work inside `SparkyFitnessFrontend/`.
 
@@ -45,6 +45,10 @@ Features are organized by domain, and the same domain folder name appears in `sr
 - Page domains: `Admin`, `Auth`, `Chat`, `CheckIn`, `Cycle`, `Diary`, `Errors`, `Exercises`, `Fasting`, `Foods`, `Goals`, `Integrations`, `Labs`, `Medications`, `Reports`, `Settings`, `Symptoms`.
 - API domains add a few more: `AiConversions`, `Chatbot`, `Onboarding`, `Pregnancy`, `SleepScience`, `Symptoms`.
 - Example: a Medications bug lives in `src/pages/Medications/` + `src/api/Medications/` + `src/hooks/` medication hooks. Start there, not with a repo-wide search.
+
+## Preparation and stock
+
+`pages/Medications/PeptideStock.tsx` is the Medications → Preparation & stock tab (`/medications?tab=stock&medication=<id>`). It lists all injectable medications, independent of `is_glp1` and the Cabinet subtype filter. It reuses the legacy-named `Glp1InventoryManager`, `Glp1LogInjection` and `Glp1RecentInjections` components; these are medication-agnostic. `medicationDoseInMg` in shared converts mass defaults without treating mL/device units as mg. Non-GLP-1 mass-based injectable doses logged in Today also deduct stock; GLP-1-specific modelling stays in `Glp1Coach`.
 
 ## Source Map
 

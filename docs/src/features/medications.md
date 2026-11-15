@@ -69,10 +69,16 @@ See [Family & Friends Sharing](./family-friends-sharing.md) for how permissions 
 
 ## Vial preparation and mass stock
 
-When adding a vial to GLP-1 inventory, enter its labelled content in **mg**, its **final prepared volume in mL**, and the dose in **mg**. The calculator shows concentration in mg/mL and the draw volume in mL for that entered dose. The final volume is the total prepared solution, rather than an assumed quantity of diluent. The calculator does not choose a dose or convert to syringe units.
+**Open Medications → Preparation & stock** to choose any injectable peptide or medication. The GLP-1 flag is not required. Use **Add peptide / injectable** for a new record, or select an existing injectable. This tab can be bookmarked at `/medications?tab=stock`. It includes preparation, stock, injection logging and editable injection history together. The same tools are also available in the Cabinet detail for injectable medications.
 
-Saving retains the concentration and prepared volume in the vial record. Once used, those preparation details cannot be changed; add a new vial for a new preparation. Web and mobile use the same calculation and existing inventory forms.
+Click **Prepare a vial**, then enter its labelled content in **mg**, its **final prepared volume in mL**, and the dose in **mg**. The calculator shows concentration in mg/mL and the draw volume in mL for that entered dose. The final volume is the total prepared solution, rather than an assumed quantity of diluent. The calculator does not choose a dose or convert to syringe units.
+
+Saving retains the concentration and prepared volume in the vial record. Once used, those preparation details cannot be changed; add a new vial for a new preparation. Web and mobile source use the same calculation and existing inventory forms. The mobile medication detail links to Preparation & stock for any injectable; pharmacokinetic modelling, GLP-1 check-ins and titration remain specific to GLP-1 medications. Native source changes require a rebuilt app.
 
 For a vial with complete records, remaining mass is concentration × prepared volume minus the sum of the doses linked to that vial. Remaining volume follows from that mass and concentration. Variable doses, edited doses and deleted injections all affect the balance. Only injections logged with stock deduction consume stock. Existing count-based pen inventory continues to work.
 
 If older usage counts do not match linked injections, a dose amount is missing, or preparation details are incomplete, mass stock is unavailable. A historic dose count is not treated as a known mass. Recorded use above the vial content is retained and flagged; it is never silently discarded. These figures describe recorded stock and do not account for unlogged waste, spills or device dead space.
+
+### Dose units
+
+Preparation and vial stock use mg and mL. A saved default dose in mcg (including µg/μg) is divided by 1,000 before it fills a dose field in mg or is deducted from stock. Gram doses are multiplied by 1,000. For non-GLP-1 mass-based injectables, the daily Log tab also deducts stock using the scheduled dose amount when one is present. Volume, device units and unspecified peptide units are never assumed to mean mg; enter the dose explicitly in mg when using the injection form. Existing GLP-1 records without a dose unit retain their legacy mg interpretation.

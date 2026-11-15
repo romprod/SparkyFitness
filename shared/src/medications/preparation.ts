@@ -54,3 +54,30 @@ export function calculateVialStock(
     overdrawnMg: Math.max(0, -balance),
   };
 }
+
+/** Convert a recorded medication dose to mass; volume/device units need an explicit mg dose. */
+export function medicationDoseInMg(
+  med: {
+    dose_amount: number | null;
+    dose_unit?: string | null;
+    is_glp1?: boolean;
+  },
+  amount = med.dose_amount
+): number | null {
+  if (amount === null || !Number.isFinite(amount) || amount <= 0) return null;
+  const unit = (med.dose_unit?.trim() || (med.is_glp1 ? 'mg' : ''))
+    .trim()
+    .toLowerCase()
+    .replace(/[µμ]/g, 'u');
+  const multiplier =
+    unit === 'mg'
+      ? 1
+      : unit === 'mcg' || unit === 'ug'
+        ? 0.001
+        : unit === 'g'
+          ? 1000
+          : null;
+  if (multiplier === null) return null;
+  const mg = amount * multiplier;
+  return Number.isFinite(mg) && mg > 0 ? mg : null;
+}

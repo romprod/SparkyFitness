@@ -16,7 +16,7 @@ _Last updated: 2026-11-15_
 
 ## Preparation calculations
 
-`src/medications/preparation.ts` calculates vial concentration, draw volume and mass stock for web/mobile/server. Inputs are labelled mass, final prepared volume and entered dose; it does not recommend doses. `MedicationPen.stock` is derived from complete linked injection history; unknown legacy balances stay null. Tests live in `SparkyFitnessServer/tests/preparation.test.ts` and `vialStockRepository.test.ts`.
+`src/medications/preparation.ts` calculates vial concentration, draw volume and mass stock for web/mobile/server. `medicationDoseInMg` converts mg/mcg/g defaults and schedule overrides for every peptide; unknown/device/volume units remain null, with missing-unit mg compatibility limited to legacy GLP-1 records. Inputs are labelled mass, final prepared volume and entered dose; it does not recommend doses. `MedicationPen.stock` is derived from complete linked injection history; unknown legacy balances stay null. Tests live in `SparkyFitnessServer/tests/preparation.test.ts` and `vialStockRepository.test.ts`.
 
 ## Structure
 

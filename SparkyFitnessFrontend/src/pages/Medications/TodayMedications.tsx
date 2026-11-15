@@ -29,6 +29,7 @@ import {
   visibleDoseCards,
   formatDose,
   INJECTION_SITES,
+  medicationDoseInMg,
   type MedSubtype,
   type SharedScheduleRule,
 } from '@workspace/shared';
@@ -85,10 +86,11 @@ export interface DueDose {
   schedule: SharedScheduleRule & { id: string };
 }
 
-// GLP-1 injectable doses are logged as injection entries (single source of truth with
+// Mass-based injectable doses are logged as injection entries (single source of truth with
 // the Cabinet), same rule as Glp1Coach. Oral GLP-1 meds stay on the adherence path.
-const isGlp1Injectable = (med: Medication) =>
-  med.is_glp1 && med.type_id === 'injection';
+const isStockInjectable = (med: Medication) =>
+  med.type_id === 'injection' &&
+  (med.is_glp1 || medicationDoseInMg(med, 1) !== null);
 
 export interface TodayMedicationsProps {
   selectedDate: string;
@@ -137,6 +139,7 @@ export default function TodayMedications({
   // GLP-1 injectable dose awaiting the compact site prompt before logging
   const [pendingInjection, setPendingInjection] = useState<{
     medication: MedicationDetail;
+    doseMg?: number | null;
     takenAt: string;
     noteKey: string;
     notes: string | null;
@@ -553,12 +556,18 @@ export default function TodayMedications({
         return copy;
       });
 
-    // Taking a GLP-1 injectable logs a real injection (deducting the auto-picked pen)
+    // Taking a mass-based injectable logs a real injection (deducting the auto-picked pen)
     // so the Cabinet and this tab stay in sync. A compact prompt captures the
     // injection site first. Skip/snooze stay adherence entries.
-    if (status === 'taken' && isGlp1Injectable(due.medication)) {
+    if (status === 'taken' && isStockInjectable(due.medication)) {
       setPendingInjection({
         medication: due.medication,
+        doseMg: due.medication.is_glp1
+          ? undefined
+          : medicationDoseInMg(
+              due.medication,
+              due.schedule.dose_amount ?? due.medication.dose_amount
+            ),
         takenAt,
         noteKey: due.schedule.id,
         notes: notesVal,
@@ -595,9 +604,12 @@ export default function TodayMedications({
         return copy;
       });
 
-    if (isGlp1Injectable(med)) {
+    if (isStockInjectable(med)) {
       setPendingInjection({
         medication: med,
+        doseMg: med.is_glp1
+          ? undefined
+          : medicationDoseInMg(med, prnSched?.dose_amount ?? med.dose_amount),
         takenAt,
         noteKey: schedId,
         notes: notesVal,
@@ -620,13 +632,14 @@ export default function TodayMedications({
 
   const handleConfirmQuickLog = (site: string | null) => {
     if (!pendingInjection) return;
-    const { medication, takenAt, noteKey, notes } = pendingInjection;
+    const { medication, doseMg, takenAt, noteKey, notes } = pendingInjection;
     logInjectionMutation.mutate(
       {
         medication_id: medication.id,
         injected_at: takenAt,
         entry_date: selectedDate,
         deduct_pen: true,
+        ...(doseMg === undefined ? {} : { dose_mg: doseMg }),
         site,
         notes,
       },

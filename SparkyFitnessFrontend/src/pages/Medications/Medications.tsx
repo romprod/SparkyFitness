@@ -13,6 +13,7 @@ import {
   Pill,
   Syringe,
   Plus,
+  FlaskConical,
 } from 'lucide-react';
 import {
   todayInZone,
@@ -42,6 +43,10 @@ import { useSymptomEntries } from '@/hooks/useSymptoms';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import type { MedicationDetail } from '@/types/medications';
 import Glp1Coach from './Glp1Coach';
+import PeptideStock from './PeptideStock';
+import Glp1InventoryManager from './Glp1InventoryManager';
+import Glp1LogInjection from './Glp1LogInjection';
+import Glp1RecentInjections from './Glp1RecentInjections';
 import AddMedicationDialog, { MedTypeIcon } from './AddMedicationDialog';
 import { countMedicationNutrients } from './medicationUtils';
 import ScheduleManager from './ScheduleManager';
@@ -53,9 +58,18 @@ import { formatScheduleDescription } from './medicationUtils';
 export default function Medications() {
   const { t } = useTranslation();
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'today' | 'cabinet' | 'symptoms'>(
-    'today'
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab =
+    tabParam === 'cabinet' || tabParam === 'stock' || tabParam === 'symptoms'
+      ? tabParam
+      : 'today';
+  const setActiveTab = (tab: 'today' | 'cabinet' | 'stock' | 'symptoms') =>
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set('tab', tab);
+      return next;
+    });
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // `All | Meds | Supplements` view filter. Persisted so it survives navigation, and it
@@ -74,7 +88,6 @@ export default function Medications() {
     localStorage.setItem('medications.subtypeFilter', next);
   };
 
-  const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
 
   const preferencesContext = usePreferences();
@@ -244,6 +257,17 @@ export default function Medications() {
             </span>
           </Button>
           <Button
+            variant={activeTab === 'stock' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('stock')}
+            className={`rounded-full px-4 h-9 gap-2 transition-all ${activeTab === 'stock' ? 'bg-slate-200/60 dark:bg-muted shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
+          >
+            <FlaskConical className="w-4 h-4" />
+            <span className="text-xs font-semibold">
+              {t('medications.stock.title', 'Preparation & stock')}
+            </span>
+          </Button>
+          <Button
             variant={activeTab === 'symptoms' ? 'secondary' : 'ghost'}
             size="sm"
             onClick={() => setActiveTab('symptoms')}
@@ -285,21 +309,31 @@ export default function Medications() {
         </div>
 
         {/* Vertical Divider (Desktop Only) */}
-        <div className="hidden lg:block w-px h-6 bg-border" />
+        {activeTab !== 'stock' && (
+          <div className="hidden lg:block w-px h-6 bg-border" />
+        )}
 
         {/* Date Filter */}
-        <div className="shrink-0">
-          <DayNavigator
-            selectedDate={selectedDate}
-            onDateChange={(d) => setSearchParams({ date: d })}
-            className="flex items-center justify-end gap-2 mb-0"
-          />
-        </div>
+        {activeTab !== 'stock' && (
+          <div className="shrink-0">
+            <DayNavigator
+              selectedDate={selectedDate}
+              onDateChange={(d) =>
+                setSearchParams((previous) => {
+                  const next = new URLSearchParams(previous);
+                  next.set('date', d);
+                  return next;
+                })
+              }
+              className="flex items-center justify-end gap-2 mb-0"
+            />
+          </div>
+        )}
       </div>
 
       {/* Subtype filter — reuses the sub-tab button styling for visual consistency.
           Symptoms has no meds list, so the filter is hidden there. */}
-      {activeTab !== 'symptoms' && (
+      {(activeTab === 'today' || activeTab === 'cabinet') && (
         <div className="-mt-2 flex flex-wrap items-center justify-center gap-1 lg:justify-start">
           {(
             [
@@ -328,6 +362,8 @@ export default function Medications() {
         </div>
       )}
 
+      {activeTab === 'stock' && <PeptideStock meds={meds} />}
+
       {activeTab === 'today' && (
         <TodayMedications
           selectedDate={selectedDate}
@@ -338,7 +374,13 @@ export default function Medications() {
           loadingMeds={loadingMeds}
           loadingEntries={loadingEntries}
           subtype={subtype}
-          onSelectDate={(d) => setSearchParams({ date: d })}
+          onSelectDate={(d) =>
+            setSearchParams((previous) => {
+              const next = new URLSearchParams(previous);
+              next.set('date', d);
+              return next;
+            })
+          }
         />
       )}
 
@@ -708,6 +750,13 @@ export default function Medications() {
                           />
                         </CardContent>
                       </Card>
+                      {selected.type_id === 'injection' && (
+                        <>
+                          <Glp1InventoryManager med={selected} />
+                          <Glp1LogInjection med={selected} />
+                          <Glp1RecentInjections med={selected} />
+                        </>
+                      )}
                       <ScheduleManager med={selected} />
                     </div>
                   )}
@@ -722,7 +771,13 @@ export default function Medications() {
         <SymptomsHub
           variant="medications"
           selectedDate={selectedDate}
-          onDateChange={(d) => setSearchParams({ date: d })}
+          onDateChange={(d) =>
+            setSearchParams((previous) => {
+              const next = new URLSearchParams(previous);
+              next.set('date', d);
+              return next;
+            })
+          }
           meds={meds as MedicationDetail[]}
           recentMedicationEntries={recentEntries}
         />

@@ -2,7 +2,11 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text, View } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { INJECTION_SITES, type Medication } from '@workspace/shared';
+import {
+  INJECTION_SITES,
+  medicationDoseInMg,
+  type Medication,
+} from '@workspace/shared';
 import BottomSheetPicker from '../BottomSheetPicker';
 import CalendarSheet, { type CalendarSheetRef } from '../CalendarSheet';
 import DateSelectRow from '../DateSelectRow';
@@ -208,8 +212,8 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({ med }) => {
             onChangeText={setDoseText}
             keyboardType="decimal-pad"
             placeholder={
-              med.dose_amount != null
-                ? String(med.dose_amount)
+              medicationDoseInMg(med) != null
+                ? String(medicationDoseInMg(med))
                 : t('medications.glp1.log.dosePlaceholder', {
                     defaultValue: 'Auto',
                   })

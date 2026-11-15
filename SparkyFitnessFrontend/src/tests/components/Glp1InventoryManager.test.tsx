@@ -14,7 +14,7 @@ jest.mock('@/hooks/useMedications', () => ({
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({ timezone: 'Europe/London' }),
 }));
-const med = { id: 'medicine', dose_amount: 0.6 } as Medication;
+const med = { id: 'medicine', dose_amount: 0.6, dose_unit: 'mg' } as Medication;
 beforeEach(() => {
   mockPens = [];
   mockSave.mockClear();

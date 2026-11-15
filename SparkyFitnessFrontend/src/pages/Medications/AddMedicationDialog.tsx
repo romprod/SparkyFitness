@@ -87,11 +87,13 @@ export default function AddMedicationDialog({
   editMed,
   trigger,
   defaultIsSupplement = false,
+  defaultTypeId,
 }: {
   editMed?: Medication;
   trigger?: ReactNode;
   /** Opens with the supplement toggle already on — used by the "Add supplement" entry point. */
   defaultIsSupplement?: boolean;
+  defaultTypeId?: 'injection';
 } = {}) {
   const { t } = useTranslation();
   const { energyUnit, convertEnergy } = usePreferences();
@@ -108,7 +110,8 @@ export default function AddMedicationDialog({
   const [name, setName] = useState(editMed?.name ?? '');
   const [typeId, setTypeId] = useState(() => {
     const isSupp = editMed?.is_supplement ?? defaultIsSupplement;
-    const initial = editMed?.type_id ?? (isSupp ? 'capsule' : 'pill');
+    const initial =
+      editMed?.type_id ?? defaultTypeId ?? (isSupp ? 'capsule' : 'pill');
     // A supplement whose stored type_id predates dose-forms (e.g. 'pill') would show the
     // 'capsule' fallback in the Select but silently save the stale value; normalise it up
     // front so what's displayed is what's saved.

@@ -23,6 +23,10 @@ The upstream base is [`39d9ca2d1`](https://github.com/CodeWithCJ/SparkyFitness/c
 
 These are preservation commits. They do not claim new peptide preparation features or that a fresh deployment was performed.
 
+## Peptide stock access
+
+Medications → **Preparation & stock** (`/medications?tab=stock`) exposes vial preparation, inventory, injection logging and corrections for every injectable peptide or medication. No GLP-1 flag is needed. **Prepare a vial** opens the calculator directly; **Add peptide / injectable** starts a medication record with the injection form selected. Saved mass doses and schedule overrides are converted to mg without guessing from volume or device units. GLP-1-specific models remain separate.
+
 ## Preparation and stock: first implementation
 
 The first slice adds shared preparation arithmetic to the existing web/mobile vial forms, stores concentration and final volume, and derives mass/volume stock from linked injection doses. Edits and deletions reconcile that balance. Incomplete historic use remains unknown; used preparation details are protected from changes. No database migration is required.

@@ -353,7 +353,8 @@ const MedicationDetailScreen: React.FC<MedicationDetailScreenProps> = ({
             </View>
           )}
 
-          {med.is_glp1 && !med.is_supplement && (
+          {(med.type_id === 'injection' ||
+            (med.is_glp1 && !med.is_supplement)) && (
             <TouchableOpacity
               onPress={() =>
                 navigation.navigate('Glp1Tracker', { medicationId })
@@ -364,14 +365,18 @@ const MedicationDetailScreen: React.FC<MedicationDetailScreenProps> = ({
             >
               <View className="flex-1">
                 <Text className="text-base font-semibold text-text-primary">
-                  {t('medications.glp1.tracker.title', {
-                    defaultValue: 'GLP-1 tracker',
-                  })}
+                  {med.type_id === 'injection'
+                    ? t('medications.stock.title', {
+                        defaultValue: 'Preparation & stock',
+                      })
+                    : t('medications.glp1.tracker.title', {
+                        defaultValue: 'GLP-1 tracker',
+                      })}
                 </Text>
                 <Text className="text-sm text-text-muted mt-0.5">
-                  {t('medications.glp1.tracker.subtitle', {
+                  {t('medications.stock.subtitle', {
                     defaultValue:
-                      'Injections, site map, pens, titration and daily check-in',
+                      'Vial preparation, draw calculations, stock and injection history',
                   })}
                 </Text>
               </View>
