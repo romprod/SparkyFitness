@@ -12,7 +12,7 @@ New preparation, stock and cost features are proposed work, not completed featur
 | `upstream`                   | [CodeWithCJ/SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness). Fetch releases and assess updates here. |
 | `main`                       | The fork's upstream main branch. It is not the deployed instance baseline.                                       |
 | `instance/v1.12.1`           | The pinned v1.12.1 baseline plus the existing customisations and this backlog.                                   |
-| `codex/peptide-preparations` | Prepared branch for the first proposed preparation feature. Initially identical to the instance branch.          |
+| `codex/peptide-preparations` | Preparation calculator and mass stock implementation branch.                                                     |
 
 The upstream base is [`39d9ca2d1`](https://github.com/CodeWithCJ/SparkyFitness/commit/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c). The existing source changes were imported unchanged and split into four commits:
 
@@ -22,6 +22,12 @@ The upstream base is [`39d9ca2d1`](https://github.com/CodeWithCJ/SparkyFitness/c
 4. Modelled absorbed, injection-site and total amounts, detailed time labels and the current-time marker.
 
 These are preservation commits. They do not claim new peptide preparation features or that a fresh deployment was performed.
+
+## Preparation and stock: first implementation
+
+The first slice adds shared preparation arithmetic to the existing web/mobile vial forms, stores concentration and final volume, and derives mass/volume stock from linked injection doses. Edits and deletions reconcile that balance. Incomplete historic use remains unknown; used preparation details are protected from changes. No database migration is required.
+
+This is partial coverage of D03, D05, D09, I02 and I03. Dedicated preparation history, device graduations, waste adjustments, revision audit and supply forecasts remain backlog work. See [medication documentation](../docs/src/features/medications.md). Code/build verification does not itself mean an instance deployment.
 
 ## Feature backlog
 

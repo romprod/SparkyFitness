@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
-import { todayInZone, addDays } from '@workspace/shared';
+import { todayInZone, addDays, calculatePreparation } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +57,12 @@ export default function Glp1InventoryManager({
   );
   const [concentration, setConcentration] = useState('');
   const [volume, setVolume] = useState('');
+  const [preparationMass, setPreparationMass] = useState('');
+  const preparation = calculatePreparation(
+    Number(preparationMass),
+    Number(volume),
+    Number(inventoryDoseMg)
+  );
   const [dosesTotal, setDosesTotal] = useState('4');
   const [openedAt, setOpenedAt] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
@@ -104,6 +110,7 @@ export default function Glp1InventoryManager({
     setInventoryDoseMg(med.dose_amount != null ? String(med.dose_amount) : '');
     setConcentration('');
     setVolume('');
+    setPreparationMass('');
     setDosesTotal('4');
     setOpenedAt('');
     setExpiryDate('');
@@ -126,6 +133,7 @@ export default function Glp1InventoryManager({
       pen.concentration_mg_ml != null ? String(pen.concentration_mg_ml) : ''
     );
     setVolume(pen.volume_ml != null ? String(pen.volume_ml) : '');
+    setPreparationMass('');
     setDosesTotal(pen.doses_total != null ? String(pen.doses_total) : '');
     setOpenedAt(pen.opened_at ?? '');
     setExpiryDate(pen.expiry_date ?? '');
@@ -143,7 +151,10 @@ export default function Glp1InventoryManager({
       label: label.trim() || null,
       dose_mg: inventoryDoseMg ? Number(inventoryDoseMg) : null,
       concentration_mg_ml:
-        kind === 'vial' && concentration ? Number(concentration) : null,
+        kind === 'vial'
+          ? (preparation?.concentrationMgMl ??
+            (concentration ? Number(concentration) : null))
+          : null,
       volume_ml: kind === 'vial' && volume ? Number(volume) : null,
       doses_total: dosesTotal ? Number(dosesTotal) : null,
       opened_at: openedAt || null,
@@ -196,9 +207,18 @@ export default function Glp1InventoryManager({
           )}
           {(pensQ.data ?? []).map((p) => {
             const total = p.doses_total ?? 0;
-            const left = Math.max(0, total - p.doses_used);
-            const pct = total > 0 ? Math.round((left / total) * 100) : 0;
-            const low = total > 0 && pct <= 25;
+            const left =
+              p.stock && p.dose_mg && p.dose_mg > 0
+                ? Math.floor(p.stock.remainingMg / p.dose_mg + 1e-10)
+                : Math.max(0, total - p.doses_used);
+            const pct = p.stock
+              ? Math.round((p.stock.remainingMg / p.stock.totalMg) * 100)
+              : total > 0
+                ? Math.round((left / total) * 100)
+                : 0;
+            const low =
+              ((p.stock !== null && p.stock !== undefined) || total > 0) &&
+              pct <= 25;
             const expStatus = getExpiryStatus(p.expiry_date, today);
             const budStatus = getExpiryStatus(p.bud_date, today);
 
@@ -246,9 +266,16 @@ export default function Glp1InventoryManager({
                         </Badge>
                       )}
                     <span className="font-medium tabular-nums">
-                      {left}/{total || '?'}{' '}
+                      {p.stock
+                        ? p.stock.remainingMg.toFixed(3)
+                        : `${left}/${total || '?'}`}{' '}
                       <span className="font-normal text-muted-foreground">
-                        {t('medications.glp1InventoryManager.doses', 'doses')}
+                        {p.stock
+                          ? 'mg'
+                          : t(
+                              'medications.glp1InventoryManager.doses',
+                              'doses'
+                            )}
                       </span>
                     </span>
                     <Button
@@ -278,6 +305,32 @@ export default function Glp1InventoryManager({
                     </Button>
                   </div>
                 </div>
+                {p.kind === 'vial' && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {p.stock
+                      ? t(
+                          'medications.preparation.remaining',
+                          '{{mass}} mg / {{volume}} mL remaining',
+                          {
+                            mass: p.stock.remainingMg.toFixed(3),
+                            volume: p.stock.remainingMl.toFixed(3),
+                          }
+                        )
+                      : t(
+                          'medications.preparation.unknown',
+                          'Mass stock unavailable: check preparation details and linked dose history.'
+                        )}
+                    {p.stock && p.stock.overdrawnMg > 0 && (
+                      <span className="text-destructive">
+                        {' '}
+                        {t(
+                          'medications.preparation.overdrawn',
+                          'Logged use exceeds the recorded vial content.'
+                        )}
+                      </span>
+                    )}
+                  </p>
+                )}
                 <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className={`h-full rounded-full transition-all ${low ? 'bg-amber-500' : 'bg-blue-500'}`}
@@ -461,6 +514,51 @@ export default function Glp1InventoryManager({
               </div>
             </div>
 
+            {kind === 'vial' && !editingPen && (
+              <div className="space-y-2 rounded-md border p-3">
+                <Label htmlFor="prep-mass">
+                  {t('medications.preparation.mass', 'Vial content (mg)')}
+                </Label>
+                <Input
+                  id="prep-mass"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={preparationMass}
+                  onChange={(e) => setPreparationMass(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'medications.preparation.help',
+                    'Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.'
+                  )}
+                </p>
+                {preparation && (
+                  <p className="text-sm">
+                    {t(
+                      'medications.preparation.result',
+                      '{{concentration}} mg/mL · {{draw}} mL per entered dose',
+                      {
+                        concentration: Number(
+                          preparation.concentrationMgMl.toPrecision(6)
+                        ).toString(),
+                        draw: Number(
+                          preparation.drawMl.toPrecision(6)
+                        ).toString(),
+                      }
+                    )}
+                  </p>
+                )}
+                {preparation?.exceedsVial && (
+                  <p className="text-sm text-destructive">
+                    {t(
+                      'medications.preparation.exceeds',
+                      'The entered dose exceeds the vial content.'
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
             {kind === 'vial' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -475,7 +573,14 @@ export default function Glp1InventoryManager({
                     type="number"
                     step="0.1"
                     placeholder="e.g. 5"
-                    value={concentration}
+                    value={
+                      preparationMass
+                        ? (preparation?.concentrationMgMl ?? '')
+                        : concentration
+                    }
+                    readOnly={
+                      !!preparationMass || (editingPen?.doses_used ?? 0) > 0
+                    }
                     onChange={(e) => setConcentration(e.target.value)}
                   />
                 </div>
@@ -493,6 +598,7 @@ export default function Glp1InventoryManager({
                     step="0.1"
                     placeholder="e.g. 2"
                     value={volume}
+                    readOnly={(editingPen?.doses_used ?? 0) > 0}
                     onChange={(e) => setVolume(e.target.value)}
                   />
                 </div>
@@ -612,7 +718,15 @@ export default function Glp1InventoryManager({
             <Button variant="ghost" onClick={() => setInventoryOpen(false)}>
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button onClick={handleSaveInventory} disabled={savePending}>
+            <Button
+              onClick={handleSaveInventory}
+              disabled={
+                savePending ||
+                (kind === 'vial' &&
+                  !!preparationMass &&
+                  (!preparation || preparation.exceedsVial))
+              }
+            >
               {savePending
                 ? t('common.saving', 'Saving...')
                 : editingPen

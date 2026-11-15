@@ -1,6 +1,6 @@
 # AGENTS.md
 
-_Last updated: 2026-11-08_
+_Last updated: 2026-11-15_
 
 `@workspace/shared` is a source-first TypeScript workspace library package for schemas, constants, and timezone/day helpers consumed by SparkyFitnessServer, SparkyFitnessFrontend, and SparkyFitnessMobile.
 
@@ -13,6 +13,10 @@ _Last updated: 2026-11-08_
 ## Food Assistant State
 
 `schemas/api/FoodAssistant.api.zod.ts` and `schemas/database/FoodAssistant.zod.ts` define lasting preferences, versioned tasks, unresolved ingredients and idempotent operation records. All state is owner-only; these additive contracts do not change existing chat clients.
+
+## Preparation calculations
+
+`src/medications/preparation.ts` calculates vial concentration, draw volume and mass stock for web/mobile/server. Inputs are labelled mass, final prepared volume and entered dose; it does not recommend doses. `MedicationPen.stock` is derived from complete linked injection history; unknown legacy balances stay null. Tests live in `SparkyFitnessServer/tests/preparation.test.ts` and `vialStockRepository.test.ts`.
 
 ## Structure
 

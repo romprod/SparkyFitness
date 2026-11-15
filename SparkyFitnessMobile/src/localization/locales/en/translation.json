@@ -1998,6 +1998,16 @@
       "saved": "Dose updated",
       "saveFailed": "Failed to save: {{error}}",
       "site": "Injection site"
+    },
+    "preparation": {
+      "remaining": "{{mass}} mg / {{volume}} mL remaining",
+      "unknown": "Mass stock unavailable: check preparation details and linked dose history.",
+      "overdrawn": "Logged use exceeds the recorded vial content.",
+      "mass": "Vial content (mg)",
+      "help": "Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.",
+      "result": "{{concentration}} mg/mL · {{draw}} mL per entered dose",
+      "exceeds": "The entered dose exceeds the vial content.",
+      "invalid": "Enter positive vial content, final volume and dose. The dose must not exceed the vial content."
     }
   },
   "scheduleSummary": {

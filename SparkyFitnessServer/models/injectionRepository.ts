@@ -4,6 +4,11 @@ import type {
   UpdateInjectionBody,
 } from '../schemas/medicationSchemas.js';
 
+const MASS_STOCK_SQL =
+  "kind = 'vial' AND concentration_mg_ml > 0 AND volume_ml > 0 AND NOT EXISTS (SELECT 1 FROM injection_entries si WHERE si.pen_id = medication_pens.id AND si.user_id = medication_pens.user_id AND (si.dose_mg IS NULL OR si.dose_mg <= 0)) AND doses_used = (SELECT COUNT(*) FROM injection_entries si WHERE si.pen_id = medication_pens.id AND si.user_id = medication_pens.user_id)";
+const USED_MASS_SQL =
+  '(SELECT COALESCE(SUM(si.dose_mg),0) FROM injection_entries si WHERE si.pen_id = medication_pens.id AND si.user_id = medication_pens.user_id)';
+
 const INJECTION_COLS = `id, medication_id, user_id, pen_id, injected_at, entry_date,
   site, dose_mg, notes, source, custom_fields, created_at, updated_at`;
 
@@ -32,8 +37,8 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
         const penPick = await client.query(
           `SELECT id FROM medication_pens
             WHERE user_id = $1 AND medication_id = $2
-              AND status IN ('in_use', 'sealed')
-              AND (doses_total IS NULL OR doses_used < doses_total)
+              AND (status IN ('in_use', 'sealed') OR (status = 'finished' AND ${MASS_STOCK_SQL} AND ${USED_MASS_SQL} < concentration_mg_ml * volume_ml))
+              AND (CASE WHEN ${MASS_STOCK_SQL} THEN ${USED_MASS_SQL} < concentration_mg_ml * volume_ml ELSE doses_total IS NULL OR doses_used < doses_total END)
             ORDER BY (status = 'in_use') DESC, opened_at ASC NULLS LAST,
                      expiry_date ASC NULLS LAST, created_at ASC
             LIMIT 1
@@ -59,11 +64,17 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
     }
 
     const injection = await client.query(
-      `INSERT INTO injection_entries (
+      `WITH locked_pen AS (
+         SELECT id FROM medication_pens
+         WHERE id = $3 AND user_id = $2 AND medication_id = $1
+         FOR UPDATE
+       )
+       INSERT INTO injection_entries (
          medication_id, user_id, pen_id, injected_at, entry_date, site, dose_mg, notes,
          source, custom_fields)
-       VALUES ($1,$2,$3, COALESCE($4, NOW()), COALESCE($5, CURRENT_DATE),$6,$7,$8,
-         COALESCE($9,'manual'), COALESCE($10,'{}'::jsonb))
+       SELECT $1,$2,$3, COALESCE($4::timestamptz, NOW()), COALESCE($5::date, CURRENT_DATE),$6,$7,$8,
+         COALESCE($9,'manual'), COALESCE($10::jsonb,'{}'::jsonb)
+       WHERE $3 IS NULL OR EXISTS (SELECT 1 FROM locked_pen)
        RETURNING ${INJECTION_COLS}`,
       [
         data.medication_id,
@@ -79,17 +90,27 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
       ]
     );
 
+    if (!injection.rows[0]) {
+      throw Object.assign(
+        new Error('The selected stock does not belong to this medication.'),
+        { statusCode: 400 }
+      );
+    }
     let pen = null;
     if (resolvedPenId) {
       const penResult = await client.query(
         `UPDATE medication_pens
            SET doses_used = doses_used + 1,
                status = CASE
+                 WHEN ${MASS_STOCK_SQL.replace('doses_used =', 'doses_used + 1 =')} THEN CASE WHEN ${USED_MASS_SQL} >= concentration_mg_ml * volume_ml THEN 'finished' ELSE 'in_use' END
                  WHEN doses_total IS NOT NULL AND doses_used + 1 >= doses_total THEN 'finished'
                  ELSE 'in_use'
                END,
                opened_at = COALESCE(opened_at, CURRENT_DATE),
                reorder_flag = CASE
+                 WHEN ${MASS_STOCK_SQL.replace('doses_used =', 'doses_used + 1 =')} THEN
+                   CASE WHEN reorder_threshold IS NOT NULL AND dose_mg > 0
+                     AND FLOOR(GREATEST(0, concentration_mg_ml * volume_ml - ${USED_MASS_SQL}) / dose_mg) <= reorder_threshold THEN TRUE ELSE reorder_flag END
                  WHEN reorder_threshold IS NOT NULL AND doses_total IS NOT NULL
                       AND (doses_total - (doses_used + 1)) <= reorder_threshold THEN TRUE
                  ELSE reorder_flag
@@ -230,11 +251,15 @@ async function deleteInjection(userId: string, id: string) {
         `UPDATE medication_pens
            SET doses_used = GREATEST(doses_used - 1, 0),
                status = CASE
+                 WHEN ${MASS_STOCK_SQL.replace('doses_used =', 'GREATEST(doses_used - 1, 0) =')} AND ${USED_MASS_SQL} < concentration_mg_ml * volume_ml THEN 'in_use'
                  WHEN status = 'finished' AND doses_total IS NOT NULL
                       AND GREATEST(doses_used - 1, 0) < doses_total THEN 'in_use'
                  ELSE status
                END,
                reorder_flag = CASE
+                 WHEN ${MASS_STOCK_SQL.replace('doses_used =', 'doses_used + 1 =')} THEN
+                   CASE WHEN reorder_threshold IS NOT NULL AND dose_mg > 0
+                     AND FLOOR(GREATEST(0, concentration_mg_ml * volume_ml - ${USED_MASS_SQL}) / dose_mg) <= reorder_threshold THEN TRUE ELSE reorder_flag END
                  WHEN reorder_threshold IS NOT NULL AND doses_total IS NOT NULL
                       AND (doses_total - GREATEST(doses_used - 1, 0)) > reorder_threshold THEN FALSE
                  ELSE reorder_flag

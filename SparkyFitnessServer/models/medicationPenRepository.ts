@@ -1,3 +1,4 @@
+import { calculateVialStock, type MedicationPen } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreatePenBody,
@@ -61,12 +62,57 @@ async function listPens(userId: string, medicationId?: string) {
       where += ' AND medication_id = $2';
     }
     const result = await client.query(
-      `SELECT ${PEN_COLS} FROM medication_pens
+      `SELECT ${PEN_COLS},
+          (SELECT COALESCE(SUM(i.dose_mg),0) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id) AS stock_used_mg,
+          (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id AND (i.dose_mg IS NULL OR i.dose_mg <= 0)) AS stock_missing_doses,
+          (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id) AS stock_linked_count
+       FROM medication_pens
        WHERE ${where}
        ORDER BY (status = 'in_use') DESC, expiry_date NULLS LAST, created_at DESC`,
       params
     );
-    return result.rows;
+    return result.rows.map(
+      (
+        row: MedicationPen & {
+          stock_used_mg: string;
+          stock_missing_doses: string;
+          stock_linked_count: string;
+        }
+      ) => {
+        const {
+          stock_used_mg,
+          stock_missing_doses,
+          stock_linked_count,
+          ...pen
+        } = row;
+        const unknown =
+          Number(stock_missing_doses) > 0 ||
+          Number(pen.doses_used) !== Number(stock_linked_count);
+        const stock =
+          pen.kind === 'vial' && !unknown
+            ? calculateVialStock(
+                pen.concentration_mg_ml === null
+                  ? null
+                  : Number(pen.concentration_mg_ml),
+                pen.volume_ml === null ? null : Number(pen.volume_ml),
+                Number(stock_used_mg),
+                Number(stock_missing_doses)
+              )
+            : null;
+        return {
+          ...pen,
+          status: stock
+            ? stock.remainingMg <= 0
+              ? 'finished'
+              : pen.status === 'finished'
+                ? 'in_use'
+                : pen.status
+            : pen.status,
+          stock,
+          stock_unknown: pen.kind === 'vial' && stock === null,
+        };
+      }
+    );
   } finally {
     client.release();
   }
@@ -75,8 +121,44 @@ async function listPens(userId: string, medicationId?: string) {
 async function updatePen(userId: string, id: string, data: UpdatePenBody) {
   const client = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    const locked = await client.query(
+      'SELECT * FROM medication_pens WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [id, userId]
+    );
+    const existing = locked.rows[0];
+    if (existing) {
+      const history = await client.query(
+        'SELECT COUNT(*) AS count FROM injection_entries WHERE pen_id = $1 AND user_id = $2',
+        [id, userId]
+      );
+      if (
+        Number(history.rows[0]?.count) > 0 ||
+        Number(existing.doses_used) > 0
+      ) {
+        for (const field of [
+          'kind',
+          'volume_ml',
+          'concentration_mg_ml',
+        ] as const) {
+          if (
+            data[field] !== undefined &&
+            (field === 'kind'
+              ? data[field] !== existing[field]
+              : Number(data[field]) !== Number(existing[field]))
+          ) {
+            throw Object.assign(
+              new Error(
+                'Preparation details cannot change after stock has been used. Add a new vial instead.'
+              ),
+              { status: 400, statusCode: 400 }
+            );
+          }
+        }
+      }
+    }
     const updates: string[] = [];
-    const values: any[] = [id, userId];
+    const values: unknown[] = [id, userId];
     let index = 3;
 
     const fields: (keyof UpdatePenBody)[] = [
@@ -116,6 +198,7 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
         `SELECT ${PEN_COLS} FROM medication_pens WHERE id = $1 AND user_id = $2`,
         [id, userId]
       );
+      await client.query('COMMIT');
       return current.rows[0] ?? null;
     }
 
@@ -126,7 +209,11 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
                    RETURNING ${PEN_COLS}`;
 
     const result = await client.query(query, values);
+    await client.query('COMMIT');
     return result.rows[0] ?? null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }

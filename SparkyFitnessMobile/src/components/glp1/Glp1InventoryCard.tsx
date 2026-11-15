@@ -90,10 +90,23 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
                   });
           const details = [
             pen.dose_mg != null ? `${pen.dose_mg} mg` : null,
-            left != null
-              ? t('medications.glp1.inventory.left', {
-                  defaultValue: '{{count}} left',
-                  count: left,
+            pen.stock
+              ? `${pen.stock.remainingMg.toFixed(3)} mg / ${pen.stock.remainingMl.toFixed(3)} mL`
+              : left != null
+                ? t('medications.glp1.inventory.left', {
+                    defaultValue: '{{count}} left',
+                    count: left,
+                  })
+                : null,
+            pen.stock_unknown
+              ? t('medications.preparation.unknown', {
+                  defaultValue:
+                    'Mass stock unavailable: check preparation details and linked dose history.',
+                })
+              : null,
+            pen.stock && pen.stock.overdrawnMg > 0
+              ? t('medications.preparation.overdrawn', {
+                  defaultValue: 'Logged use exceeds the recorded vial content.',
                 })
               : null,
             expiryText(expiry, pen.expiry_date),

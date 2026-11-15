@@ -19,7 +19,7 @@ import { useScreenHeader } from '../hooks/useScreenHeader';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import { addDays } from '../utils/dateUtils';
 import type { RootStackScreenProps } from '../types/navigation';
-import type { MedicationPen } from '@workspace/shared';
+import { calculatePreparation, type MedicationPen } from '@workspace/shared';
 
 type Glp1PenFormScreenProps = RootStackScreenProps<'Glp1PenForm'>;
 
@@ -108,14 +108,42 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
     []
   );
 
+  const [preparationMass, setPreparationMass] = useState('');
+  const preparation = calculatePreparation(
+    Number(preparationMass),
+    Number(form.volume),
+    Number(form.doseMg)
+  );
+
   const isSaving = createPen.isPending || updatePen.isPending;
 
   const handleSave = useCallback(() => {
     if (isSaving) return;
+    const prep = calculatePreparation(
+      Number(preparationMass),
+      Number(form.volume),
+      Number(form.doseMg)
+    );
+    if (
+      form.kind === 'vial' &&
+      preparationMass &&
+      (!prep || prep.exceedsVial)
+    ) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('medications.preparation.invalid', {
+          defaultValue:
+            'Enter positive vial content, final volume and dose. The dose must not exceed the vial content.',
+        })
+      );
+      return;
+    }
     const doseMg = optionalNumber(form.doseMg);
     const dosesTotal = optionalNumber(form.dosesTotal);
     const concentration =
-      form.kind === 'vial' ? optionalNumber(form.concentration) : null;
+      form.kind === 'vial'
+        ? (prep?.concentrationMgMl ?? optionalNumber(form.concentration))
+        : null;
     const volume = form.kind === 'vial' ? optionalNumber(form.volume) : null;
     const threshold = form.reorderFlag
       ? optionalNumber(form.reorderThreshold)
@@ -165,6 +193,7 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
     }
   }, [
     form,
+    preparationMass,
     isSaving,
     penId,
     medicationId,
@@ -297,6 +326,32 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
           </View>
         </View>
 
+        {form.kind === 'vial' && !isEditing && (
+          <View className="gap-2 rounded-xl border border-chrome-border p-3">
+            <Text className="text-text-secondary text-sm">
+              {t('medications.preparation.mass', {
+                defaultValue: 'Vial content (mg)',
+              })}
+            </Text>
+            <FormInput
+              value={preparationMass}
+              onChangeText={setPreparationMass}
+              keyboardType="decimal-pad"
+            />
+            {preparation && (
+              <Text className="text-text-secondary text-sm">
+                {t('medications.preparation.result', {
+                  defaultValue:
+                    '{{concentration}} mg/mL · {{draw}} mL per entered dose',
+                  concentration: Number(
+                    preparation.concentrationMgMl.toPrecision(6)
+                  ).toString(),
+                  draw: Number(preparation.drawMl.toPrecision(6)).toString(),
+                })}
+              </Text>
+            )}
+          </View>
+        )}
         {form.kind === 'vial' && (
           <View className="flex-row gap-4">
             <View className="flex-1 gap-1.5">
@@ -306,7 +361,12 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
                 })}
               </Text>
               <FormInput
-                value={form.concentration}
+                value={
+                  preparationMass
+                    ? String(preparation?.concentrationMgMl ?? '')
+                    : form.concentration
+                }
+                editable={!preparationMass}
                 onChangeText={(v) => setField('concentration', v)}
                 keyboardType="decimal-pad"
               />

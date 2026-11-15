@@ -219,6 +219,14 @@ export interface ListMedicationEntriesOptions {
 // --- GLP-1 injections, pen/vial inventory and titration ---------------------
 
 export interface MedicationPen {
+  stock?: {
+    totalMg: number;
+    usedMg: number;
+    remainingMg: number;
+    remainingMl: number;
+    overdrawnMg: number;
+  } | null;
+  stock_unknown?: boolean;
   id: string;
   medication_id: string;
   kind: 'pen' | 'vial';

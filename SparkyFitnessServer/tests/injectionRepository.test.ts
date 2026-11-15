@@ -8,8 +8,10 @@ vi.mock('../db/poolManager', () => ({
 }));
 
 describe('injectionRepository', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockClient: any;
+  let mockClient: {
+    query: ReturnType<typeof vi.fn>;
+    release: ReturnType<typeof vi.fn>;
+  };
   const userId = uuidv4();
   const medicationId = uuidv4();
   const penId = uuidv4();
@@ -20,8 +22,7 @@ describe('injectionRepository', () => {
       query: vi.fn(),
       release: vi.fn(),
     };
-    // @ts-expect-error mocked in the module mock above
-    getClient.mockResolvedValue(mockClient);
+    vi.mocked(getClient).mockResolvedValue(mockClient as never);
     mockClient.query.mockClear();
   });
 
@@ -65,7 +66,7 @@ describe('injectionRepository', () => {
       });
       // No auto-pick lookup when a pen_id is given.
       expect(mockClient.query).not.toHaveBeenCalledWith(
-        expect.stringContaining('FOR UPDATE'),
+        expect.stringMatching(/^SELECT id FROM medication_pens/),
         expect.anything()
       );
     });
@@ -122,7 +123,7 @@ describe('injectionRepository', () => {
 
       // No auto-pick and no deduction happen.
       expect(mockClient.query).not.toHaveBeenCalledWith(
-        expect.stringContaining('FOR UPDATE'),
+        expect.stringMatching(/^SELECT id FROM medication_pens/),
         expect.anything()
       );
       expect(mockClient.query).not.toHaveBeenCalledWith(
@@ -132,11 +133,11 @@ describe('injectionRepository', () => {
       // The persisted pen_id (INSERT param index 2) is null, so a later delete
       // won't wrongly credit a dose back.
       const insertCall = mockClient.query.mock.calls.find(
-        ([sql]: [string]) =>
+        ([sql]) =>
           typeof sql === 'string' &&
           sql.includes('INSERT INTO injection_entries')
       );
-      expect(insertCall[1][2]).toBeNull();
+      expect(insertCall?.[1]?.[2]).toBeNull();
     });
 
     it('logs without deduction when no candidate pen exists', async () => {
@@ -221,13 +222,13 @@ describe('injectionRepository', () => {
         [injectionId, userId]
       );
       const restore = mockClient.query.mock.calls.find(
-        ([sql]: [string]) =>
+        ([sql]) =>
           typeof sql === 'string' && sql.includes('GREATEST(doses_used - 1, 0)')
       );
       expect(restore).toBeDefined();
-      expect(restore[0]).toContain("THEN 'in_use'");
-      expect(restore[0]).toContain('reorder_flag');
-      expect(restore[1]).toEqual([penId, userId]);
+      expect(restore?.[0]).toContain("THEN 'in_use'");
+      expect(restore?.[0]).toContain('reorder_flag');
+      expect(restore?.[1]).toEqual([penId, userId]);
       expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     });
 

@@ -127,9 +127,9 @@ export type UpdateScheduleBody = z.infer<typeof UpdateScheduleBodySchema>;
 const PenFieldsSchema = z.object({
   kind: z.enum(['pen', 'vial']).optional(),
   label: optionalNullableString,
-  dose_mg: optionalNullableNumber,
-  concentration_mg_ml: optionalNullableNumber,
-  volume_ml: optionalNullableNumber,
+  dose_mg: z.number().finite().positive().nullable().optional(),
+  concentration_mg_ml: z.number().finite().positive().nullable().optional(),
+  volume_ml: z.number().finite().positive().nullable().optional(),
   doses_total: optionalNullableInt,
   doses_used: optionalNullableInt,
   status: z.enum(['sealed', 'in_use', 'finished']).optional(),
@@ -157,7 +157,7 @@ export const CreateInjectionBodySchema = z
     injected_at: z.string().nullable().optional(), // ISO timestamp
     entry_date: optionalDateString,
     site: optionalNullableString,
-    dose_mg: optionalNullableNumber,
+    dose_mg: z.number().finite().positive().nullable().optional(),
     notes: optionalNullableString,
     /**
      * when true, increment the pen's doses_used in the same txn; with a pen_id that pen is
@@ -178,7 +178,7 @@ export const UpdateInjectionBodySchema = z
     injected_at: z.string().nullable().optional(), // ISO timestamp
     entry_date: optionalDateString,
     site: optionalNullableString,
-    dose_mg: optionalNullableNumber,
+    dose_mg: z.number().finite().positive().nullable().optional(),
     notes: optionalNullableString,
     source: z.string().optional(),
     custom_fields: customFields,

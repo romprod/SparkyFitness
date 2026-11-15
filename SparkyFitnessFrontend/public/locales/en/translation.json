@@ -896,7 +896,16 @@
     "todayMedications": {
       "prn": "PRN"
     },
-    "glp1Name": "GLP-1"
+    "glp1Name": "GLP-1",
+    "preparation": {
+      "remaining": "{{mass}} mg / {{volume}} mL remaining",
+      "unknown": "Mass stock unavailable: check preparation details and linked dose history.",
+      "overdrawn": "Logged use exceeds the recorded vial content.",
+      "mass": "Vial content (mg)",
+      "help": "Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.",
+      "result": "{{concentration}} mg/mL · {{draw}} mL per entered dose",
+      "exceeds": "The entered dose exceeds the vial content."
+    }
   },
   "nav": {
     "diary": "Diary",
