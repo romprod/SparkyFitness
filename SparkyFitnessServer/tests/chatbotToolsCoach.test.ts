@@ -56,10 +56,10 @@ beforeEach(() => {
 describe('sparky_get_health_summary', () => {
   it('renders nutrition, fitness, vitals, and hydration as JSON', async () => {
     vi.mocked(coachRepository.getNutritionAggregates).mockResolvedValue({
-      total_calories: '12450.5',
-      avg_protein: '98.7654',
-      avg_carbs: '210.1234',
-      avg_fat: '65.4321',
+      total_calories: 12450.5,
+      avg_protein: 98.7654,
+      avg_carbs: 210.1234,
+      avg_fat: 65.4321,
       entry_count: 21,
     });
     vi.mocked(coachRepository.getExerciseAggregates).mockResolvedValue({
@@ -71,7 +71,7 @@ describe('sparky_get_health_summary', () => {
       entry_date: '2026-06-07',
     });
     vi.mocked(coachRepository.getWaterIntakeTotal).mockResolvedValue({
-      total_water: '14000',
+      total_water: 14000,
     });
 
     const result = await tools.sparky_get_health_summary.execute!(
@@ -120,10 +120,10 @@ describe('sparky_get_health_summary', () => {
 
   it('renders a pg local-midnight Date weight date as a calendar-day string', async () => {
     vi.mocked(coachRepository.getNutritionAggregates).mockResolvedValue({
-      total_calories: '0',
-      avg_protein: '0',
-      avg_carbs: '0',
-      avg_fat: '0',
+      total_calories: 0,
+      avg_protein: 0,
+      avg_carbs: 0,
+      avg_fat: 0,
       entry_count: 0,
     });
     vi.mocked(coachRepository.getExerciseAggregates).mockResolvedValue({
@@ -135,7 +135,7 @@ describe('sparky_get_health_summary', () => {
       entry_date: new Date(2026, 5, 10),
     });
     vi.mocked(coachRepository.getWaterIntakeTotal).mockResolvedValue({
-      total_water: '0',
+      total_water: 0,
     });
 
     const result = await tools.sparky_get_health_summary.execute!(
@@ -174,10 +174,10 @@ describe('sparky_get_health_summary', () => {
 
   it('defaults end_date to start_date and renders a null latest weight', async () => {
     vi.mocked(coachRepository.getNutritionAggregates).mockResolvedValue({
-      total_calories: '0',
-      avg_protein: '0',
-      avg_carbs: '0',
-      avg_fat: '0',
+      total_calories: 0,
+      avg_protein: 0,
+      avg_carbs: 0,
+      avg_fat: 0,
       entry_count: 0,
     });
     vi.mocked(coachRepository.getExerciseAggregates).mockResolvedValue({
@@ -186,7 +186,7 @@ describe('sparky_get_health_summary', () => {
     });
     vi.mocked(coachRepository.getLatestWeightInRange).mockResolvedValue(null);
     vi.mocked(coachRepository.getWaterIntakeTotal).mockResolvedValue({
-      total_water: '0',
+      total_water: 0,
     });
 
     const result = await tools.sparky_get_health_summary.execute!(
@@ -230,10 +230,11 @@ describe('sparky_get_health_summary', () => {
 
   it('defaults to today when start_date is missing', async () => {
     vi.mocked(coachRepository.getNutritionAggregates).mockResolvedValue({
-      calories: 2000,
-      protein: 150,
-      carbs: 200,
-      fat: 70,
+      total_calories: 2000,
+      avg_protein: 150,
+      avg_carbs: 200,
+      avg_fat: 70,
+      entry_count: 3,
     });
     vi.mocked(coachRepository.getExerciseAggregates).mockResolvedValue({
       workouts: 1,
@@ -244,7 +245,7 @@ describe('sparky_get_health_summary', () => {
       weight: 75,
     });
     vi.mocked(coachRepository.getWaterIntakeTotal).mockResolvedValue({
-      water_ml: 2000,
+      total_water: 2000,
     });
 
     const result = await tools.sparky_get_health_summary.execute!(

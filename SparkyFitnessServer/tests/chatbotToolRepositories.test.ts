@@ -42,28 +42,79 @@ beforeEach(() => {
 });
 
 describe('coachRepository', () => {
-  it('getNutritionAggregates scopes by user and date range and returns the aggregate row', async () => {
-    const row = {
-      total_calories: '2100',
-      avg_protein: '80.1',
-      avg_carbs: '210.5',
-      avg_fat: '70.2',
-      entry_count: 12,
-    };
-    mockClient.query.mockResolvedValue({ rows: [row] });
+  it('averages canonical daily totals, including supplements, instead of individual foods', async () => {
+    mockClient.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            entry_date: '2026-06-01',
+            calories: '2000',
+            protein: '100',
+            carbs: '50',
+            fat: '80',
+          },
+          {
+            entry_date: '2026-06-02',
+            calories: '500',
+            protein: '20',
+            carbs: '10',
+            fat: '5',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [{ entry_count: 12 }] });
 
     const result = await coachRepository.getNutritionAggregates(
       'user-1',
       '2026-06-01',
-      '2026-06-07'
+      '2026-06-02'
     );
 
-    expect(result).toBe(row);
+    expect(result).toEqual({
+      total_calories: 2500,
+      avg_protein: 60,
+      avg_carbs: 30,
+      avg_fat: 42.5,
+      entry_count: 12,
+    });
     const [sql, params] = mockClient.query.mock.calls[0];
     expect(sql).toContain('FROM food_entries');
-    expect(sql).toContain('NULLIF(serving_size, 0)');
-    expect(params).toEqual(['user-1', '2026-06-01', '2026-06-07']);
+    expect(sql).toContain('NULLIF(fe.serving_size, 0)');
+    expect(sql).toContain('medication_entries');
+    expect(params).toEqual(['user-1', '2026-06-01', '2026-06-02']);
     expect(mockClient.release).toHaveBeenCalled();
+  });
+
+  it('uses canonical hydration totals that already include opted-in drink water', async () => {
+    const spy = vi
+      .spyOn(measurementRepository, 'getWaterTotalsByDateRange')
+      .mockResolvedValue([
+        { entry_date: '2026-06-01', total_ml: 1700 },
+        { entry_date: '2026-06-02', total_ml: 600 },
+      ]);
+    try {
+      expect(
+        await coachRepository.getWaterIntakeTotal(
+          'user-1',
+          '2026-06-01',
+          '2026-06-02'
+        )
+      ).toEqual({ total_water: 2300 });
+      expect(spy).toHaveBeenCalledWith('user-1', '2026-06-01', '2026-06-02');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not count Active Calories as a workout', async () => {
+    await coachRepository.getExerciseAggregates(
+      'user-1',
+      '2026-06-01',
+      '2026-06-02'
+    );
+    expect(mockClient.query.mock.calls[0][0]).toContain(
+      "COUNT(*) FILTER (WHERE exercise_name IS DISTINCT FROM 'Active Calories')"
+    );
   });
 
   it('getLatestWeightInRange returns null when no weight is logged', async () => {

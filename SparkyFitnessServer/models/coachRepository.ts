@@ -1,6 +1,9 @@
 import { getClient } from '../db/poolManager.js';
 import { DAILY_MOOD_VALUE_SQL } from './moodRepository.js';
 import { MAIN_SLEEP_ORDER_SQL } from './sleepRepository.js';
+import { daysBetween } from '@workspace/shared';
+import reportRepository from './reportRepository.js';
+import measurementRepository from './measurementRepository.js';
 
 // Aggregate queries backing the chatbot coach tools (sparky_get_health_summary,
 // sparky_analyze_trends, sparky_get_30day_trends, sparky_detect_patterns,
@@ -15,20 +18,32 @@ async function getNutritionAggregates(
   startDate: string,
   endDate: string
 ) {
+  // Reuse the diary/report calculation, including dose-scaled supplements.
+  // The overview averages calendar-day totals, never individual food entries.
+  const days: Record<string, unknown>[] =
+    await reportRepository.getDailyNutritionTotalsRange(
+      userId,
+      startDate,
+      endDate
+    );
+  const dayCount = Math.max(1, daysBetween(startDate, endDate) + 1);
+  const total = (field: string) =>
+    days.reduce((sum, row) => sum + (Number(row[field]) || 0), 0);
   const client = await getClient(userId);
   try {
     const result = await client.query(
-      `SELECT
-        COALESCE(SUM(calories * quantity / NULLIF(serving_size, 0)), 0)::numeric AS total_calories,
-        COALESCE(AVG(protein * quantity / NULLIF(serving_size, 0)), 0)::numeric AS avg_protein,
-        COALESCE(AVG(carbs * quantity / NULLIF(serving_size, 0)), 0)::numeric AS avg_carbs,
-        COALESCE(AVG(fat * quantity / NULLIF(serving_size, 0)), 0)::numeric AS avg_fat,
-        COUNT(*)::int AS entry_count
+      `SELECT COUNT(*)::int AS entry_count
        FROM food_entries
        WHERE user_id = $1 AND entry_date >= $2 AND entry_date <= $3`,
       [userId, startDate, endDate]
     );
-    return result.rows[0];
+    return {
+      total_calories: total('calories'),
+      avg_protein: total('protein') / dayCount,
+      avg_carbs: total('carbs') / dayCount,
+      avg_fat: total('fat') / dayCount,
+      entry_count: result.rows[0]?.entry_count ?? 0,
+    };
   } finally {
     client.release();
   }
@@ -44,7 +59,7 @@ async function getExerciseAggregates(
     const result = await client.query(
       `SELECT
         COALESCE(SUM(calories_burned), 0)::numeric AS total_calories_burned,
-        COUNT(*)::int AS workout_count
+        COUNT(*) FILTER (WHERE exercise_name IS DISTINCT FROM 'Active Calories')::int AS workout_count
        FROM exercise_entries
        WHERE user_id = $1 AND entry_date >= $2 AND entry_date <= $3`,
       [userId, startDate, endDate]
@@ -81,18 +96,18 @@ async function getWaterIntakeTotal(
   startDate: string,
   endDate: string
 ) {
-  const client = await getClient(userId);
-  try {
-    const result = await client.query(
-      `SELECT COALESCE(SUM(water_ml), 0)::numeric AS total_water
-       FROM water_intake
-       WHERE user_id = $1 AND entry_date >= $2 AND entry_date <= $3`,
-      [userId, startDate, endDate]
+  const days: { total_ml: number | string }[] =
+    await measurementRepository.getWaterTotalsByDateRange(
+      userId,
+      startDate,
+      endDate
     );
-    return result.rows[0];
-  } finally {
-    client.release();
-  }
+  return {
+    total_water: days.reduce(
+      (sum, row) => sum + (Number(row.total_ml) || 0),
+      0
+    ),
+  };
 }
 
 // Trailing windows anchor on `today`, the caller's user-timezone day string.

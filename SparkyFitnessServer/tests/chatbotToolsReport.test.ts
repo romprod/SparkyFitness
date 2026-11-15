@@ -38,6 +38,7 @@ vi.mock('../models/exerciseEntry', () => ({
 vi.mock('../models/measurementRepository', () => ({
   default: {
     getWaterTotalsByDateRange: vi.fn(),
+    getCheckInMeasurementsByDateRange: vi.fn(),
   },
 }));
 vi.mock('../models/reportRepository', () => ({
@@ -71,6 +72,9 @@ beforeEach(() => {
   // projection goldens below stay meaningful. Resolution itself is covered separately.
   vi.mocked(getResolvedExerciseCaloriesRange).mockResolvedValue(new Map());
   vi.clearAllMocks();
+  vi.mocked(
+    measurementRepository.getCheckInMeasurementsByDateRange
+  ).mockResolvedValue([]);
   vi.mocked(preferenceService.getUserPreferences).mockResolvedValue(PREFS);
   tools = buildReportTools('user-1', 'UTC');
 });
@@ -208,6 +212,46 @@ describe('sparky_get_report (get_weekly_report)', () => {
 });
 
 describe('sparky_get_daily_report', () => {
+  it('uses all-day check-in steps without adding workout steps and includes days without workouts', async () => {
+    vi.mocked(reportRepository.getDailyNutritionTotalsRange).mockResolvedValue(
+      []
+    );
+    vi.mocked(
+      measurementRepository.getWaterTotalsByDateRange
+    ).mockResolvedValue([]);
+    vi.mocked(exerciseEntryDb.getDailyExerciseTotalsRange).mockResolvedValue([
+      {
+        entry_date: '2026-06-10',
+        duration_minutes: 30,
+        calories_burned: 100,
+        steps: 2000,
+      },
+    ]);
+    vi.mocked(
+      measurementRepository.getCheckInMeasurementsByDateRange
+    ).mockResolvedValue([
+      { entry_date: '2026-06-10', steps: 8732 },
+      { entry_date: '2026-06-11', steps: 994 },
+    ]);
+    const result = await tools.sparky_get_daily_report.execute!(
+      { start_date: '2026-06-10', end_date: '2026-06-11' },
+      opts
+    );
+    expect(JSON.parse(String(result)).exercise).toEqual([
+      {
+        entry_date: '2026-06-10',
+        exercise_calories: 100,
+        exercise_minutes: 30,
+        steps: 8732,
+      },
+      {
+        entry_date: '2026-06-11',
+        exercise_calories: 0,
+        exercise_minutes: 0,
+        steps: 994,
+      },
+    ]);
+  });
   it('returns nutrition, exercise, and water rows projected to MCP columns', async () => {
     vi.mocked(reportRepository.getDailyNutritionTotalsRange).mockResolvedValue([
       {

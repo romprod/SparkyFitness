@@ -117,7 +117,20 @@ async function getDailyReport(
     nutritionRows[0]?.energy_unit ??
     (preferences?.energy_unit as string | undefined) ??
     'kcal';
-  const exerciseRows = await exerciseEntryDb.getDailyExerciseTotalsRange(
+  const exerciseRows: {
+    entry_date: string | Date;
+    calories_burned: number | string;
+    duration_minutes: number | string;
+    steps?: number | string | null;
+  }[] = await exerciseEntryDb.getDailyExerciseTotalsRange(
+    userId,
+    startDate,
+    endDate
+  );
+  const checkInRows: {
+    entry_date: string | Date;
+    steps?: number | string | null;
+  }[] = await measurementRepository.getCheckInMeasurementsByDateRange(
     userId,
     startDate,
     endDate
@@ -135,6 +148,21 @@ async function getDailyReport(
     startDate,
     endDate
   );
+  const exerciseByDate = new Map<string, (typeof exerciseRows)[number]>(
+    exerciseRows.map((row) => [dayString(row.entry_date), row])
+  );
+  const stepsByDate = new Map<string, number>(
+    checkInRows
+      .filter((row) => row.steps !== null && row.steps !== undefined)
+      .map((row) => [dayString(row.entry_date), Number(row.steps)])
+  );
+  const activityDates = [
+    ...new Set([
+      ...exerciseByDate.keys(),
+      ...resolvedByDate.keys(),
+      ...stepsByDate.keys(),
+    ]),
+  ].sort();
 
   // Projections down to MCP's per-day column sets.
   return {
@@ -151,19 +179,19 @@ async function getDailyReport(
       fiber: r.fiber,
       nutrition_warning: r.nutrition_warning,
     })),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    exercise: exerciseRows.map((r: any) => {
+    exercise: activityDates.map((date) => {
+      const r = exerciseByDate.get(date);
       const exerciseCalories =
-        resolvedByDate.get(dayString(r.entry_date))?.calories ??
-        r.calories_burned;
+        resolvedByDate.get(date)?.calories ?? r?.calories_burned ?? 0;
       return {
-        entry_date: dayString(r.entry_date),
+        entry_date: date,
         exercise_calories:
           energyUnit === 'kJ' && typeof exerciseCalories === 'number'
             ? convertEnergy(exerciseCalories, 'kcal', 'kJ')
             : exerciseCalories,
-        exercise_minutes: r.duration_minutes,
-        steps: r.steps,
+        exercise_minutes: r?.duration_minutes ?? 0,
+        // Check-in steps are an all-day total containing workout steps.
+        steps: Math.max(stepsByDate.get(date) ?? 0, Number(r?.steps) || 0),
       };
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
