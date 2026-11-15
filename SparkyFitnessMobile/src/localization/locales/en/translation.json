@@ -1769,7 +1769,8 @@
         "status": {
           "in_use": "In use",
           "finished": "Finished",
-          "sealed": "Sealed"
+          "sealed": "Sealed",
+          "discarded": "Discarded"
         },
         "left_one": "{{count}} left",
         "left_other": "{{count}} left",
@@ -2048,7 +2049,42 @@
       "calculator": "Preparation calculator",
       "subtitle": "Vial preparation, draw calculations, stock and injection history",
       "injectionTrackerTitle": "Injection tracker",
-      "injectionTrackerSubtitle": "Log injections, review history and manage vial stock"
+      "injectionTrackerSubtitle": "Log injections, review history and manage vial stock",
+      "status": "Inventory status",
+      "retired": "Retired stock",
+      "active": "Active stock"
+    },
+    "syringes": {
+      "title": "Syringes",
+      "saveFailed": "Unable to save this change.",
+      "invalid": "Enter a name and positive capacities, scale and increment. Units per mL and capacity units must be whole numbers.",
+      "loadFailed": "Unable to load syringe settings.",
+      "default": "Default syringe",
+      "none": "None",
+      "add": "Add syringe",
+      "name": "Name",
+      "graduation": "Graduation type",
+      "units": "Units",
+      "ml": "mL",
+      "unitsPerMl": "Units per mL",
+      "capacityMl": "Capacity (mL)",
+      "capacityUnits": "Capacity (units)",
+      "increment": "Marking increment",
+      "deleteTitle": "Delete syringe?",
+      "deleteMessage": "This removes the reusable syringe setting. Saved injection calculations are preserved.",
+      "dose": "Target dose / volume",
+      "syringe": "Syringe",
+      "manage": "Manage syringes",
+      "manual": "Manual dose (mg)",
+      "inputUnit": "Input unit",
+      "calculating": "Calculating draw…",
+      "previewFailed": "Unable to calculate this draw. Check the vial concentration and syringe settings.",
+      "marking": "Measured marking: {{value}} {{unit}}",
+      "delivered": "Delivered: {{mass}} mcg · {{volume}} mL",
+      "error": "Rounding error: {{error}} mcg",
+      "selectActiveVial": "The selected vial is no longer active. Choose an active vial or choose not to deduct.",
+      "originalUnavailable": "The original syringe or vial is no longer available. The dose is read-only; other details can still be edited.",
+      "reenterDose": "The vial or syringe changed. Enter the dose again."
     }
   },
   "scheduleSummary": {

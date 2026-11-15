@@ -61,6 +61,7 @@ describe('glp1 utils', () => {
       pen({ id: 'a', status: 'sealed' }),
       pen({ id: 'b', status: 'finished' }),
       pen({ id: 'c', status: 'in_use' }),
+      pen({ id: 'd', status: 'discarded' }),
     ]).map((p) => p.id);
     expect(ordered).toEqual(['c', 'a']);
   });

@@ -1,3 +1,4 @@
+import { calculatedDrawInputSchema } from '@workspace/shared';
 import { medicationPreparationInputSchema } from '@workspace/shared';
 import { z } from 'zod/v4';
 import { optionalNullableNumber, optionalNullableInt } from './schema.utils.js';
@@ -127,6 +128,7 @@ export type UpdateScheduleBody = z.infer<typeof UpdateScheduleBodySchema>;
 // --------------------------------------------------------------------------
 const PenFieldsSchema = z.object({
   preparation: medicationPreparationInputSchema.optional(),
+  lifecycle_intent: z.boolean().optional(),
   lot_number: z.string().trim().max(500).nullable().optional(),
   storage_location: z.string().trim().max(500).nullable().optional(),
   bud_mode: z.enum(['date', 'interval']).nullable().optional(),
@@ -140,7 +142,7 @@ const PenFieldsSchema = z.object({
   volume_ml: z.number().finite().positive().nullable().optional(),
   doses_total: optionalNullableInt,
   doses_used: optionalNullableInt,
-  status: z.enum(['sealed', 'in_use', 'finished']).optional(),
+  status: z.enum(['sealed', 'in_use', 'finished', 'discarded']).optional(),
   opened_at: optionalDateString,
   expiry_date: optionalDateString,
   bud_date: z.iso.date().nullable().optional(),
@@ -161,6 +163,7 @@ export type UpdatePenBody = z.infer<typeof UpdatePenBodySchema>;
 export const CreateInjectionBodySchema = z
   .object({
     medication_id: z.string().uuid(),
+    calculated_draw: calculatedDrawInputSchema.optional(),
     pen_id: z.string().uuid().nullable().optional(),
     injected_at: z.string().nullable().optional(), // ISO timestamp
     entry_date: optionalDateString,
@@ -186,7 +189,7 @@ export const UpdateInjectionBodySchema = z
     injected_at: z.string().nullable().optional(), // ISO timestamp
     entry_date: optionalDateString,
     site: optionalNullableString,
-    dose_mg: z.number().finite().positive().nullable().optional(),
+    dose_mg: z.number().finite().nonnegative().nullable().optional(),
     notes: optionalNullableString,
     source: z.string().optional(),
     custom_fields: customFields,

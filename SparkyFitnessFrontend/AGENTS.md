@@ -149,4 +149,10 @@ When searching, ignore `node_modules/`, `dist/`, and every locale except `public
 
 ## Preparation records and handling metadata
 
-The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Device rounding, waste accounting and re-preparation are deferred.
+The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Syringe draw rounding and bounded lifecycle work extend these records. Unverified spill/priming/manual-adjustment features are outside authorised source parity; re-preparation remains deferred.
+
+## Syringe and lifecycle parity
+
+D04/D05 uses separate reusable syringe settings/default and shared decimal half-up arithmetic; retain the exact source five warn/block checks. I01 extends existing vial status to finished/discarded with quantity-preserving retirement and editable reopening. Web dose tooling stays in Cabinet and stock tooling in Preparation & stock; mobile retains Injection tracker. Do not add source-unverified features or restrictions without asking the owner.
+
+`MedicationSyringeSettings.tsx` manages reusable devices/defaults from the existing Cabinet injection tools. `MedicationDrawPreview.tsx` shows shared draw output in logging/editing; `syringeService.ts` and `useMedicationSyringes.ts` own requests/cache. Existing inventory handles lifecycle; keep injection UI out of Preparation & stock.

@@ -527,6 +527,7 @@ export type RootStackParamList = {
   MedicationScheduleForm: { medicationId: string; scheduleId?: string };
   Glp1Tracker: { medicationId: string };
   Glp1PenForm: { medicationId: string; penId?: string };
+  SyringeSettings: undefined;
   Glp1TitrationForm: { medicationId: string; stepId?: string };
   SymptomLog:
     | {

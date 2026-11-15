@@ -5,6 +5,8 @@ const mobileRoot = path.resolve(__dirname, '../..');
 
 const NATIVE_TABS_ROUTE_EXCLUSIONS = {
   Onboarding: 'First-run setup route shown before the tab host exists.',
+  SyringeSettings:
+    'Reusable syringe settings modal opened from the injection tracker.',
   FoodsLibrary: 'Root-stack library drill-in presented above the tab host.',
   MealsLibrary: 'Root-stack library drill-in presented above the tab host.',
   ExercisesLibrary: 'Root-stack library drill-in presented above the tab host.',

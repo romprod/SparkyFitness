@@ -24,6 +24,11 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
   const { t, i18n } = useTranslation();
   const { data: pens = [] } = useMedicationPens(medicationId);
   const today = getTodayDate();
+  const isRetired = (pen: (typeof pens)[number]) =>
+    pen.status === 'finished' || pen.status === 'discarded';
+  const orderedPens = [...pens].sort(
+    (a, b) => Number(isRetired(a)) - Number(isRetired(b))
+  );
 
   const expiryText = (status: PenExpiryStatus | null, date: string | null) => {
     if (!date || !status) return null;
@@ -64,10 +69,11 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
           })}
         </Text>
       ) : (
-        pens.map((pen, index) => {
+        orderedPens.map((pen, index) => {
           const left = penDosesLeft(pen);
           const expiry = penExpiryStatus(pen.expiry_date, today);
           const lowStock =
+            !isRetired(pen) &&
             pen.reorder_flag &&
             left != null &&
             pen.reorder_threshold != null &&
@@ -82,13 +88,17 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
               ? t('medications.glp1.inventory.status.in_use', {
                   defaultValue: 'In use',
                 })
-              : pen.status === 'finished'
-                ? t('medications.glp1.inventory.status.finished', {
-                    defaultValue: 'Finished',
+              : pen.status === 'discarded'
+                ? t('medications.glp1.inventory.status.discarded', {
+                    defaultValue: 'Discarded',
                   })
-                : t('medications.glp1.inventory.status.sealed', {
-                    defaultValue: 'Sealed',
-                  });
+                : pen.status === 'finished'
+                  ? t('medications.glp1.inventory.status.finished', {
+                      defaultValue: 'Finished',
+                    })
+                  : t('medications.glp1.inventory.status.sealed', {
+                      defaultValue: 'Sealed',
+                    });
           const details = [
             pen.dose_mg != null ? `${pen.dose_mg} mg` : null,
             pen.stock
@@ -128,6 +138,18 @@ const Glp1InventoryCard: React.FC<Glp1InventoryCardProps> = ({
           ].filter(Boolean);
           return (
             <View key={pen.id}>
+              {(index === 0 ||
+                isRetired(pen) !== isRetired(orderedPens[index - 1]!)) && (
+                <Text className="text-sm font-semibold text-text-secondary mt-3 mb-2">
+                  {isRetired(pen)
+                    ? t('medications.stock.retired', {
+                        defaultValue: 'Retired stock',
+                      })
+                    : t('medications.stock.active', {
+                        defaultValue: 'Active stock',
+                      })}
+                </Text>
+              )}
               {index > 0 && <View className="h-px bg-chrome-border my-2" />}
               <TouchableOpacity
                 onPress={() => onEdit(pen.id)}

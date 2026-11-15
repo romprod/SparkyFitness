@@ -244,6 +244,8 @@ describe('injectionRepository', () => {
     it('credits the dose back to the pen the injection deducted', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ pen_id: penId }] }) // identify vial
+        .mockResolvedValueOnce({ rows: [{ id: penId }] }) // lock vial before injection
         .mockResolvedValueOnce({
           rowCount: 1,
           rows: [{ id: injectionId, pen_id: penId }],
@@ -272,6 +274,7 @@ describe('injectionRepository', () => {
     it('does not touch pens when the injection had no pen', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ pen_id: null }] })
         .mockResolvedValueOnce({
           rowCount: 1,
           rows: [{ id: injectionId, pen_id: null }],
@@ -290,6 +293,7 @@ describe('injectionRepository', () => {
     it('returns false when nothing was deleted', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // DELETE
         .mockResolvedValueOnce({}); // COMMIT
 
@@ -300,6 +304,8 @@ describe('injectionRepository', () => {
     it('rolls back when the restore fails', async () => {
       mockClient.query
         .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ pen_id: penId }] }) // identify vial
+        .mockResolvedValueOnce({ rows: [{ id: penId }] }) // lock vial before injection
         .mockResolvedValueOnce({
           rowCount: 1,
           rows: [{ id: injectionId, pen_id: penId }],
@@ -316,9 +322,11 @@ describe('injectionRepository', () => {
 
   describe('updateInjection', () => {
     it('updates only provided fields scoped to the user', async () => {
-      mockClient.query.mockResolvedValueOnce({
-        rows: [{ id: injectionId, site: 'right_thigh' }],
-      });
+      mockClient.query
+        .mockResolvedValueOnce({ rows: [{ id: injectionId }] })
+        .mockResolvedValueOnce({
+          rows: [{ id: injectionId, site: 'right_thigh' }],
+        });
 
       const result = await injectionRepository.updateInjection(
         userId,
@@ -326,7 +334,7 @@ describe('injectionRepository', () => {
         { site: 'right_thigh', dose_mg: 0.5 }
       );
 
-      const [sql, values] = mockClient.query.mock.calls[0];
+      const [sql, values] = mockClient.query.mock.calls[1];
       expect(sql).toContain('UPDATE injection_entries');
       expect(sql).toContain('site = $3');
       expect(sql).toContain('dose_mg = $4');

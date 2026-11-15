@@ -159,6 +159,8 @@ These tables are managed by Better Auth and are not exposed through family shari
 | `medication_schedules` | Reminders and schedules for medications |
 | `medication_entries` | Logs of medications taken |
 | `medication_pens` | Vial/pen inventory with lot, storage and explicit beyond-use metadata |
+| `medication_syringes` | Reusable syringe capacity/graduation settings and preferred-device choice |
+| `medication_stock_status_audit` | Existing vial lifecycle status transitions without quantity adjustments |
 | `medication_preparations` | One immutable labelled-input preparation snapshot per vial; new injections link to it |
 | `medication_titration_steps` | Automated titration dosage plans |
 | `injection_entries` | Injection logs (site, time, etc.) |

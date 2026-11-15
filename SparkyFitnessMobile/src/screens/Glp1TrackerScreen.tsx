@@ -79,7 +79,12 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
           {med.is_glp1 && (
             <Glp1CheckInCard key={selectedDate} date={selectedDate} />
           )}
-          {isInjectable && <Glp1LogInjectionCard med={med} />}
+          {isInjectable && (
+            <Glp1LogInjectionCard
+              med={med}
+              onManageSyringes={() => navigation.navigate('SyringeSettings')}
+            />
+          )}
           {med.is_glp1 && (
             <Glp1SerumCard medicationId={med.id} title={med.name} />
           )}

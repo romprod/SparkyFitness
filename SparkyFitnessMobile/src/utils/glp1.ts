@@ -63,7 +63,7 @@ export function penExpiryStatus(
 /** Pens that can still take a dose, in-use first (matches the server's auto-pick). */
 export function usablePens(pens: MedicationPen[]): MedicationPen[] {
   return pens
-    .filter((p) => p.status !== 'finished')
+    .filter((p) => p.status !== 'finished' && p.status !== 'discarded')
     .sort(
       (a, b) => Number(b.status === 'in_use') - Number(a.status === 'in_use')
     );

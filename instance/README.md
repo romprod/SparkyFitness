@@ -6,13 +6,14 @@ Preparation calculations and dose-linked stock are implemented. Preparation reco
 
 ## Branches and remotes
 
-| Name                         | Purpose                                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `origin`                     | This fork: [romprod/SparkyFitness](https://github.com/romprod/SparkyFitness). Push instance changes here.        |
-| `upstream`                   | [CodeWithCJ/SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness). Fetch releases and assess updates here. |
-| `main`                       | The fork's upstream main branch. It is not the deployed instance baseline.                                       |
-| `instance/v1.12.1`           | The pinned v1.12.1 baseline plus the existing customisations and this backlog.                                   |
-| `codex/peptide-preparations` | Preparation calculator and mass stock implementation branch.                                                     |
+| Name                           | Purpose                                                                                                          |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `origin`                       | This fork: [romprod/SparkyFitness](https://github.com/romprod/SparkyFitness). Push instance changes here.        |
+| `upstream`                     | [CodeWithCJ/SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness). Fetch releases and assess updates here. |
+| `main`                         | The fork's upstream main branch. It is not the deployed instance baseline.                                       |
+| `instance/v1.12.1`             | The pinned v1.12.1 baseline plus the existing customisations and this backlog.                                   |
+| `codex/peptide-preparations`   | Preparation calculator and mass stock implementation branch.                                                     |
+| `codex/syringe-vial-lifecycle` | Syringe draw calculations, source guardrails and bounded vial lifecycle.                                         |
 
 The upstream base is [`39d9ca2d1`](https://github.com/CodeWithCJ/SparkyFitness/commit/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c). The existing source changes were imported unchanged and split into four commits:
 
@@ -33,7 +34,15 @@ Shared preparation arithmetic supports web/mobile vial forms and derives mass/vo
 
 The preparation-records tranche stores original labelled mass (mg/mcg), final prepared volume, reconstituted/premixed mode, preparation date and optional diluent as one immutable record per vial, with server-derived mass and concentration. New draws link to that record. Unused legacy vials can receive a record; historic inputs are not invented. Lot number and storage location remain editable stock metadata. Beyond-use dates use an explicit date or an entered interval/base date/source; there is no universal 28-day default. BUD is current handling metadata, not a date-revision audit.
 
-This extends D03, I02, I03 and I04. Device graduations and rounding (D04/D05), repeated preparations on the same vial, waste adjustments (I05), full lifecycle/revision audit and supply forecasts remain backlog work. See [medication documentation](../docs/src/features/medications.md). Local verification and instance deployment are separate steps; native source changes need rebuilt apps.
+This extends D03, I02, I03 and I04. Repeated preparations on the same vial, full preparation/revision audit and supply forecasts remain backlog work. Spill/priming ledgers and generic stock adjustments are not verified Pitstop features and are outside the authorised parity scope. See [medication documentation](../docs/src/features/medications.md). Local verification and instance deployment are separate steps; native source changes need rebuilt apps.
+
+## Syringes and vial lifecycle
+
+D04/D05 adds reusable syringe settings and a preferred syringe, separate from preparation records. This tranche manages account-owned syringes; the source shared/global device library and pen/pump presentation remain deferred. Entered mg/mcg/mL/units convert through the saved preparation concentration. Decimal arithmetic rounds half-up to the selected syringe increment and shows target mass/volume, marking, delivered mass/volume and rounding error. The server recomputes calibrated draws before logging delivered quantities. Deleting a syringe clears its default/reference while retaining historical delivered values.
+
+The five Pitstop checks are preserved: target volume above capacity or known remaining volume blocks; unit-scale draws below two raw units, a full-barrel target, and mass rounding error above 5% warn. These are physical draw checks, not clinical dose validation. There is no new already-taken override or additional threshold. Legacy mass-only logging remains compatible.
+
+Bounded I01 adds finished/discarded status, a finished timestamp and status audit within existing inventory. Retiring a vial preserves quantities and dose history; reopening uses existing status editing. Archived stock is separated from normal stock selection. A status change is not a waste deduction or a new stock-adjustment workflow. Syringe selection/calculation and injection history remain in Cabinet; vial management stays in Preparation & stock. Native source changes need rebuilt apps.
 
 ## Feature backlog
 
@@ -43,18 +52,20 @@ The comparison is pinned to Pitstop v1.28.1 at [`1caffbcfa`](https://github.com/
 
 Suggested order for selecting small feature branches:
 
-| Work package                              | Backlog IDs             | Dependency                                                       |
-| ----------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| Preparation records and draw calculations | I02, D03, D04, D05, I04 | Agree data model and rounding behaviour first.                   |
-| Exact stock accounting and corrections    | I01, I03, I05, D09      | Preparation and dose snapshots.                                  |
-| Protocol versions and supply forecasts    | P05, I06, I07           | Preserve historical schedules before forecasting changing plans. |
-| Invoice-linked dose costs                 | C01, C02, C03, C06      | Exact stock and delivered mass.                                  |
-| Bloodwork matrix and appointment report   | L02, E02                | Can proceed independently using existing health records.         |
-| Compound identity, blends and overlays    | E03, A05, A06, A04      | Stable identities and composition provenance.                    |
+| Work package                                 | Backlog IDs             | Dependency                                                       |
+| -------------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| Preparation records and draw calculations    | I02, D03, D04, D05, I04 | Agree data model and rounding behaviour first.                   |
+| Delivered stock reconciliation and lifecycle | I01, I03, I05, D09      | Preparation and dose snapshots.                                  |
+| Protocol versions and supply forecasts       | P05, I06, I07           | Preserve historical schedules before forecasting changing plans. |
+| Invoice-linked dose costs                    | C01, C02, C03, C06      | Exact stock and delivered mass.                                  |
+| Bloodwork matrix and appointment report      | L02, E02                | Can proceed independently using existing health records.         |
+| Compound identity, blends and overlays       | E03, A05, A06, A04      | Stable identities and composition provenance.                    |
 
 GitHub Actions workflow files are removed from the maintained branches of this fork. Run tests and builds locally. The agent handles branch review and merges without an owner PR approval step. No issues or PRs have been created for these proposals.
 
 ## Development workflow
+
+Owner scope rule: **always stick to verified Peptide Pitstop features. Ask before adding any feature beyond the source application.** Record the pinned source evidence for each selected capability. A suggested enhancement in this backlog is not permission to implement an unverified feature.
 
 Owner instruction, 15 November 2026: the agent handles commits, review and merges without asking the owner to approve PRs. Do not use GitHub Actions or the owner's browser. Use Git/SSH, supported APIs and local checks.
 

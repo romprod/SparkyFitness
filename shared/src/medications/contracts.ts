@@ -1,3 +1,4 @@
+import type { CalculatedDrawInput } from './draw.ts';
 import type { MedicationPreparation } from '../schemas/api/MedicationPreparation.api.zod.ts';
 import type { SerumPoint } from './glp1.ts';
 import type { FoodVariantNutrientField } from '../constants/foodVariantNutrients.ts';
@@ -155,6 +156,11 @@ export interface CreateMedicationInput {
 export type UpdateMedicationInput = Partial<CreateMedicationInput>;
 
 export interface MedicationEntry {
+  pen_id?: string | null;
+  syringe_id?: string | null;
+  volume_ml?: string | null;
+  syringe_units?: string | null;
+  dose_input_unit?: string | null;
   id: string;
   medication_id: string;
   schedule_id: string | null;
@@ -244,7 +250,8 @@ export interface MedicationPen {
   volume_ml: number | null;
   doses_total: number | null;
   doses_used: number;
-  status: 'sealed' | 'in_use' | 'finished';
+  status: 'sealed' | 'in_use' | 'finished' | 'discarded';
+  finished_at?: string | null;
   opened_at: string | null;
   expiry_date: string | null;
   bud_date: string | null;
@@ -254,6 +261,10 @@ export interface MedicationPen {
 }
 
 export interface InjectionEntry {
+  volume_ml?: string | null;
+  syringe_units?: string | null;
+  dose_input_unit?: string | null;
+  syringe_id?: string | null;
   preparation_id?: string | null;
   id: string;
   medication_id: string;
@@ -303,6 +314,7 @@ export interface SiteSuggestionResponse {
 }
 
 export interface LogInjectionInput {
+  calculated_draw?: CalculatedDrawInput;
   medication_id: string;
   /** Omit while deduct_pen is true to let the server auto-pick the pen (in-use first, else oldest sealed). */
   pen_id?: string | null;

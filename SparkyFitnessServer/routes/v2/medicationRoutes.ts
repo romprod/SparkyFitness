@@ -1,3 +1,12 @@
+import {
+  medicationSyringeInputSchema,
+  drawPreviewInputSchema,
+} from '@workspace/shared';
+import { z } from 'zod/v4';
+import * as syringeRepository from '../../models/medicationSyringeRepository.js';
+const setDefaultSyringeSchema = z.object({
+  syringe_id: z.string().uuid().nullable(),
+});
 import express, { RequestHandler } from 'express';
 import {
   CreateMedicationBodySchema,
@@ -922,6 +931,116 @@ router.delete(
   '/display-preferences/:viewGroup/:platform',
   deleteDisplayPreference
 );
+
+/**
+ * /v2/medications/syringes:
+ *   get:
+ *     summary: List owned syringe configurations and preferred syringe
+ *     tags: [Medications & GLP-1]
+ *     responses: { 200: { description: Syringes and nullable default_syringe_id. } }
+ *   post:
+ *     summary: Save a reusable syringe configuration
+ *     description: Requires name, graduation_type (units/ml), units_per_ml, capacity_ml, capacity_units and increment. Decimal capacity and increment are strings.
+ *     tags: [Medications & GLP-1]
+ *     responses: { 201: { description: Created syringe. } }
+ * /v2/medications/syringes/default:
+ *   put:
+ *     summary: Set or clear the preferred syringe
+ *     description: Accepts syringe_id as an owned syringe UUID or null.
+ *     tags: [Medications & GLP-1]
+ *     responses: { 204: { description: Preference saved. } }
+ * /v2/medications/syringes/{id}:
+ *   put:
+ *     summary: Update an owned syringe configuration
+ *     tags: [Medications & GLP-1]
+ *     responses: { 200: { description: Updated syringe. } }
+ *   delete:
+ *     summary: Delete an owned syringe
+ *     description: Logged delivered mass, volume and markings remain; their syringe reference becomes null.
+ *     tags: [Medications & GLP-1]
+ *     responses: { 204: { description: Deleted syringe. } }
+ * /v2/medications/pens/{id}/draw-preview:
+ *   post:
+ *     summary: Calculate a draw from stored preparation, syringe and current stock
+ *     description: Accepts syringe_id, dose.value as a decimal string, dose.unit (mcg/mg/ml/units), and optional editing_injection_id to credit a matching previous draw. Returns decimal-string target/delivered amounts, markings and structured warnings. Injection POST accepts the same dose/syringe input as calculated_draw and recomputes under the vial lock. Explicit lifecycle changes use lifecycle_intent true with status on the existing pen update endpoint.
+ *     tags: [Medications & GLP-1]
+ *     responses: { 200: { description: Draw result and source-equivalent guardrails. } }
+ */
+// --- Reusable syringe settings and authoritative draw preview ----------------
+router.get('/syringes', async (req, res, next) => {
+  try {
+    res.json(await syringeRepository.listSyringes(req.userId));
+  } catch (error) {
+    next(error);
+  }
+});
+router.post('/syringes', async (req, res, next) => {
+  try {
+    const body = medicationSyringeInputSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    res
+      .status(201)
+      .json(await syringeRepository.saveSyringe(req.userId, body.data));
+  } catch (error) {
+    next(error);
+  }
+});
+router.put('/syringes/default', async (req, res, next) => {
+  try {
+    const body = setDefaultSyringeSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    await syringeRepository.setDefaultSyringe(req.userId, body.data.syringe_id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+router.put('/syringes/:id', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = medicationSyringeInputSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    const row = await syringeRepository.saveSyringe(
+      req.userId,
+      body.data,
+      params.data.id
+    );
+    if (!row) {
+      res.status(404).json({ error: 'Syringe not found' });
+      return;
+    }
+    res.json(row);
+  } catch (error) {
+    next(error);
+  }
+});
+router.delete('/syringes/:id', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    if (!(await syringeRepository.deleteSyringe(req.userId, params.data.id))) {
+      res.status(404).json({ error: 'Syringe not found' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+router.post('/pens/:id/draw-preview', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = drawPreviewInputSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    res.json(
+      await syringeRepository.previewDraw(req.userId, params.data.id, body.data)
+    );
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/:id', getMedication);
 router.put(

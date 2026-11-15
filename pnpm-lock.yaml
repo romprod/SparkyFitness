@@ -906,6 +906,9 @@ importers:
 
   shared:
     dependencies:
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       papaparse:
         specifier: ^5.7.0
         version: 5.7.0

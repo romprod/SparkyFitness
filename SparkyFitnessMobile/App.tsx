@@ -177,6 +177,7 @@ import {
   SafeMedicationScheduleForm,
   SafeGlp1Tracker,
   SafeGlp1PenForm,
+  SafeSyringeSettings,
   SafeGlp1TitrationForm,
   SafeSymptomLog,
   SafeMoodLog,
@@ -1400,6 +1401,15 @@ function AppContent() {
             name="Glp1Tracker"
             component={SafeGlp1Tracker}
             options={createStackScreenOptions(t('medications.glp1.tracker.title', { defaultValue: 'GLP-1 tracker' }), { headerBackTitle: t('screens.medication', { defaultValue: 'Medication' }) })}
+          />
+          <Stack.Screen
+            name="SyringeSettings"
+            component={SafeSyringeSettings}
+            options={createStackScreenOptions(t('medications.syringes.title', { defaultValue: 'Syringes' }), {
+              presentation: 'modal',
+              headerBackButtonDisplayMode: 'minimal',
+              ...(Platform.OS === 'android' ? androidModalAnimation : {}),
+            })}
           />
           <Stack.Screen
             name="Glp1PenForm"

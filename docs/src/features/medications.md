@@ -81,6 +81,18 @@ For a vial with complete records, remaining mass is concentration × prepared vo
 
 If older usage counts do not match linked injections, a dose amount is missing, or preparation details are incomplete, mass stock is unavailable. A historic dose count is not treated as a known mass. Recorded use above the vial content is retained and flagged; it is never silently discarded. These figures describe recorded stock and do not account for unlogged waste, spills or device dead space.
 
+### Syringe draw calculations
+
+Reusable syringes have a name, unit- or mL-graduated scale, units per mL, capacity and smallest measurable increment. Select a syringe and prepared vial in the existing injection form. The preferred syringe can prefill that choice. Syringe settings belong to the device, not to an immutable vial preparation. Removing a syringe clears it as the preferred device and removes its link from historical injections; saved delivered mass, volume and markings remain.
+
+Enter a target in mg, mcg, mL or syringe units. The preview shows target mass and volume, the nearest measurable marking, delivered mass and volume, and the rounding difference. Decimal calculations round half-up to the syringe increment. Logging stores the delivered mass/volume and device reference; the preview does not establish a measured biological dose. Legacy mass-only entries retain their existing behavior.
+
+A target volume above syringe capacity or above known remaining vial volume blocks a calibrated draw. A unit-graduated draw below two raw units, a target filling the barrel exactly, or mass rounding error greater than 5% shows a warning. Exactly two units or exactly 5% does not trigger those warnings. No extra dose-range rules or already-taken override are added.
+
+### Finished and discarded vials
+
+Use the existing inventory controls to mark stock finished or discarded, or edit its status to reopen it. Retiring stock records its status and finish time without zeroing remaining mass/volume or deleting injection history. Finished/discarded stock is grouped separately from active stock. This is lifecycle management, not a spill, priming or manual stock-adjustment ledger.
+
 ### Dose units
 
 Preparation and vial stock use mg and mL. A saved default dose in mcg (including µg/μg) is divided by 1,000 before it fills a dose field in mg or is deducted from stock. Gram doses are multiplied by 1,000. For non-GLP-1 mass-based injectables, the daily Log tab also deducts stock using the scheduled dose amount when one is present. Volume, device units and unspecified peptide units are never assumed to mean mg; enter the dose explicitly in mg when using the injection form. Existing GLP-1 records without a dose unit retain their legacy mg interpretation.

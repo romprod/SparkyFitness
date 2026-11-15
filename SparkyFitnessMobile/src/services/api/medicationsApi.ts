@@ -218,6 +218,7 @@ export const createPen = (
   medicationId: string,
   body: Omit<Partial<MedicationPen>, 'preparation'> & {
     preparation?: MedicationPreparationInput;
+    lifecycle_intent?: boolean;
   }
 ): Promise<MedicationPen> =>
   apiFetch<MedicationPen>({
@@ -232,6 +233,7 @@ export const updatePen = (
   id: string,
   body: Omit<Partial<MedicationPen>, 'preparation'> & {
     preparation?: MedicationPreparationInput;
+    lifecycle_intent?: boolean;
   }
 ): Promise<MedicationPen> =>
   apiFetch<MedicationPen>({

@@ -30,6 +30,7 @@ type Glp1PenFormScreenProps = RootStackScreenProps<'Glp1PenForm'>;
 
 interface FormState {
   kind: 'pen' | 'vial';
+  status: MedicationPen['status'];
   label: string;
   doseMg: string;
   concentration: string;
@@ -51,6 +52,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   kind: 'pen',
+  status: 'sealed',
   label: '',
   doseMg: '',
   concentration: '',
@@ -72,6 +74,7 @@ const EMPTY_FORM: FormState = {
 
 const fromPen = (pen: MedicationPen): FormState => ({
   kind: pen.kind,
+  status: pen.status,
   label: pen.label ?? '',
   doseMg: pen.dose_mg != null ? String(pen.dose_mg) : '',
   concentration:
@@ -245,6 +248,9 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
         : undefined;
     const body = {
       kind: form.kind,
+      ...('status' in edits && form.status !== existing?.status
+        ? { status: form.status, lifecycle_intent: true }
+        : {}),
       label: form.label.trim() || null,
       dose_mg: doseMg,
       concentration_mg_ml: concentration,
@@ -370,6 +376,49 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
         keyboardShouldPersistTaps="handled"
         bottomOffset={80}
       >
+        {isEditing && (
+          <View className="gap-1.5">
+            <Text className="text-text-secondary text-sm font-medium">
+              {t('medications.stock.status', {
+                defaultValue: 'Inventory status',
+              })}
+            </Text>
+            <BottomSheetPicker
+              value={form.status}
+              onSelect={(v) => setField('status', v)}
+              title={t('medications.stock.status', {
+                defaultValue: 'Inventory status',
+              })}
+              options={[
+                {
+                  value: 'sealed' as const,
+                  label: t('medications.glp1.inventory.status.sealed', {
+                    defaultValue: 'Sealed',
+                  }),
+                },
+                {
+                  value: 'in_use' as const,
+                  label: t('medications.glp1.inventory.status.in_use', {
+                    defaultValue: 'In use',
+                  }),
+                },
+                {
+                  value: 'finished' as const,
+                  label: t('medications.glp1.inventory.status.finished', {
+                    defaultValue: 'Finished',
+                  }),
+                },
+                {
+                  value: 'discarded' as const,
+                  label: t('medications.glp1.inventory.status.discarded', {
+                    defaultValue: 'Discarded',
+                  }),
+                },
+              ]}
+            />
+          </View>
+        )}
+
         <View className="gap-1.5">
           <Text className="text-text-secondary text-sm font-medium">
             {t('medications.glp1.form.kind', { defaultValue: 'Type' })}

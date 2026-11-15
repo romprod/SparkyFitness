@@ -112,6 +112,8 @@ BEGIN
     'medication_schedules',
     'medication_entries',
     'medication_pens',
+    'medication_syringes',
+    'medication_stock_status_audit',
     'medication_preparations',
     'injection_entries',
     'medication_titration_steps',
@@ -1071,6 +1073,8 @@ SELECT create_medication_policy('medications');
 SELECT create_medication_policy('medication_schedules');
 SELECT create_medication_policy('medication_entries');
 SELECT create_medication_policy('medication_pens');
+SELECT create_medication_policy('medication_syringes');
+SELECT create_medication_policy('medication_stock_status_audit');
 SELECT create_medication_policy('medication_preparations');
 SELECT create_medication_policy('injection_entries');
 SELECT create_medication_policy('medication_titration_steps');

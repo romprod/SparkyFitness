@@ -62,6 +62,7 @@ export default function Glp1InventoryManager({
   // Add/Edit Inventory Form States
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [editingPen, setEditingPen] = useState<MedicationPen | null>(null);
+  const [status, setStatus] = useState<MedicationPen['status']>('sealed');
   const [kind, setKind] = useState<'pen' | 'vial'>('pen');
   const [label, setLabel] = useState('');
   const [inventoryDoseMg, setInventoryDoseMg] = useState(
@@ -157,6 +158,7 @@ export default function Glp1InventoryManager({
 
   const resetForm = () => {
     setEditingPen(null);
+    setStatus('sealed');
     setKind('pen');
     setLabel('');
     setInventoryDoseMg(
@@ -197,6 +199,7 @@ export default function Glp1InventoryManager({
   const openEditDialog = (pen: MedicationPen) => {
     resetForm();
     setEditingPen(pen);
+    setStatus(pen.status);
     setLotNumber(pen.lot_number ?? '');
     setStorageLocation(pen.storage_location ?? '');
     setBudMode(pen.bud_mode ?? (pen.bud_date ? 'date' : 'none'));
@@ -287,10 +290,9 @@ export default function Glp1InventoryManager({
     };
 
     if (editingPen) {
-      // Preserve the pen's lifecycle status on edit, except sealed -> in_use
-      // when an opened date is first set.
-      if (editingPen.status === 'sealed' && openedAt) {
-        body.status = 'in_use';
+      if (status !== editingPen.status) {
+        body.status = status;
+        body.lifecycle_intent = true;
       }
       updatePenMutation.mutate({ id: editingPen.id, body }, { onSuccess });
     } else {
@@ -301,11 +303,223 @@ export default function Glp1InventoryManager({
 
   const savePending = addPenMutation.isPending || updatePenMutation.isPending;
 
+  const activePens = (pensQ.data ?? []).filter(
+    (pen) => pen.status !== 'finished' && pen.status !== 'discarded'
+  );
+  const closedPens = (pensQ.data ?? []).filter(
+    (pen) => pen.status === 'finished' || pen.status === 'discarded'
+  );
+  const renderPen = (p: MedicationPen) => {
+    const total = p.doses_total ?? 0;
+    const left =
+      p.stock && p.dose_mg && p.dose_mg > 0
+        ? Math.floor(p.stock.remainingMg / p.dose_mg + 1e-10)
+        : Math.max(0, total - p.doses_used);
+    const pct = p.stock
+      ? Math.round((p.stock.remainingMg / p.stock.totalMg) * 100)
+      : total > 0
+        ? Math.round((left / total) * 100)
+        : 0;
+    const low =
+      ((p.stock !== null && p.stock !== undefined) || total > 0) && pct <= 25;
+    const expStatus = getExpiryStatus(p.expiry_date, today);
+    const budStatus = getExpiryStatus(p.bud_date, today);
+
+    return (
+      <div key={p.id} className="rounded-lg border p-3 text-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="font-medium capitalize">{p.kind}</span>
+            {p.label && (
+              <span className="text-muted-foreground">({p.label})</span>
+            )}
+            {p.dose_mg ? (
+              <span className="text-muted-foreground">{p.dose_mg} mg</span>
+            ) : null}
+            {p.concentration_mg_ml ? (
+              <span className="text-muted-foreground">
+                {t(
+                  'medications.glp1InventoryManager.mgML',
+                  '· {{concentration_mg_ml}} mg/mL',
+                  { concentration_mg_ml: p.concentration_mg_ml }
+                )}
+              </span>
+            ) : null}
+            {p.status === 'in_use' && (
+              <Badge variant="secondary" className="text-[10px]">
+                {t('medications.glp1InventoryManager.inUse', 'in use')}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {p.reorder_flag &&
+              p.reorder_threshold != null &&
+              left <= p.reorder_threshold && (
+                <Badge
+                  variant="destructive"
+                  className="flex items-center gap-1 text-[10px]"
+                >
+                  <AlertTriangle className="h-3 w-3" />{' '}
+                  {t('medications.glp1InventoryManager.reorder', 'Reorder')}
+                </Badge>
+              )}
+            <span className="font-medium tabular-nums">
+              {p.stock
+                ? p.stock.remainingMg.toFixed(3)
+                : `${left}/${total || '?'}`}{' '}
+              <span className="font-normal text-muted-foreground">
+                {p.stock
+                  ? 'mg'
+                  : t('medications.glp1InventoryManager.doses', 'doses')}
+              </span>
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => openEditDialog(p)}
+              aria-label={t(
+                'medications.glp1InventoryManager.editPenVial',
+                'Edit pen/vial'
+              )}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={() => deletePenMutation.mutate(p.id)}
+              disabled={deletePenMutation.isPending}
+              aria-label={t(
+                'medications.glp1InventoryManager.removePenVial',
+                'Remove pen/vial'
+              )}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        {p.kind === 'vial' && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {p.stock
+              ? t(
+                  'medications.preparation.remaining',
+                  '{{mass}} mg / {{volume}} mL remaining',
+                  {
+                    mass: p.stock.remainingMg.toFixed(3),
+                    volume: p.stock.remainingMl.toFixed(3),
+                  }
+                )
+              : t(
+                  'medications.preparation.unknown',
+                  'Mass stock unavailable: check preparation details and linked dose history.'
+                )}
+            {p.stock && p.stock.overdrawnMg > 0 && (
+              <span className="text-destructive">
+                {' '}
+                {t(
+                  'medications.preparation.overdrawn',
+                  'Logged use exceeds the recorded vial content.'
+                )}
+              </span>
+            )}
+          </p>
+        )}
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={`h-full rounded-full transition-all ${low ? 'bg-amber-500' : 'bg-blue-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {(p.expiry_date || p.bud_date) && (
+          <div className="mt-1.5 flex gap-3 text-xs text-muted-foreground flex-wrap items-center">
+            {p.expiry_date && (
+              <span className="flex items-center gap-1">
+                {t(
+                  'medications.glp1InventoryManager.exp',
+                  'Exp {{expiry_date}}',
+                  { expiry_date: p.expiry_date }
+                )}
+                {expStatus === 'expired' && (
+                  <Badge
+                    variant="destructive"
+                    className="text-[9px] px-1 py-0 h-4"
+                  >
+                    {t('medications.glp1InventoryManager.expired', 'Expired')}
+                  </Badge>
+                )}
+                {expStatus === 'near' && (
+                  <Badge className="text-[9px] px-1 py-0 h-4 bg-amber-500 text-white hover:bg-amber-600">
+                    {t('medications.glp1InventoryManager.nearExp', 'Near Exp')}
+                  </Badge>
+                )}
+              </span>
+            )}
+            {p.bud_date && (
+              <span className="flex items-center gap-1">
+                {t('medications.glp1InventoryManager.bud', 'BUD {{bud_date}}', {
+                  bud_date: p.bud_date,
+                })}
+                {budStatus === 'expired' && (
+                  <Badge
+                    variant="destructive"
+                    className="text-[9px] px-1 py-0 h-4"
+                  >
+                    {t(
+                      'medications.glp1InventoryManager.expiredBUD',
+                      'Expired (BUD)'
+                    )}
+                  </Badge>
+                )}
+                {budStatus === 'near' && (
+                  <Badge className="text-[9px] px-1 py-0 h-4 bg-amber-500 text-white hover:bg-amber-600 font-semibold">
+                    {t(
+                      'medications.glp1InventoryManager.budWarning',
+                      'BUD Warning'
+                    )}
+                  </Badge>
+                )}
+              </span>
+            )}
+          </div>
+        )}
+        {p.preparation && <SavedPreparation preparation={p.preparation} />}
+        {(p.lot_number || p.storage_location || p.bud_source) && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {[
+              p.lot_number &&
+                `${t('medications.preparation.lot', 'Lot number')}: ${p.lot_number}`,
+              p.storage_location &&
+                `${t('medications.preparation.storage', 'Storage location')}: ${p.storage_location}`,
+              p.bud_source &&
+                `${t('medications.preparation.budSource', 'BUD source')}: ${p.bud_source}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        )}
+        {(p.status === 'finished' || p.status === 'discarded') && (
+          <Badge variant="secondary" className="mt-2">
+            {t(`medications.stock.status.${p.status}`, p.status)}
+          </Badge>
+        )}
+        {p.notes && (
+          <p className="mt-1.5 text-xs text-muted-foreground italic border-t pt-1">
+            {t('medications.glp1InventoryManager.notes', 'Notes: {{notes}}', {
+              notes: p.notes,
+            })}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between text-base">
+          <CardTitle className="flex flex-col items-start gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
             <span>{t('medications.stock.title', 'Preparation & stock')}</span>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => openAddDialog(true)}>
@@ -327,227 +541,19 @@ export default function Glp1InventoryManager({
               {t('medications.glp1.noPens', 'No pens/vials tracked.')}
             </p>
           )}
-          {(pensQ.data ?? []).map((p) => {
-            const total = p.doses_total ?? 0;
-            const left =
-              p.stock && p.dose_mg && p.dose_mg > 0
-                ? Math.floor(p.stock.remainingMg / p.dose_mg + 1e-10)
-                : Math.max(0, total - p.doses_used);
-            const pct = p.stock
-              ? Math.round((p.stock.remainingMg / p.stock.totalMg) * 100)
-              : total > 0
-                ? Math.round((left / total) * 100)
-                : 0;
-            const low =
-              ((p.stock !== null && p.stock !== undefined) || total > 0) &&
-              pct <= 25;
-            const expStatus = getExpiryStatus(p.expiry_date, today);
-            const budStatus = getExpiryStatus(p.bud_date, today);
-
-            return (
-              <div key={p.id} className="rounded-lg border p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium capitalize">{p.kind}</span>
-                    {p.label && (
-                      <span className="text-muted-foreground">({p.label})</span>
-                    )}
-                    {p.dose_mg ? (
-                      <span className="text-muted-foreground">
-                        {p.dose_mg} mg
-                      </span>
-                    ) : null}
-                    {p.concentration_mg_ml ? (
-                      <span className="text-muted-foreground">
-                        {t(
-                          'medications.glp1InventoryManager.mgML',
-                          '· {{concentration_mg_ml}} mg/mL',
-                          { concentration_mg_ml: p.concentration_mg_ml }
-                        )}
-                      </span>
-                    ) : null}
-                    {p.status === 'in_use' && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        {t('medications.glp1InventoryManager.inUse', 'in use')}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {p.reorder_flag &&
-                      p.reorder_threshold != null &&
-                      left <= p.reorder_threshold && (
-                        <Badge
-                          variant="destructive"
-                          className="flex items-center gap-1 text-[10px]"
-                        >
-                          <AlertTriangle className="h-3 w-3" />{' '}
-                          {t(
-                            'medications.glp1InventoryManager.reorder',
-                            'Reorder'
-                          )}
-                        </Badge>
-                      )}
-                    <span className="font-medium tabular-nums">
-                      {p.stock
-                        ? p.stock.remainingMg.toFixed(3)
-                        : `${left}/${total || '?'}`}{' '}
-                      <span className="font-normal text-muted-foreground">
-                        {p.stock
-                          ? 'mg'
-                          : t(
-                              'medications.glp1InventoryManager.doses',
-                              'doses'
-                            )}
-                      </span>
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground"
-                      onClick={() => openEditDialog(p)}
-                      aria-label={t(
-                        'medications.glp1InventoryManager.editPenVial',
-                        'Edit pen/vial'
-                      )}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deletePenMutation.mutate(p.id)}
-                      disabled={deletePenMutation.isPending}
-                      aria-label={t(
-                        'medications.glp1InventoryManager.removePenVial',
-                        'Remove pen/vial'
-                      )}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                {p.kind === 'vial' && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {p.stock
-                      ? t(
-                          'medications.preparation.remaining',
-                          '{{mass}} mg / {{volume}} mL remaining',
-                          {
-                            mass: p.stock.remainingMg.toFixed(3),
-                            volume: p.stock.remainingMl.toFixed(3),
-                          }
-                        )
-                      : t(
-                          'medications.preparation.unknown',
-                          'Mass stock unavailable: check preparation details and linked dose history.'
-                        )}
-                    {p.stock && p.stock.overdrawnMg > 0 && (
-                      <span className="text-destructive">
-                        {' '}
-                        {t(
-                          'medications.preparation.overdrawn',
-                          'Logged use exceeds the recorded vial content.'
-                        )}
-                      </span>
-                    )}
-                  </p>
-                )}
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={`h-full rounded-full transition-all ${low ? 'bg-amber-500' : 'bg-blue-500'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                {(p.expiry_date || p.bud_date) && (
-                  <div className="mt-1.5 flex gap-3 text-xs text-muted-foreground flex-wrap items-center">
-                    {p.expiry_date && (
-                      <span className="flex items-center gap-1">
-                        {t(
-                          'medications.glp1InventoryManager.exp',
-                          'Exp {{expiry_date}}',
-                          { expiry_date: p.expiry_date }
-                        )}
-                        {expStatus === 'expired' && (
-                          <Badge
-                            variant="destructive"
-                            className="text-[9px] px-1 py-0 h-4"
-                          >
-                            {t(
-                              'medications.glp1InventoryManager.expired',
-                              'Expired'
-                            )}
-                          </Badge>
-                        )}
-                        {expStatus === 'near' && (
-                          <Badge className="text-[9px] px-1 py-0 h-4 bg-amber-500 text-white hover:bg-amber-600">
-                            {t(
-                              'medications.glp1InventoryManager.nearExp',
-                              'Near Exp'
-                            )}
-                          </Badge>
-                        )}
-                      </span>
-                    )}
-                    {p.bud_date && (
-                      <span className="flex items-center gap-1">
-                        {t(
-                          'medications.glp1InventoryManager.bud',
-                          'BUD {{bud_date}}',
-                          { bud_date: p.bud_date }
-                        )}
-                        {budStatus === 'expired' && (
-                          <Badge
-                            variant="destructive"
-                            className="text-[9px] px-1 py-0 h-4"
-                          >
-                            {t(
-                              'medications.glp1InventoryManager.expiredBUD',
-                              'Expired (BUD)'
-                            )}
-                          </Badge>
-                        )}
-                        {budStatus === 'near' && (
-                          <Badge className="text-[9px] px-1 py-0 h-4 bg-amber-500 text-white hover:bg-amber-600 font-semibold">
-                            {t(
-                              'medications.glp1InventoryManager.budWarning',
-                              'BUD Warning'
-                            )}
-                          </Badge>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {p.preparation && (
-                  <SavedPreparation preparation={p.preparation} />
-                )}
-                {(p.lot_number || p.storage_location || p.bud_source) && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {[
-                      p.lot_number &&
-                        `${t('medications.preparation.lot', 'Lot number')}: ${p.lot_number}`,
-                      p.storage_location &&
-                        `${t('medications.preparation.storage', 'Storage location')}: ${p.storage_location}`,
-                      p.bud_source &&
-                        `${t('medications.preparation.budSource', 'BUD source')}: ${p.bud_source}`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                )}
-                {p.notes && (
-                  <p className="mt-1.5 text-xs text-muted-foreground italic border-t pt-1">
-                    {t(
-                      'medications.glp1InventoryManager.notes',
-                      'Notes: {{notes}}',
-                      { notes: p.notes }
-                    )}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+          {activePens.map(renderPen)}
+          {closedPens.length > 0 && (
+            <details className="rounded-md border p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                {t(
+                  'medications.stock.finishedDiscarded',
+                  'Finished / discarded'
+                )}{' '}
+                ({closedPens.length})
+              </summary>
+              <div className="mt-3 space-y-2">{closedPens.map(renderPen)}</div>
+            </details>
+          )}
         </CardContent>
       </Card>
 
@@ -568,6 +574,35 @@ export default function Glp1InventoryManager({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {editingPen && (
+              <div className="space-y-1">
+                <Label htmlFor="inv-status">
+                  {t('medications.stock.statusLabel', 'Status')}
+                </Label>
+                <Select
+                  value={status}
+                  onValueChange={(value) =>
+                    setStatus(value as MedicationPen['status'])
+                  }
+                >
+                  <SelectTrigger id="inv-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(
+                      ['sealed', 'in_use', 'finished', 'discarded'] as const
+                    ).map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {t(
+                          `medications.stock.status.${value}`,
+                          value.replace('_', ' ')
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="inv-kind">

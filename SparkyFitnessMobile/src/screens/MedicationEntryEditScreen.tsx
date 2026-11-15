@@ -6,6 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import {
   INJECTION_SITES,
+  positiveDrawDoseSchema,
+  type DrawPreviewInput,
   type MedicationEntryStatus,
   type UpdateInjectionInput,
   type UpdateMedicationEntryInput,
@@ -13,6 +15,8 @@ import {
 import { useActiveWorkoutBarPadding } from '../components/ActiveWorkoutBar';
 import BottomSheetPicker from '../components/BottomSheetPicker';
 import FormInput from '../components/FormInput';
+import SyringeDrawPreview from '../components/glp1/SyringeDrawPreview';
+import { useSyringeDrawPreview } from '../hooks/useSyringes';
 import SettingsRow, { SettingsRowGroup } from '../components/SettingsRow';
 import TimeSheet, { type TimeSheetRef } from '../components/TimeSheet';
 import { useUpdateInjection } from '../hooks/useGlp1';
@@ -66,8 +70,46 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
   const [site, setSite] = useState(entry.site ?? NO_SITE);
   const [notes, setNotes] = useState(entry.notes ?? '');
 
+  const [doseText, setDoseText] = useState(
+    entry.dose_amount_snapshot != null ? String(entry.dose_amount_snapshot) : ''
+  );
+  const calculatedInjection =
+    isInjection && entry.volume_ml != null && entry.dose_input_unit != null;
+  const doseReadOnly =
+    calculatedInjection && (!entry.syringe_id || !entry.pen_id);
+  const doseChanged =
+    calculatedInjection && Number(doseText) !== entry.dose_amount_snapshot;
+  // Updates use the existing numeric mg contract; preview exactly what will be submitted.
+  const parsedDose = positiveDrawDoseSchema.safeParse({
+    value:
+      Number.isFinite(Number(doseText)) && doseText.trim()
+        ? String(Number(doseText))
+        : '',
+    unit: 'mg',
+  });
+  const drawInput: DrawPreviewInput | null =
+    calculatedInjection && doseChanged && !doseReadOnly && parsedDose.success
+      ? {
+          syringe_id: entry.syringe_id!,
+          editing_injection_id: entry.id,
+          dose: parsedDose.data,
+        }
+      : null;
+  const preview = useSyringeDrawPreview(
+    drawInput ? (entry.pen_id ?? null) : null,
+    drawInput
+  );
+  const drawBlocked =
+    doseChanged &&
+    (doseReadOnly ||
+      !drawInput ||
+      preview.isFetching ||
+      preview.isError ||
+      !preview.data ||
+      preview.data.warnings.some((warning) => warning.severity === 'block'));
+
   const handleSave = useCallback(() => {
-    if (isSaving) return;
+    if (isSaving || drawBlocked) return;
     const entryDay = entry.entry_date.slice(0, 10);
     const takenAt = editedTakenAt(entryDay, timeOfDay, timezone);
     const trimmedNotes = notes.trim() || null;
@@ -98,6 +140,9 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
         entry_date: entryDay,
         site: site === NO_SITE ? null : site,
         notes: trimmedNotes,
+        ...(calculatedInjection && doseChanged
+          ? { dose_mg: Number(doseText) }
+          : {}),
       };
       updateInjection.mutate({ id: entry.id, body }, { onSuccess, onError });
     } else {
@@ -111,6 +156,10 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
     }
   }, [
     isSaving,
+    drawBlocked,
+    calculatedInjection,
+    doseChanged,
+    doseText,
     entry,
     timeOfDay,
     timezone,
@@ -136,6 +185,7 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
       kind: 'primary',
       label: t('common.save', { defaultValue: 'Save' }),
       busy: isSaving,
+      disabled: drawBlocked,
       busyLabel: t('common.saving', { defaultValue: 'Saving…' }),
       onPress: handleSave,
     },
@@ -249,6 +299,38 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
                 defaultValue: 'Injection site',
               })}
             />
+          </View>
+        )}
+
+        {calculatedInjection && (
+          <View className="gap-2">
+            <Text className="text-sm font-medium text-text-secondary">
+              {t('medications.glp1.log.dose', { defaultValue: 'Dose (mg)' })}
+            </Text>
+            <FormInput
+              accessibilityLabel={t('medications.glp1.log.dose', {
+                defaultValue: 'Dose (mg)',
+              })}
+              value={doseText}
+              onChangeText={setDoseText}
+              editable={!doseReadOnly}
+              keyboardType="decimal-pad"
+            />
+            {doseReadOnly && (
+              <Text className="text-sm text-text-muted">
+                {t('medications.syringes.originalUnavailable', {
+                  defaultValue:
+                    'The original syringe or vial is no longer available. The dose is read-only; other details can still be edited.',
+                })}
+              </Text>
+            )}
+            {doseChanged && !doseReadOnly && (
+              <SyringeDrawPreview
+                data={preview.data}
+                pending={preview.isFetching}
+                failed={preview.isError}
+              />
+            )}
           </View>
         )}
 

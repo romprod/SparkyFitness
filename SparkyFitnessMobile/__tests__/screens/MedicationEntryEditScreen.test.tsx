@@ -12,6 +12,10 @@ import { buildEntry } from '../helpers/medicationFixtures';
 
 type ScreenProps = RootStackScreenProps<'MedicationEntryEdit'>;
 
+const mockDrawPreview = jest.fn();
+jest.mock('../../src/hooks/useSyringes', () => ({
+  useSyringeDrawPreview: (...args: unknown[]) => mockDrawPreview(...args),
+}));
 jest.mock('../../src/hooks/useMedications', () => ({
   useUpdateMedicationEntry: jest.fn(),
 }));
@@ -107,6 +111,18 @@ function renderScreen(entry = buildEntry()) {
 describe('MedicationEntryEditScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDrawPreview.mockReturnValue({
+      data: {
+        markingValue: '20',
+        markingScale: 'units',
+        deliveredMassMcg: '200',
+        deliveredVolumeMl: '0.2',
+        roundingErrorMcg: '0',
+        warnings: [],
+      },
+      isFetching: false,
+      isError: false,
+    });
     (useUpdateMedicationEntry as jest.Mock).mockReturnValue({
       mutate: updateEntryMutate,
       isPending: false,
@@ -230,5 +246,90 @@ describe('MedicationEntryEditScreen', () => {
     fireEvent.press(screen.getByText('opt-none'));
     pressAction(screen, mockNavigation, 'Save');
     expect(updateInjectionMutate.mock.calls[0]![0].body.site).toBeNull();
+  });
+  it('previews a changed calculated mg dose with the original syringe and credited injection', () => {
+    const screen = renderScreen(
+      buildEntry({
+        id: 'inj-1',
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: 'syringe',
+        volume_ml: '0.1',
+        dose_input_unit: 'mg',
+        dose_amount_snapshot: 0.1,
+      })
+    );
+    fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '0.2');
+    expect(mockDrawPreview).toHaveBeenLastCalledWith('vial', {
+      syringe_id: 'syringe',
+      editing_injection_id: 'inj-1',
+      dose: { value: '0.2', unit: 'mg' },
+    });
+    expect(screen.getByText('Measured marking: 20 Units')).toBeTruthy();
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate.mock.calls[0]![0].body.dose_mg).toBe(0.2);
+  });
+
+  it('preserves calculated numeric snapshots when only metadata changes', () => {
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: 'syringe',
+        volume_ml: '0.1',
+        dose_input_unit: 'mg',
+        dose_amount_snapshot: 0.1,
+      })
+    );
+    pressAction(screen, mockNavigation, 'Save');
+    expect(mockDrawPreview).toHaveBeenLastCalledWith(null, null);
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'dose_mg'
+    );
+  });
+
+  it('keeps a deleted-syringe calculated dose read-only while allowing metadata edits', () => {
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: null,
+        volume_ml: '0.1',
+        dose_input_unit: 'mg',
+        dose_amount_snapshot: 0.1,
+      })
+    );
+    expect(screen.getByLabelText('Dose (mg)').props.editable).toBe(false);
+    expect(
+      screen.getByText(
+        'The original syringe or vial is no longer available. The dose is read-only; other details can still be edited.'
+      )
+    ).toBeTruthy();
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate).toHaveBeenCalledTimes(1);
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'dose_mg'
+    );
+  });
+
+  it('blocks changed calculated dose saves while canonical preview is pending or blocked', () => {
+    mockDrawPreview.mockReturnValue({
+      data: undefined,
+      isFetching: true,
+      isError: false,
+    });
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: 'syringe',
+        volume_ml: '0.1',
+        dose_input_unit: 'mg',
+        dose_amount_snapshot: 0.1,
+      })
+    );
+    fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '0.2');
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate).not.toHaveBeenCalled();
   });
 });

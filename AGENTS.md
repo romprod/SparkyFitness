@@ -169,6 +169,7 @@ pnpm run build
 Owner direction on 15 November 2026 for this fork:
 
 - Handle commits, branch review and merges within the requested work. Do not require owner PR approval.
+- Feature work must stay within capabilities verified in Peptide Pitstop v1.28.1, pinned to `1caffbcfaeb4ccaccee9806a37d169e013328528`. Ask the owner before adding any feature beyond that source; architectural compatibility, permissions and tests do not authorise additional product behavior.
 - Use local tests and builds. Do not add or restore GitHub Actions workflows or hosted release/deployment automation.
 - Use Git/SSH and supported APIs. Do not operate the owner's browser for repository work.
 - Keep the existing v1.12.1 instance branch and its customisations separate from upstream main until an upgrade is deliberately tested.
@@ -177,4 +178,4 @@ Owner direction on 15 November 2026 for this fork:
 
 ## Preparation records and handling metadata
 
-The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Device rounding, waste accounting and re-preparation are deferred.
+The instance preparation-records tranche uses `medication_preparations` for one immutable labelled-input snapshot per vial; new injection draws link its ID. Preserve original mg/mcg mass inputs and server-derived mass/concentration. Lot/storage and explicit BUD date or interval/base/source remain editable `medication_pens` metadata. Never infer legacy preparation inputs or add an automatic opened-plus-28-day BUD. On web, Preparation & stock manages vials and injection logging/history stays in Cabinet. Mobile retains its combined Injection tracker screen. Syringe draw rounding and bounded lifecycle work extend these records. Unverified spill/priming/manual-adjustment features are outside authorised source parity; re-preparation remains deferred.

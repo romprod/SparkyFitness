@@ -158,4 +158,5 @@ export type MedicationPenWriteInput = Omit<
   'preparation'
 > & {
   preparation?: MedicationPreparationInput;
+  lifecycle_intent?: boolean;
 };

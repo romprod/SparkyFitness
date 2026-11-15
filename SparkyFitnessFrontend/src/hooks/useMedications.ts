@@ -283,6 +283,7 @@ export const useLogInjectionMutation = (medId: string) => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: medKeys.injections(medId) });
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       queryClient.invalidateQueries({ queryKey: medKeys.serumCurve(medId) });
       queryClient.invalidateQueries({
         queryKey: medKeys.siteSuggestion(medId),
@@ -313,6 +314,8 @@ export const useUpdateInjectionMutation = (medId: string) => {
     mutationFn: ({ id, body }: { id: string; body: UpdateInjectionInput }) =>
       medicationService.updateInjection(id, body),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       queryClient.invalidateQueries({ queryKey: medKeys.injections(medId) });
       queryClient.invalidateQueries({ queryKey: medKeys.serumCurve(medId) });
       queryClient.invalidateQueries({
@@ -342,8 +345,10 @@ export const useDeleteInjectionMutation = (medId: string) => {
   return useMutation({
     mutationFn: (id: string) => medicationService.deleteInjection(id),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       queryClient.invalidateQueries({ queryKey: medKeys.injections(medId) });
       queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       queryClient.invalidateQueries({ queryKey: medKeys.serumCurve(medId) });
       queryClient.invalidateQueries({
         queryKey: medKeys.siteSuggestion(medId),
@@ -463,8 +468,10 @@ export const useCreatePenMutation = (medId: string) => {
   return useMutation({
     mutationFn: (body: MedicationPenWriteInput) =>
       medicationService.createPen(medId, body),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
+    },
     meta: {
       errorMessage: i18n.t(
         'hooks.useMedications.couldNotAddPenVial',
@@ -483,8 +490,10 @@ export const useUpdatePenMutation = (medId: string) => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: MedicationPenWriteInput }) =>
       medicationService.updatePen(id, body),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
+    },
     meta: {
       errorMessage: i18n.t(
         'hooks.useMedications.couldNotUpdatePenVial',
@@ -502,8 +511,10 @@ export const useDeletePenMutation = (medId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => medicationService.deletePen(id),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      queryClient.invalidateQueries({ queryKey: ['medication-draw-preview'] });
+    },
     meta: {
       errorMessage: i18n.t(
         'hooks.useMedications.couldNotRemovePenVial',

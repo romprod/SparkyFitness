@@ -167,6 +167,8 @@ The `food_entries` insert policy permits detached nutrition snapshots when `food
 | `medication_schedules` | Reminders/schedules to take medications | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_entries` | Logs of medications taken | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_pens` | Vial/pen inventory, lot/storage and beyond-use metadata | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
+| `medication_syringes` | Reusable syringe settings and preferred-device choice | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
+| `medication_stock_status_audit` | Vial status transitions, retaining original vial ID after vial deletion and previous/new state without changing quantities | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_preparations` | Immutable preparation snapshots linked to same-owner vial and medication; updates are prohibited | Delegate with `can_manage_medications` (no snapshot updates) | Delegate with `can_manage_medications` or `can_view_reports` |
 | `injection_entries` | Injection logs (e.g., site of injection) | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |
 | `medication_titration_steps` | Automated titration dosage plans | Delegate with `can_manage_medications` | Delegate with `can_manage_medications` or `can_view_reports` |

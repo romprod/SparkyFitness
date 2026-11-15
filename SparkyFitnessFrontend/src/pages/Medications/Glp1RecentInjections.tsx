@@ -5,6 +5,8 @@ import {
   INJECTION_SITES,
   localDateTimeToUtc,
   utcToLocalDateTimeInput,
+  positiveDrawDoseSchema,
+  type DrawPreviewInput,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +32,11 @@ import {
   useUpdateInjectionMutation,
   useDeleteInjectionMutation,
 } from '@/hooks/useMedications';
+import MedicationDrawPreview from './MedicationDrawPreview';
+import {
+  useMedicationDrawPreview,
+  useMedicationSyringes,
+} from '@/hooks/useMedicationSyringes';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import type { Medication, InjectionEntry } from '@/types/medications';
 
@@ -54,6 +61,53 @@ export default function Glp1RecentInjections({
   const [editInjectedAt, setEditInjectedAt] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
+  const syringesQ = useMedicationSyringes();
+  const calculatedEntry = !!editingInj?.dose_input_unit;
+  const originalSyringeAvailable =
+    !!editingInj?.syringe_id &&
+    !!syringesQ.data?.syringes.some(
+      (syringe) => syringe.id === editingInj.syringe_id
+    );
+  const canChangeCalculatedAmount =
+    !!editingInj?.pen_id && originalSyringeAvailable;
+  const amountChanged =
+    !!editingInj &&
+    (editDoseMg.trim()
+      ? Number(editDoseMg) !== editingInj.dose_mg
+      : editingInj.dose_mg !== null);
+  const normalizedEditDose =
+    editDoseMg.trim() && Number.isFinite(Number(editDoseMg))
+      ? String(Number(editDoseMg))
+      : '';
+  const positiveAmount = positiveDrawDoseSchema.safeParse({
+    value: normalizedEditDose,
+    unit: 'mg',
+  }).success;
+  const editPreviewInput: DrawPreviewInput | null =
+    calculatedEntry &&
+    amountChanged &&
+    positiveAmount &&
+    canChangeCalculatedAmount
+      ? {
+          syringe_id: editingInj!.syringe_id!,
+          editing_injection_id: editingInj!.id,
+          dose: { value: normalizedEditDose, unit: 'mg' },
+        }
+      : null;
+  const previewQ = useMedicationDrawPreview(
+    editPreviewInput ? (editingInj?.pen_id ?? null) : null,
+    editPreviewInput
+  );
+  const editAmountBlocked =
+    calculatedEntry &&
+    amountChanged &&
+    (!canChangeCalculatedAmount ||
+      !positiveAmount ||
+      !previewQ.data ||
+      previewQ.isFetching ||
+      previewQ.isError ||
+      previewQ.data.warnings.some((warning) => warning.severity === 'block'));
+
   const openEdit = (inj: InjectionEntry) => {
     setEditingInj(inj);
     setEditSite(inj.site ?? 'none');
@@ -63,13 +117,15 @@ export default function Glp1RecentInjections({
   };
 
   const handleSaveEdit = () => {
-    if (!editingInj) return;
+    if (!editingInj || editAmountBlocked) return;
     updateInjMutation.mutate(
       {
         id: editingInj.id,
         body: {
           site: editSite === 'none' ? null : editSite,
-          dose_mg: editDoseMg ? Number(editDoseMg) : null,
+          ...(amountChanged
+            ? { dose_mg: editDoseMg ? Number(editDoseMg) : null }
+            : {}),
           ...(editInjectedAt
             ? {
                 injected_at: localDateTimeToUtc(
@@ -112,7 +168,7 @@ export default function Glp1RecentInjections({
                   '—'}
               </span>
               <span className="text-xs text-muted-foreground">
-                {inj.dose_mg
+                {inj.dose_mg != null
                   ? t(
                       'medications.glp1RecentInjections.mg',
                       '{{dose_mg}} mg · ',
@@ -174,14 +230,19 @@ export default function Glp1RecentInjections({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">
+                <Label
+                  htmlFor="glp1-edit-dose"
+                  className="text-xs text-muted-foreground"
+                >
                   {t('medications.glp1.doseMg', 'Dose (mg)')}
                 </Label>
                 <Input
-                  type="number"
-                  step="0.05"
+                  id="glp1-edit-dose"
+                  type="text"
+                  inputMode="decimal"
+                  readOnly={calculatedEntry && !canChangeCalculatedAmount}
                   value={editDoseMg}
                   onChange={(e) => setEditDoseMg(e.target.value)}
                 />
@@ -200,6 +261,21 @@ export default function Glp1RecentInjections({
                 />
               </div>
             </div>
+            {calculatedEntry && !canChangeCalculatedAmount && (
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'medications.syringes.originalUnavailable',
+                  'The original syringe or vial is unavailable, so the amount cannot be changed. Notes, site and time can still be edited.'
+                )}
+              </p>
+            )}
+            {calculatedEntry && amountChanged && (
+              <MedicationDrawPreview
+                preview={editPreviewInput ? previewQ.data : undefined}
+                isFetching={previewQ.isFetching}
+                isError={previewQ.isError}
+              />
+            )}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">
                 {t('medications.glp1.injectionSite', 'Injection site')}
@@ -219,10 +295,14 @@ export default function Glp1RecentInjections({
               </Select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">
+              <Label
+                htmlFor="glp1-edit-notes"
+                className="text-xs text-muted-foreground"
+              >
                 {t('medications.glp1.notes', 'Notes')}
               </Label>
               <Input
+                id="glp1-edit-notes"
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
               />
@@ -234,7 +314,7 @@ export default function Glp1RecentInjections({
             </Button>
             <Button
               onClick={handleSaveEdit}
-              disabled={updateInjMutation.isPending}
+              disabled={updateInjMutation.isPending || editAmountBlocked}
             >
               {updateInjMutation.isPending
                 ? t('common.saving', 'Saving...')

@@ -14,7 +14,7 @@ const PREPARATION_SQL = `(SELECT to_jsonb(p) - 'user_id' - 'medication_id' - 'pe
   FROM medication_preparations p WHERE p.pen_id = medication_pens.id
     AND p.user_id = medication_pens.user_id AND p.medication_id = medication_pens.medication_id)`;
 const PEN_COLS = `id, medication_id, user_id, kind, label, dose_mg, concentration_mg_ml,
-  volume_ml, doses_total, doses_used, status, opened_at, expiry_date, bud_date,
+  volume_ml, doses_total, doses_used, status, finished_at, opened_at, expiry_date, bud_date,
   reorder_flag, reorder_threshold, notes, source, custom_fields, created_at, updated_at,
   lot_number, storage_location, bud_mode, bud_interval_days, bud_base_date, bud_source,
   ${PREPARATION_SQL} AS preparation`;
@@ -150,7 +150,7 @@ async function listPens(userId: string, medicationId?: string) {
     const result = await client.query(
       `SELECT ${PEN_COLS},
           (SELECT COALESCE(SUM(i.dose_mg),0) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id) AS stock_used_mg,
-          (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id AND (i.dose_mg IS NULL OR i.dose_mg <= 0)) AS stock_missing_doses,
+          (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id AND (i.dose_mg IS NULL OR i.dose_mg < 0 OR (i.dose_mg = 0 AND (i.volume_ml IS NULL OR i.dose_input_unit IS NULL)))) AS stock_missing_doses,
           (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id) AS stock_linked_count
        FROM medication_pens
        WHERE ${where}
@@ -187,13 +187,14 @@ async function listPens(userId: string, medicationId?: string) {
             : null;
         return {
           ...pen,
-          status: stock
-            ? stock.remainingMg <= 0
-              ? 'finished'
-              : pen.status === 'finished'
-                ? 'in_use'
-                : pen.status
-            : pen.status,
+          status:
+            stock && !pen.finished_at && pen.status !== 'discarded'
+              ? stock.remainingMg <= 0
+                ? 'finished'
+                : pen.status === 'finished'
+                  ? 'in_use'
+                  : pen.status
+              : pen.status,
           stock,
           stock_unknown: pen.kind === 'vial' && stock === null,
         };
@@ -213,6 +214,19 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
       [id, userId]
     );
     const existing = locked.rows[0];
+    if (data.lifecycle_intent && data.status === undefined)
+      throw badPreparation('A deliberate lifecycle change requires a status.');
+    if (
+      existing?.finished_at &&
+      !data.lifecycle_intent &&
+      data.status !== undefined &&
+      data.status !== existing.status
+    ) {
+      throw badPreparation(
+        'Use an explicit lifecycle action to change retired stock.'
+      );
+    }
+
     if (!existing) {
       await client.query('COMMIT');
       return null;
@@ -324,6 +338,16 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
           }
         }
       }
+    }
+    if (data.lifecycle_intent && data.status) {
+      await client.query(
+        "UPDATE medication_pens SET finished_at=CASE WHEN $3 IN ('finished','discarded') THEN NOW() ELSE NULL END WHERE id=$1 AND user_id=$2",
+        [id, userId, data.status]
+      );
+      await client.query(
+        'INSERT INTO medication_stock_status_audit(user_id,pen_id,old_status,new_status) VALUES($1,$2,$3,$4)',
+        [userId, id, existing.status, data.status]
+      );
     }
     const updates: string[] = [];
     const values: unknown[] = [id, userId];

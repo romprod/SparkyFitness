@@ -231,3 +231,50 @@ it('can attach preparation to an unused legacy vial without inventing original c
   expect(screen.getByLabelText('Vial content')).toHaveValue(null);
   expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
 });
+
+it('does not send lifecycle intent or status for an unrelated edit', () => {
+  mockPens = [
+    { id: 'auto-finished', kind: 'vial', status: 'finished', doses_used: 4 },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByText('Finished / discarded (1)'));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.change(screen.getByLabelText('Lot number'), {
+    target: { value: 'A' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('status');
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'lifecycle_intent'
+  );
+});
+it('can deliberately discard or reopen stock without rewriting its quantity', async () => {
+  mockPens = [
+    {
+      id: 'closed',
+      kind: 'vial',
+      status: 'discarded',
+      doses_used: 2,
+      volume_ml: 3,
+      concentration_mg_ml: 4,
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByText('Finished / discarded (1)'));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.pointerDown(screen.getByLabelText('Status'), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(await screen.findByRole('option', { name: 'in use' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({
+      status: 'in_use',
+      lifecycle_intent: true,
+      volume_ml: 3,
+      concentration_mg_ml: 4,
+    })
+  );
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('doses_used');
+});

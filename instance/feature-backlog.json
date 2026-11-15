@@ -67,9 +67,11 @@
       "priority": "First",
       "relative_effort": "M",
       "dependencies_and_limits": "Depends on D03 and device configuration. Retain exact values before display rounding.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/dosing/engine.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "implementation_scope": "Syringe-only parity: reusable settings/default, mg/mcg/mL/units inputs, 40-digit decimal nearest-increment half-up preview and server-calculated delivered mass/volume. Pen/pump presentation and visual-device rendering remain deferred. Account-owned devices only; source shared/global devices remain deferred.",
+      "verification": "Shared source-parity arithmetic and focused client/server checks; isolated PostgreSQL fresh/repeated migration, device/lifecycle/edit/concurrency/audit retention tests and medication RLS. Production deployment verified separately."
     },
     {
       "id": "D05",
@@ -77,14 +79,16 @@
       "feature": "Device and remaining-volume checks",
       "reference_capability": "Capacity and insufficient-volume blocks, plus small-draw and rounding warnings.",
       "sparky_baseline": "Partial: inventory and dose validation exist, without the same draw checks.",
-      "proposed_work": "Add server validation for preparation volume and device constraints. Separate planning from recording a dose already taken.",
+      "proposed_work": "Add server validation for preparation volume and device constraints using the verified source warn/block behavior.",
       "decision": "Extend",
       "priority": "First",
       "relative_effort": "M",
       "dependencies_and_limits": "Depends on D03–D04. Physical constraints are not clinical dose validation.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/dosing/guardrails.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessServer/models/injectionRepository.ts"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessServer/models/injectionRepository.ts",
+      "implementation_scope": "Exact source checks only: target above capacity/known remaining blocks; raw unit draw below 2, full-barrel target and >5% mass error warn. No already-taken override or additional clinical/stock thresholds.",
+      "verification": "Shared source-parity arithmetic and focused client/server checks; isolated PostgreSQL fresh/repeated migration, device/lifecycle/edit/concurrency/audit retention tests and medication RLS. Production deployment verified separately."
     },
     {
       "id": "D06",
@@ -367,9 +371,11 @@
       "priority": "First",
       "relative_effort": "M",
       "dependencies_and_limits": "Use existing medication_pens where sensible and add preparation relationships.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/inventory/page.tsx",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "implementation_scope": "Bounded existing inventory lifecycle: finished/discarded with finish time and source-like status audit; preserve quantities/history and permit status reopening. No spill/priming/manual-adjustment features.",
+      "verification": "Shared source-parity arithmetic and focused client/server checks; isolated PostgreSQL fresh/repeated migration, device/lifecycle/edit/concurrency/audit retention tests and medication RLS. Production deployment verified separately."
     },
     {
       "id": "I02",
@@ -1179,6 +1185,7 @@
     "verification": "local",
     "commits_and_merges": "agent-managed",
     "deployment": "existing local build and release process",
-    "owner_browser": "do not use"
+    "owner_browser": "do not use",
+    "feature_scope": "Verified Pitstop feature parity only; ask the owner before implementing features beyond the source application."
   }
 }

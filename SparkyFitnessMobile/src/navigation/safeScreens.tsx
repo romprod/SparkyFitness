@@ -115,6 +115,7 @@ import MedicationFormScreen from '../screens/MedicationFormScreen';
 import MedicationScheduleFormScreen from '../screens/MedicationScheduleFormScreen';
 import Glp1TrackerScreen from '../screens/Glp1TrackerScreen';
 import Glp1PenFormScreen from '../screens/Glp1PenFormScreen';
+import SyringeSettingsScreen from '../screens/SyringeSettingsScreen';
 import Glp1TitrationFormScreen from '../screens/Glp1TitrationFormScreen';
 import SymptomLogScreen from '../screens/SymptomLogScreen';
 import MoodLogScreen from '../screens/MoodLogScreen';
@@ -306,3 +307,5 @@ export const SafeSymptomHistory = withErrorBoundary(SymptomHistoryScreen, 'Sympt
 export const SafeSymptomEpisodeDetail = withErrorBoundary(SymptomEpisodeDetailScreen, 'SymptomEpisodeDetail', { canGoBack: true });
 export const SafeManageSymptoms = withErrorBoundary(ManageSymptomsScreen, 'ManageSymptoms', { canGoBack: true });
 export const SafeSymptomDefinitionEditor = withErrorBoundary(SymptomDefinitionEditorScreen, 'SymptomDefinitionEditor', { canGoBack: true });
+
+export const SafeSyringeSettings = withErrorBoundary(SyringeSettingsScreen, 'SyringeSettings', { canGoBack: true });

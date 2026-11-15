@@ -123,6 +123,8 @@ test('unrelated legacy edits omit preparation and BUD fields', () => {
   expect(body).not.toHaveProperty('preparation');
   expect(body).not.toHaveProperty('bud_date');
   expect(body).not.toHaveProperty('bud_mode');
+  expect(body).not.toHaveProperty('status');
+  expect(body).not.toHaveProperty('lifecycle_intent');
 });
 
 test('records mcg input without requiring an injection dose or inventing a BUD', () => {
@@ -230,5 +232,44 @@ test('explicitly clearing a BUD clears its basis and source', () => {
       bud_base_date: null,
       bud_source: null,
     })
+  );
+});
+
+test('retiring and reopening send deliberate lifecycle intent without changing quantities', () => {
+  mockPens = [legacy];
+  let view = screen(true);
+  fireEvent.press(view.getByText('Discarded'));
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({
+      status: 'discarded',
+      lifecycle_intent: true,
+      volume_ml: 2,
+      concentration_mg_ml: 5,
+    })
+  );
+  view.unmount();
+  mockUpdate.mockClear();
+  mockPens = [{ ...legacy, status: 'discarded' }];
+  view = screen(true);
+  fireEvent.press(view.getByText('In use'));
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({
+      status: 'in_use',
+      lifecycle_intent: true,
+      volume_ml: 2,
+    })
+  );
+});
+
+test('choosing the existing naturally finished status does not signal manual retirement', () => {
+  mockPens = [{ ...legacy, status: 'finished' }];
+  const view = screen(true);
+  fireEvent.press(view.getByText('Finished'));
+  act(() => mockSave());
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('status');
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'lifecycle_intent'
   );
 });
