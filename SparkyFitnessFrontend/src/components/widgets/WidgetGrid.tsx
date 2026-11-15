@@ -28,10 +28,12 @@ import {
   evaluateMeasurement,
   mergePositions,
   pxToRows,
+  placeAutomaticWidget,
   reconcileLayouts,
   stabilizeGridWidth,
   type DashboardLayouts,
   type MeasureGuard,
+  type MissingWidgetPlacement,
 } from '@/utils/dashboardLayout';
 
 export interface Widget {
@@ -42,6 +44,7 @@ export interface Widget {
 }
 
 interface WidgetGridProps {
+  missingWidgetPlacement?: MissingWidgetPlacement;
   /** Identifies the saved layout row (`user_dashboard_layouts.page_key`). */
   pageKey: string;
   widgets: Widget[];
@@ -89,10 +92,15 @@ const WidgetGridInner = ({
   widgets,
   generateDefaultLayouts,
   defaultHidden,
+  missingWidgetPlacement,
   toolbarContainer,
 }: WidgetGridProps) => {
   const { t } = useTranslation();
-  const { isActingOnBehalf } = useActiveUser();
+  const { isActingOnBehalf, activeUserId } = useActiveUser();
+  const [adoptedPlacement, setAdoptedPlacement] = useState<{
+    profileId: string | null;
+    key: string;
+  } | null>(null);
   const { saved, save, reset, isLoading } = useDashboardLayout(pageKey);
   const { width: rawWidth, containerRef, mounted } = useContainerWidth();
 
@@ -127,7 +135,13 @@ const WidgetGridInner = ({
   );
 
   const [layouts, setLayouts] = useState<DashboardLayouts>(() =>
-    reconcileLayouts(saved?.layout, widgetKeys, defaults)
+    reconcileLayouts(
+      saved?.layout,
+      widgetKeys,
+      defaults,
+      missingWidgetPlacement,
+      hidden
+    )
   );
 
   // Resync local layout when the widget set changes or the server layout
@@ -139,7 +153,15 @@ const WidgetGridInner = ({
   const syncSig = `${widgetKeys.join(',')}|${saved?.updated_at ?? ''}`;
   useEffect(() => {
     if (effectiveEditMode) return;
-    setLayouts(reconcileLayouts(saved?.layout, widgetKeys, defaults));
+    setLayouts(
+      reconcileLayouts(
+        saved?.layout,
+        widgetKeys,
+        defaults,
+        missingWidgetPlacement,
+        hidden
+      )
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncSig, effectiveEditMode]);
 
@@ -179,8 +201,25 @@ const WidgetGridInner = ({
   // Apply measured heights over the base layout (which keeps the user-managed
   // x/y/w). Widgets sharing a row are equalized to the tallest so rows align.
   const displayLayouts = useMemo<DashboardLayouts>(
-    () => applyAutoHeights(layouts, measuredRows),
-    [layouts, measuredRows]
+    () =>
+      placeAutomaticWidget(
+        applyAutoHeights(layouts, measuredRows),
+        saved?.layout,
+        adoptedPlacement?.profileId === activeUserId &&
+          adoptedPlacement.key === missingWidgetPlacement?.key
+          ? undefined
+          : missingWidgetPlacement,
+        hidden
+      ),
+    [
+      layouts,
+      measuredRows,
+      saved?.layout,
+      missingWidgetPlacement,
+      hidden,
+      adoptedPlacement,
+      activeUserId,
+    ]
   );
 
   // react-grid-layout fires onDragStop/onResizeStop BEFORE the onLayoutChange
@@ -189,6 +228,36 @@ const WidgetGridInner = ({
   // programmatic resync (setLayouts) never sets the flag, so it cannot trigger
   // a save loop.
   const pendingSaveRef = useRef(false);
+
+  // An unavailable medication widget must not lose its saved placement when
+  // the user arranges other Diary widgets while it is temporarily absent.
+  const persistLayout = useCallback(
+    (layout: DashboardLayouts, keepIncomingPosition = false) => {
+      const key = missingWidgetPlacement?.key;
+      if (!key) return layout;
+      const preserved = { ...layout };
+      for (const bp of Object.keys(layout) as (keyof DashboardLayouts)[]) {
+        const item = saved?.layout?.[bp]?.find((it) => it.i === key);
+        if (!widgetKeys.includes(key)) {
+          if (item) preserved[bp] = [...layout[bp], item];
+        } else if (!item) {
+          const automatic = displayLayouts[bp].find((it) => it.i === key);
+          if (automatic)
+            preserved[bp] = layout[bp].map((it) =>
+              it.i === key
+                ? {
+                    ...it,
+                    y: keepIncomingPosition ? it.y : automatic.y,
+                    h: automatic.h,
+                  }
+                : it
+            );
+        }
+      }
+      return preserved;
+    },
+    [missingWidgetPlacement, widgetKeys, saved?.layout, displayLayouts]
+  );
 
   const handleLayoutChange = useCallback(
     (_current: Layout, all: ResponsiveLayouts) => {
@@ -203,10 +272,15 @@ const WidgetGridInner = ({
       const merged = mergePositions(latestLayoutsRef.current, incoming);
       if (areLayoutsEqual(latestLayoutsRef.current, merged)) return;
       latestLayoutsRef.current = merged;
+      if (missingWidgetPlacement)
+        setAdoptedPlacement({
+          profileId: activeUserId,
+          key: missingWidgetPlacement.key,
+        });
       setLayouts(merged);
-      save({ layout: merged, hidden });
+      save({ layout: persistLayout(merged, true), hidden });
     },
-    [save, hidden]
+    [save, hidden, persistLayout, missingWidgetPlacement, activeUserId]
   );
 
   const markPendingSave = useCallback(() => {
@@ -223,25 +297,26 @@ const WidgetGridInner = ({
     (key: string) => {
       if (maximized === key) setMaximized(null);
       save({
-        layout: latestLayoutsRef.current,
+        layout: persistLayout(latestLayoutsRef.current),
         hidden: [...hiddenRef.current, key],
       });
     },
-    [maximized, save]
+    [maximized, save, persistLayout]
   );
 
   const restoreWidget = useCallback(
     (key: string) => {
       save({
-        layout: latestLayoutsRef.current,
+        layout: persistLayout(latestLayoutsRef.current),
         hidden: hiddenRef.current.filter((k) => k !== key),
       });
     },
-    [save]
+    [save, persistLayout]
   );
 
   const handleReset = useCallback(() => {
     setMaximized(null);
+    setAdoptedPlacement(null);
     setLayouts(generateDefaultLayouts(widgetKeys));
     reset();
   }, [widgetKeys, generateDefaultLayouts, reset]);
@@ -390,6 +465,7 @@ export default function WidgetGrid({
   widgets,
   generateDefaultLayouts,
   defaultHidden,
+  missingWidgetPlacement,
   toolbarContainer,
 }: WidgetGridProps) {
   const { saved, reset } = useDashboardLayout(pageKey);
@@ -445,6 +521,7 @@ export default function WidgetGrid({
         widgets={widgets}
         generateDefaultLayouts={generateDefaultLayouts}
         defaultHidden={defaultHidden}
+        missingWidgetPlacement={missingWidgetPlacement}
         toolbarContainer={toolbarContainer}
       />
     </GridErrorBoundary>

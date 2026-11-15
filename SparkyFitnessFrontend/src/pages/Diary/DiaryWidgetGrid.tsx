@@ -4,6 +4,8 @@ import {
   generateDefaultLayouts,
   isMealWidgetKey,
   type DashboardLayouts,
+  GRID_COLS,
+  type Breakpoint,
 } from '@/utils/dashboardLayout';
 
 export interface DiaryWidget {
@@ -20,8 +22,26 @@ interface DiaryWidgetGridProps {
 
 const PAGE_KEY = 'diary';
 
-const diaryDefaultLayouts = (widgetKeys: string[]): DashboardLayouts =>
-  generateDefaultLayouts(widgetKeys.filter(isMealWidgetKey));
+const CHART_PLACEMENT = { key: 'glp1', after: 'caffeine' };
+const diaryDefaultLayouts = (widgetKeys: string[]): DashboardLayouts => {
+  const layouts = generateDefaultLayouts(widgetKeys.filter(isMealWidgetKey));
+  for (const bp of Object.keys(layouts) as Breakpoint[]) {
+    layouts[bp] = layouts[bp].filter((it) => widgetKeys.includes(it.i));
+    if (widgetKeys.includes('glp1')) {
+      const bottom = layouts[bp].reduce((y, it) => Math.max(y, it.y + it.h), 0);
+      layouts[bp].push({
+        i: 'glp1',
+        x: 0,
+        y: bottom,
+        w: GRID_COLS[bp],
+        h: 15,
+        minW: GRID_COLS[bp],
+        minH: 7,
+      });
+    }
+  }
+  return layouts;
+};
 
 const DiaryWidgetGrid = ({
   widgets,
@@ -29,6 +49,7 @@ const DiaryWidgetGrid = ({
 }: DiaryWidgetGridProps) => (
   <WidgetGrid
     pageKey={PAGE_KEY}
+    missingWidgetPlacement={CHART_PLACEMENT}
     widgets={widgets}
     generateDefaultLayouts={diaryDefaultLayouts}
     toolbarContainer={toolbarContainer}

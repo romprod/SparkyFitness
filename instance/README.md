@@ -110,3 +110,11 @@ Keep credentials, .env files, database dumps, uploads, health records, provider 
 Pitstop's source is reference material for feature concepts. Build Sparky-specific implementations using the existing architecture and components. Retain Sparky's licence and attribution; do not copy Pitstop source or assets into this fork without separately resolving their licence requirements.
 
 Keep Sparky's existing absorption/Tmax model and its explicit model labels. The reference app's instantaneous-absorption decay model is not a replacement for it.
+
+## Selected direct website requests
+
+The owner explicitly requested two web extensions after the completed cost release: reuse the existing three-amount GLP graph as an independent Diary widget after Caffeine, and show hover/focus/tap explanations for every built-in lab marker with an honest custom/unknown fallback. These are authorised user requests beyond the Pitstop comparison, not newly claimed reference features. Implementation, source/client tests and isolated final-build verification are complete; live release readback is recorded separately.
+
+The graph keeps the existing model, Cabinet chart and medication read permissions, with authoritative active-profile gating. Marker help explains what a test measures using verified primary medical/laboratory sources; it does not interpret saved values or add diagnoses, ranges or treatment advice. The intended release is frontend-only: preserve the current server, schema and records, retain the old web image/compose for rollback, and do not create an unnecessary patient-data archive.
+
+The owner also requested REM/deep sleep in the web Sleep History & Analytics table and CSV, plus consolidation of duplicate CSV export controls. Existing stage-second fields supply the data; no backend/schema change or stage inference/backfill is selected. Known zero remains known, missing session data leaves the affected day's stage unknown, and averages use days with a known value for that stage. This joins the same tested frontend-only release; live readback is recorded separately.

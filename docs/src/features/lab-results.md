@@ -42,3 +42,7 @@ The whole report is saved in one step: if it fails, nothing is stored. If the co
 - **Delete imported results** (in the page menu) removes everything that came from imported reports, and any marker of your own left empty. Results you entered yourself are kept.
 
 Lab results are private to your account and follow the same sharing rules as check-in data.
+
+## Marker explanations
+
+Accessible marker explanations cover the web Lab results surfaces. Hover, focus or tap the help control to learn what a built-in test measures. Descriptions use verified primary medical/laboratory sources; they do not interpret your result or add diagnoses, reference ranges or treatment advice. Custom or unrecognised markers have an honest fallback rather than a guessed definition. All 90 built-in definitions and final-build interactions are verified; live release readback is recorded separately.

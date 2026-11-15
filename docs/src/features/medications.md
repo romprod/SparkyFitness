@@ -126,3 +126,7 @@ Consumable lines need a description; complete it or remove an unused row. After 
 The report is implemented and tested, with instance deployment verification recorded separately. It adds By medication Spend, Per dose and Per mg with costed/uncosted dose coverage inside Costs. Source 3/6/12-month and All windows default to 12 months and affect the report only; your complete invoice ledger remains visible.
 
 An optional explicit vial labelled mass is separate from preparation and remaining stock. No existing vial is backfilled from its preparation, concentration, volume or dose counts. Changing the labelled mass or invoice price changes the current report retrospectively; it does not alter physical stock or recorded doses. Known zero/negative cost is not the same as an unknown rate. Mixed currencies make the affected metric unavailable with a warning, without conversion or a new grouping workflow. Consumable usage, waste, prescription estimates and inclusive total cost per dose are outside this selected report.
+
+## Diary chart
+
+The owner-requested web Diary chart is implemented and source-tested. It reuses the existing modelled absorbed, injection-site and total amounts below Caffeine as an independent widget. Cabinet keeps its chart and dose tools. The widget respects the active profile and existing medication read permissions; it does not add logging controls or change the model. Client and isolated final-build verification are complete; live release readback is recorded separately.

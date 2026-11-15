@@ -1,3 +1,4 @@
+import LabMarkerHelp from './LabMarkerHelp';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileUp, MoreVertical, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -268,12 +269,12 @@ const Labs = () => {
                 aria-label={t('nav.labs', 'Lab results')}
               >
                 {markers.map((marker) => (
-                  <li key={marker.id}>
+                  <li key={marker.id} className="flex items-center">
                     <button
                       type="button"
                       aria-pressed={marker.id === selectedId}
                       onClick={() => setSelectedId(marker.id)}
-                      className={`flex w-full items-center justify-between gap-2 p-3 text-left hover:bg-accent ${
+                      className={`flex min-w-0 flex-1 items-center justify-between gap-2 p-3 text-left hover:bg-accent ${
                         marker.id === selectedId ? 'bg-accent' : ''
                       }`}
                     >
@@ -296,6 +297,10 @@ const Labs = () => {
                         </div>
                       )}
                     </button>
+                    <LabMarkerHelp
+                      name={marker.name}
+                      markerKey={marker.markerKey}
+                    />
                   </li>
                 ))}
               </ul>
@@ -305,7 +310,13 @@ const Labs = () => {
           {selected && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-lg">{selected.name}</CardTitle>
+                <CardTitle className="flex items-center gap-1 text-lg">
+                  <span>{selected.name}</span>
+                  <LabMarkerHelp
+                    name={selected.name}
+                    markerKey={selected.markerKey}
+                  />
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => setAddOpen(true)}>
                     <Plus className="mr-1 h-4 w-4" />

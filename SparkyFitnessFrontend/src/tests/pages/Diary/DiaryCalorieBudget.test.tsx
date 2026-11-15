@@ -5,6 +5,16 @@ import type { NutrientGoalPreferenceEntry } from '@workspace/shared';
 import type { DiaryWidget } from '@/pages/Diary/DiaryWidgetGrid';
 import Diary from '@/pages/Diary/Diary';
 
+const mockChartMedications: import('@/types/medications').Medication[] = [];
+jest.mock('@/hooks/Diary/useDiaryMedicationCharts', () => ({
+  useDiaryMedicationCharts: () => mockChartMedications,
+}));
+jest.mock('@/pages/Diary/DiaryMedicationCharts', () => ({
+  __esModule: true,
+  default: () => <output>Current medication charts</output>,
+}));
+const mockWidgetKeys: string[] = [];
+
 const mockGoals = { calories: 1800, protein: 100, carbs: 200, fat: 60 };
 let mockRemaining = 1256;
 let mockCaloriePreference: NutrientGoalPreferenceEntry | undefined;
@@ -53,7 +63,18 @@ jest.mock('@/hooks/useGenericHealth', () => ({
 jest.mock('@/pages/Diary/DiaryWidgetGrid', () => ({
   __esModule: true,
   default: ({ widgets }: { widgets: DiaryWidget[] }) => (
-    <>{widgets.find((widget) => widget.key === 'nutrition')?.render()}</>
+    <>
+      {
+        (mockWidgetKeys.splice(
+          0,
+          mockWidgetKeys.length,
+          ...widgets.map((w) => w.key)
+        ),
+        widgets
+          .filter((widget) => ['nutrition', 'glp1'].includes(widget.key))
+          .map((widget) => <div key={widget.key}>{widget.render()}</div>))
+      }
+    </>
   ),
 }));
 jest.mock('@/pages/Diary/NutritionSummaryCard', () => ({
@@ -132,4 +153,24 @@ it('refreshes the summary budget when the calorie preference changes', () => {
     </MemoryRouter>
   );
   expect(screen.getByLabelText('Calorie budget')).toHaveTextContent('2681');
+});
+
+it('places the eligible chart widget after caffeine, including when viewing a historical date', () => {
+  mockChartMedications.push({
+    id: 'generic',
+  } as import('@/types/medications').Medication);
+  render(
+    <MemoryRouter initialEntries={['/diary?date=2020-01-01']}>
+      <Diary />
+    </MemoryRouter>
+  );
+  expect(mockWidgetKeys.indexOf('glp1')).toBe(
+    mockWidgetKeys.indexOf('caffeine') + 1
+  );
+  expect(screen.getByText('Current medication charts')).toBeInTheDocument();
+  mockChartMedications.length = 0;
+});
+it('has no medication chart tile when none are eligible or readable', () => {
+  renderDiary();
+  expect(mockWidgetKeys).not.toContain('glp1');
 });

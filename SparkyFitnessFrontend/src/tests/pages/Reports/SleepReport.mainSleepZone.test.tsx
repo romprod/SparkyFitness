@@ -152,9 +152,10 @@ describe('SleepReport main sleep zone', () => {
 
     try {
       render(<SleepReport startDate="2026-10-24" endDate="2026-10-24" />);
-      // The report's own button and the table's both export the same rows.
-      const [exportButton] = screen.getAllByText('Export to CSV');
-      fireEvent.click(exportButton!);
+      const exportButton = screen.getByRole('button', {
+        name: 'Export to CSV',
+      });
+      fireEvent.click(exportButton);
 
       const [, row] = parts.join('').split('\n');
       expect(row).toMatch(/^"2026-10-24","23:00","06:00",/);

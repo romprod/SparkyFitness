@@ -1,3 +1,4 @@
+import LabMarkerHelp from './LabMarkerHelp';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -345,7 +346,17 @@ const LabImportDialog = ({
                     )}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{row.title}</div>
+                    <div className="flex items-center gap-1 font-medium">
+                      <span className="truncate">{row.title}</span>
+                      <LabMarkerHelp
+                        name={row.title}
+                        markerKey={
+                          row.target.kind === 'builtin'
+                            ? row.target.preset.key
+                            : null
+                        }
+                      />
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {row.target.kind === 'custom' && !row.target.existing && (
                         <span>

@@ -118,6 +118,8 @@ When data is available you get:
 - **The same night from two sources counts once.** If two sources record one night (for example Google Health and Health Connect both carrying a Fitbit night, or two watches), the report, the charts and sleep debt use the more detailed record: the one with sleep stages, then the one with more measures such as HRV or resting heart rate. A record that covers only part of the night never replaces the whole night, and in the report a nap from another source that doesn't overlap the night still adds to the day.
 - **Export to CSV:** a button next to the table downloads the full history for your own analysis.
 
+The web extension adds REM/deep durations and their known-day averages to Sleep History & Analytics and CSV. It is implemented and source-tested; live release readback is recorded separately. Stage values come from recorded seconds: zero is valid, while missing data in any session leaves that day's affected stage unknown. Each stage average uses only days where it is known. CSV adds explicit seconds columns with blank unknowns, and the duplicate export control is consolidated into one. Existing total sleep, source selection and timezone behaviour remain unchanged; no stages are inferred or backfilled.
+
 - - -
 
 ### Stress

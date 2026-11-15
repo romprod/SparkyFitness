@@ -15,6 +15,7 @@ import { usePreferences } from '@/contexts/PreferencesContext';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { debug } from '@/utils/logging';
 import { getUserLoggingLevel } from '@/utils/userPreferences';
+import { reportedStageSeconds } from './sleepReportMetrics';
 import {
   formatSecondsToHHMM,
   formatTimeInZone,
@@ -28,14 +29,10 @@ import {
 
 interface SleepAnalyticsTableProps {
   combinedSleepData: CombinedSleepData[];
-  onExport: (data: CombinedSleepData[]) => void;
-  renderHeaderActions?: () => React.ReactNode;
 }
 
 const SleepAnalyticsTable = ({
   combinedSleepData,
-  onExport,
-  renderHeaderActions,
 }: SleepAnalyticsTableProps) => {
   const { t } = useTranslation();
   const loggingLevel = getUserLoggingLevel();
@@ -50,10 +47,6 @@ const SleepAnalyticsTable = ({
     new Set()
   );
   const [areAllRowsExpanded, setAreAllRowsExpanded] = React.useState(false);
-
-  const handleExportClick = () => {
-    onExport(combinedSleepData);
-  };
 
   const toggleAllRows = () => {
     if (areAllRowsExpanded) {
@@ -78,19 +71,8 @@ const SleepAnalyticsTable = ({
     });
   };
 
-  const headerActions = renderHeaderActions ? renderHeaderActions() : null;
-
   return (
     <div>
-      {headerActions ? (
-        <div className="flex justify-end mb-4">{headerActions}</div>
-      ) : (
-        <div className="flex justify-end mb-4">
-          <Button onClick={handleExportClick}>
-            {t('sleepAnalyticsTable.exportToCSV', 'Export to CSV')}
-          </Button>
-        </div>
-      )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -114,6 +96,8 @@ const SleepAnalyticsTable = ({
             <TableHead>
               {t('sleepAnalyticsTable.timeAsleep', 'Time Asleep')}
             </TableHead>
+            <TableHead>{t('sleepAnalyticsTable.rem', 'REM')}</TableHead>
+            <TableHead>{t('sleepAnalyticsTable.deep', 'Deep sleep')}</TableHead>
             <TableHead>{t('sleepAnalyticsTable.score', 'Score')}</TableHead>
             <TableHead>
               {t('sleepAnalyticsTable.efficiency', 'Efficiency')}
@@ -208,6 +192,18 @@ const SleepAnalyticsTable = ({
                     </TableCell>
                     <TableCell>{totalSleepDuration}</TableCell>
                     <TableCell>{timeAsleep}</TableCell>
+                    {(['rem_sleep_seconds', 'deep_sleep_seconds'] as const).map(
+                      (stage) => {
+                        const seconds = reportedStageSeconds(sleepEntry, stage);
+                        return (
+                          <TableCell key={stage}>
+                            {seconds === null
+                              ? t('common.notApplicable', 'N/A')
+                              : formatSecondsToHHMM(seconds)}
+                          </TableCell>
+                        );
+                      }
+                    )}
                     <TableCell>
                       {sleepAnalyticsData.sleepScore.toFixed(0)}
                     </TableCell>
@@ -236,7 +232,7 @@ const SleepAnalyticsTable = ({
                   </TableRow>
                   {isExpanded && sleepEntry.stage_events && (
                     <TableRow>
-                      <TableCell colSpan={13} className="p-0">
+                      <TableCell colSpan={15} className="p-0">
                         <div className="bg-gray-50 dark:bg-gray-900 p-4">
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
                             <h4 className="font-semibold text-sm">
@@ -332,7 +328,7 @@ const SleepAnalyticsTable = ({
             })
           ) : (
             <TableRow>
-              <TableCell colSpan={13} className="text-center">
+              <TableCell colSpan={15} className="text-center">
                 {t(
                   'sleepAnalyticsTable.noSleepDataAvailable',
                   'No sleep data available.'

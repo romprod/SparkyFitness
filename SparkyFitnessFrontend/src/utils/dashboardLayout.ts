@@ -382,10 +382,62 @@ function isValidLayoutItem(it: unknown): it is WidgetLayout {
   );
 }
 
+export interface MissingWidgetPlacement {
+  key: string;
+  after: string;
+}
+
+function firstFreeWidgetRow(
+  items: WidgetLayout[],
+  after: string,
+  height: number,
+  hidden: readonly string[]
+): number {
+  const visible = items.filter((it) => !hidden.includes(it.i));
+  const anchor = visible.find((it) => it.i === after);
+  let y = anchor
+    ? anchor.y + anchor.h
+    : visible.reduce((bottom, it) => Math.max(bottom, it.y + it.h), 0);
+  for (;;) {
+    const collisions = visible.filter(
+      (it) => it.y < y + height && it.y + it.h > y
+    );
+    if (!collisions.length) return y;
+    y = Math.max(...collisions.map((it) => it.y + it.h));
+  }
+}
+
+/** Position only a newly introduced tile, using its measured height before rendering.
+ * Explicit saved placements keep the existing grid sizing policy.
+ */
+export function placeAutomaticWidget(
+  measuredLayouts: DashboardLayouts,
+  saved: Partial<DashboardLayouts> | null | undefined,
+  placement: MissingWidgetPlacement | undefined,
+  hidden: readonly string[]
+): DashboardLayouts {
+  if (!placement) return measuredLayouts;
+  const result = { ...measuredLayouts };
+  for (const bp of Object.keys(result) as Breakpoint[]) {
+    if (saved?.[bp]?.some((it) => it.i === placement.key)) continue;
+    const item = measuredLayouts[bp].find((it) => it.i === placement.key);
+    if (!item) continue;
+    const others = measuredLayouts[bp].filter((it) => it.i !== placement.key);
+    const y = firstFreeWidgetRow(others, placement.after, item.h, hidden);
+    if (y !== item.y)
+      result[bp] = measuredLayouts[bp].map((it) =>
+        it === item ? { ...it, y } : it
+      );
+  }
+  return result;
+}
+
 export function reconcileLayouts(
   saved: Partial<DashboardLayouts> | null | undefined,
   currentKeys: string[],
-  defaults: DashboardLayouts
+  defaults: DashboardLayouts,
+  placement?: MissingWidgetPlacement,
+  hidden: readonly string[] = []
 ): DashboardLayouts {
   if (!saved || typeof saved !== 'object') return defaults;
 
@@ -414,8 +466,12 @@ export function reconcileLayouts(
       if (keptKeys.has(key)) continue;
       const def = defaultsByKey.get(key);
       if (!def) continue;
-      kept.push({ ...def, x: 0, y: maxY });
-      maxY += def.h;
+      let y = maxY;
+      if (placement?.key === key) {
+        y = firstFreeWidgetRow(kept, placement.after, def.h, hidden);
+      }
+      kept.push({ ...def, x: 0, y });
+      maxY = Math.max(maxY, y + def.h);
     }
 
     result[bp] = kept;

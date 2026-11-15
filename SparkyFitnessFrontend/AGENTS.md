@@ -186,3 +186,11 @@ Medications → Costs uses the dedicated owner-only medication-purchases API and
 For existing stock edits, omit untouched physical/count fields rather than echoing numeric DTO values during a label-only change; this preserves legacy stored precision and concurrent counts. Keep explicit label metadata separate from preparation correction.
 
 Owner-requested website chrome: shared layouts no longer render Initial Beta Release notices or bottom version/What's New rows. Preserve App/About, release routes/data, mobile external links and unrelated banners; this is not a global feature-removal instruction.
+
+## Direct Diary graph, lab help and sleep requests
+
+`pages/Medications/Glp1AmountChart.tsx` is the chart-only reuse shared with Cabinet. `pages/Diary/DiaryMedicationCharts.tsx` and `hooks/Diary/useDiaryMedicationCharts.ts` expose independent per-medication charts after Caffeine, gated by authoritative actor/profile identity and existing medication read permissions. Preserve all three quantities, Dates/Days/Now behaviour and existing shared model/API arguments; do not add dose controls to Diary.
+
+`pages/Labs/LabMarkerHelp.tsx` and `labMarkerDescriptions.ts` provide hover/focus/tap WHAT-it-measures help throughout existing Labs surfaces. Keep all built-in keys covered by primary-source definitions and source URLs, with honest custom/unknown fallback. Do not interpret result values, add ranges/treatment or infer descriptions from arbitrary names. Source links remain provenance, not interactive controls inside the help popup.
+
+`sleepReportMetrics.ts` supports `SleepReport.tsx` / `SleepAnalyticsTable.tsx` from existing nullable REM/deep seconds. Keep one CSV export control, explicit seconds columns/blank unknown, valid zero and known-day averages. No stage inference/backfill or API change. These are direct owner requests beyond the Pitstop comparison, intended for a frontend-only release.

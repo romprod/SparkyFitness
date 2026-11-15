@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Glp1Coach from '@/pages/Medications/Glp1Coach';
+import DiaryMedicationCharts from '@/pages/Diary/DiaryMedicationCharts';
 import { serumLevelAt } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
 
@@ -427,3 +428,83 @@ describe('Glp1Coach PK axis switch', () => {
     }
   );
 });
+
+it('Diary reuses separate chart cards and current Now controls for each named medication', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-15T12:00:00Z'));
+  const anchorDate = '2026-11-13T12:00:00Z';
+  mockUseMedicationInjections.mockReturnValue({
+    data: [{ injected_at: anchorDate, dose_mg: 1 }],
+  });
+  mockUseSerumCurve.mockReturnValue({
+    data: {
+      drugId: 'semaglutide',
+      curve: [
+        { day: 0, level: 0 },
+        {
+          day: 2,
+          level: serumLevelAt(2, [{ day: 0, doseMg: 1 }], {
+            halfLifeDays: 7,
+            tMaxDays: 1.5,
+          }),
+        },
+      ],
+      currentLevelFraction: 0.7,
+      doseDays: [0],
+      anchorDate,
+    },
+  });
+  const { container } = render(
+    <DiaryMedicationCharts
+      medications={[
+        { ...med, id: 'a', display_name: 'Medication A' },
+        { ...med, id: 'b', display_name: 'Medication B' },
+      ]}
+    />
+  );
+  expect(
+    screen.getByRole('region', { name: 'Medication A' })
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('region', { name: 'Medication B' })
+  ).toBeInTheDocument();
+  expect(mockUseSerumCurve).toHaveBeenCalledWith('a');
+  expect(mockUseSerumCurve).toHaveBeenCalledWith('b');
+  expect(screen.getAllByRole('button', { name: 'Dates' })).toHaveLength(2);
+  expect(screen.getAllByText('Modelled at injection sites')).toHaveLength(2);
+  expect(screen.getAllByText('Modelled total remaining')).toHaveLength(2);
+  const nowLines = mockReferenceLine.mock.calls.filter(([props]) =>
+    props.label?.value?.startsWith('Now')
+  );
+  expect(nowLines.at(-1)?.[0].x).toBe(Date.now());
+  const gradients = Array.from(
+    container.querySelectorAll('linearGradient')
+  ).map((el) => el.id);
+  expect(new Set(gradients).size).toBe(2);
+  expect(
+    screen.getByText(/independent of the selected diary date/)
+  ).toBeInTheDocument();
+  jest.useRealTimers();
+});
+
+it.each([
+  ['2026-11-10T13:01:00Z', 'insideTopLeft'],
+  ['2026-11-17T12:59:00Z', 'insideTopRight'],
+])(
+  'keeps the Now label facing into the plot at either edge (%s)',
+  (now, position) => {
+    jest.useFakeTimers().setSystemTime(new Date(now));
+    mockUseMedicationInjections.mockReturnValue({ data: undefined });
+    mockUseSerumCurve.mockReturnValue({
+      data: { curve, doseDays: [0], anchorDate: '2026-11-10T13:00:00Z' },
+    });
+    render(<Glp1Coach med={med} />);
+    const marker = mockReferenceLine.mock.calls
+      .filter(([props]) => props.label?.value?.startsWith('Now'))
+      .at(-1)![0];
+    expect(marker.label.position).toBe(position);
+    expect(marker.x).toBe(new Date(now).getTime());
+    expect(marker.stroke).toBe('#f59e0b');
+    jest.useRealTimers();
+  }
+);

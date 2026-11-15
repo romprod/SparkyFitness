@@ -8,6 +8,8 @@ import NutritionSummaryCard, { DayTotals } from './NutritionSummaryCard';
 import DailyProgress from './DailyProgress';
 import WaterIntake from './WaterIntake';
 import CaffeineCard from './CaffeineCard';
+import DiaryMedicationCharts from './DiaryMedicationCharts';
+import { useDiaryMedicationCharts } from '@/hooks/Diary/useDiaryMedicationCharts';
 import MealCard from './MealCard';
 import ExerciseCard from './ExerciseCard';
 import DiaryWidgetGrid, { type DiaryWidget } from './DiaryWidgetGrid';
@@ -64,6 +66,7 @@ import { getCalorieBudget } from '@/utils/calorieBudget';
 const Diary = () => {
   const { t } = useTranslation();
   const { activeUserId } = useActiveUser();
+  const chartMedications = useDiaryMedicationCharts();
   const location = useLocation();
   const navigate = useNavigate();
   const { timezone, loggingLevel, energyUnit, convertEnergy } =
@@ -489,9 +492,19 @@ const Diary = () => {
       render: () => <CaffeineCard date={selectedDate} userId={activeUserId} />,
     });
 
+    if (chartMedications.length)
+      list.push({
+        key: 'glp1',
+        title: t('diary.medicationCharts.title', 'GLP-1 modelled amounts'),
+        icon: HeartPulse,
+        render: () => <DiaryMedicationCharts medications={chartMedications} />,
+      });
+
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    chartMedications,
+    activeUserId,
     effectiveGoals,
     summaryData?.calorieBalance,
     calorieGoalPreference,

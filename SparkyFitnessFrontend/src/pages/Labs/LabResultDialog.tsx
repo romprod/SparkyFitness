@@ -1,3 +1,4 @@
+import LabMarkerHelp from './LabMarkerHelp';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -313,7 +314,17 @@ const LabResultDialog = ({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {result ? picked?.name : t('labs.add', 'Add lab result')}
+            {result ? (
+              <span className="inline-flex items-center gap-1">
+                <span>{picked?.name}</span>
+                <LabMarkerHelp
+                  name={picked?.name ?? t('labs.panels.marker', 'Marker')}
+                  markerKey={picked?.kind === 'builtin' ? picked.key : null}
+                />
+              </span>
+            ) : (
+              t('labs.add', 'Add lab result')
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -338,6 +349,7 @@ const LabResultDialog = ({
                       : labPresetName(option.preset, labels);
                   return (
                     <li
+                      className="flex items-center"
                       key={
                         option.kind === 'custom'
                           ? option.marker.id
@@ -346,7 +358,7 @@ const LabResultDialog = ({
                     >
                       <button
                         type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                        className="min-w-0 flex-1 px-3 py-2 text-left text-sm hover:bg-accent"
                         onClick={() =>
                           choose(
                             option.kind === 'custom'
@@ -365,6 +377,12 @@ const LabResultDialog = ({
                       >
                         {name}
                       </button>
+                      <LabMarkerHelp
+                        name={name}
+                        markerKey={
+                          option.kind === 'preset' ? option.preset.key : null
+                        }
+                      />
                     </li>
                   );
                 })}
@@ -398,7 +416,13 @@ const LabResultDialog = ({
             <>
               {!result && picked && (
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">{picked.name}</span>
+                  <span className="inline-flex items-center gap-1 font-medium">
+                    <span>{picked.name}</span>
+                    <LabMarkerHelp
+                      name={picked.name}
+                      markerKey={picked.kind === 'builtin' ? picked.key : null}
+                    />
+                  </span>
                   <Button
                     type="button"
                     variant="ghost"

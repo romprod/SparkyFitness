@@ -1,3 +1,4 @@
+import LabMarkerHelp from './LabMarkerHelp';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -127,8 +128,16 @@ const LabPanelHistory = ({
                       key={result.id}
                       className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2"
                     >
-                      <span className="text-sm font-medium">
-                        {names.get(id) ?? t('labs.panels.marker', 'Marker')}
+                      <span className="inline-flex items-center gap-1 text-sm font-medium">
+                        <span>
+                          {names.get(id) ?? t('labs.panels.marker', 'Marker')}
+                        </span>
+                        <LabMarkerHelp
+                          name={
+                            names.get(id) ?? t('labs.panels.marker', 'Marker')
+                          }
+                          markerKey={result.marker_key}
+                        />
                       </span>
                       <div className="min-w-0 text-right">
                         <div className="flex flex-wrap items-center justify-end gap-2">

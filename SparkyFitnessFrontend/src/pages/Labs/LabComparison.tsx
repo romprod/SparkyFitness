@@ -1,3 +1,4 @@
+import LabMarkerHelp from './LabMarkerHelp';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp } from 'lucide-react';
@@ -133,7 +134,17 @@ const LabComparison = ({
                         scope="row"
                         className="sticky left-0 z-10 bg-card font-medium text-foreground"
                       >
-                        {row.name}
+                        <span className="inline-flex items-center gap-1">
+                          <span>{row.name}</span>
+                          <LabMarkerHelp
+                            name={row.name}
+                            markerKey={
+                              row.id.startsWith('builtin:')
+                                ? row.id.slice(8)
+                                : null
+                            }
+                          />
+                        </span>
                       </TableHead>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
                         {row.unit || '—'}

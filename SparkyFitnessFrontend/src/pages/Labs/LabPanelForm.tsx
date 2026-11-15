@@ -1,3 +1,4 @@
+import LabMarkerHelp from './LabMarkerHelp';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -186,6 +187,25 @@ const LabPanelForm = ({
                         </option>
                       ))}
                     </select>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <span>
+                        {
+                          options.find((option) => option.id === row.marker)
+                            ?.name
+                        }
+                      </span>
+                      <LabMarkerHelp
+                        name={
+                          options.find((option) => option.id === row.marker)
+                            ?.name ?? t('labs.panels.marker', 'Marker')
+                        }
+                        markerKey={
+                          row.marker.startsWith('builtin:')
+                            ? row.marker.slice(8)
+                            : null
+                        }
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor={`panel-value-${row.key}`}>

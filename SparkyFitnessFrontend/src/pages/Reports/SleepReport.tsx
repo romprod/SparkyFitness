@@ -28,6 +28,12 @@ import {
 } from '@/constants/sleep';
 import SleepAnalyticsCharts from './SleepAnalyticsCharts';
 import SleepAnalyticsTable from './SleepAnalyticsTable';
+import {
+  dailyStageSeconds,
+  reportedStageSeconds,
+  averageStageSeconds,
+  sleepReportCsv,
+} from './sleepReportMetrics';
 
 interface SleepReportProps {
   startDate: string;
@@ -67,6 +73,8 @@ const SleepReport = ({ startDate, endDate }: SleepReportProps) => {
       t('sleepReport.csvHeadersAwakePeriods', 'Awake Periods'),
       t('sleepReport.csvHeadersSource', 'Source'),
       t('sleepReport.csvHeadersInsight', 'Insight'),
+      t('sleepReport.csvHeadersRemSeconds', 'REM (seconds)'),
+      t('sleepReport.csvHeadersDeepSeconds', 'Deep sleep (seconds)'),
     ];
 
     const csvRows = data.map(({ sleepEntry, sleepAnalyticsData }) => {
@@ -98,12 +106,12 @@ const SleepReport = ({ startDate, endDate }: SleepReportProps) => {
         sleepAnalyticsData.awakePeriods.toString(),
         sleepEntry.source,
         insight,
+        reportedStageSeconds(sleepEntry, 'rem_sleep_seconds'),
+        reportedStageSeconds(sleepEntry, 'deep_sleep_seconds'),
       ];
     });
 
-    const csvContent = [csvHeaders, ...csvRows]
-      .map((row) => row.map((cell) => `"${cell}"`).join(','))
-      .join('\n');
+    const csvContent = sleepReportCsv(csvHeaders, csvRows);
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -242,6 +250,8 @@ const SleepReport = ({ startDate, endDate }: SleepReportProps) => {
           duration_in_seconds: totalDurationInSeconds,
           time_asleep_in_seconds: totalTimeAsleepInSeconds,
           sleep_score: avgSleepScore,
+          rem_sleep_seconds: dailyStageSeconds(entries, 'rem_sleep_seconds'),
+          deep_sleep_seconds: dailyStageSeconds(entries, 'deep_sleep_seconds'),
           bedtime: mainSleep.bedtime,
           wake_time: mainSleep.wake_time,
           awake_count: analyticsData.awakePeriods,
@@ -422,6 +432,15 @@ const SleepReport = ({ startDate, endDate }: SleepReportProps) => {
   }
 
   const combinedSleepData = processSleepData();
+  const stageAverages = (
+    ['rem_sleep_seconds', 'deep_sleep_seconds'] as const
+  ).map((stage) => ({
+    stage,
+    ...averageStageSeconds(
+      combinedSleepData.map((row) => row.sleepEntry),
+      stage
+    ),
+  }));
 
   return (
     <div className="space-y-6">
@@ -454,7 +473,7 @@ const SleepReport = ({ startDate, endDate }: SleepReportProps) => {
               />
 
               <div className="pt-6 border-t border-border/50">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <h3 className="text-lg font-semibold px-1">
                     {t(
                       'sleepReport.sleepHistoryTableTitle',
@@ -469,11 +488,42 @@ const SleepReport = ({ startDate, endDate }: SleepReportProps) => {
                     {t('sleepAnalyticsTable.exportToCSV', 'Export to CSV')}
                   </Button>
                 </div>
-                <SleepAnalyticsTable
-                  combinedSleepData={combinedSleepData}
-                  onExport={exportSleepDataToCSV}
-                  renderHeaderActions={() => null} // Hide the internal one
-                />
+                <p className="text-sm text-muted-foreground mb-3">
+                  {t(
+                    'sleepReport.stageAverageContext',
+                    'Averages include only days with reported data in the selected range.'
+                  )}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  {stageAverages.map(({ stage, seconds, days }) => (
+                    <Card key={stage}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium">
+                          {stage === 'rem_sleep_seconds'
+                            ? t('sleepReport.averageRem', 'Average REM')
+                            : t(
+                                'sleepReport.averageDeep',
+                                'Average deep sleep'
+                              )}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-xl font-semibold">
+                          {seconds === null
+                            ? t('common.notApplicable', 'N/A')
+                            : formatSecondsToHHMM(seconds)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {t('sleepReport.stageDaysWithData', {
+                            defaultValue: '{{count}} days with data',
+                            count: days,
+                          })}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                <SleepAnalyticsTable combinedSleepData={combinedSleepData} />
               </div>
             </div>
           )}

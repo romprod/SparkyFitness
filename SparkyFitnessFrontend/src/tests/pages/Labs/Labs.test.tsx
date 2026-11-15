@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import * as labApi from '@/api/Labs/labResultsApi';
@@ -99,7 +100,7 @@ describe('Labs page', () => {
     expect(table).toHaveTextContent('Latest');
     expect(table).toHaveTextContent('2026-09-12');
     expect(table).toHaveTextContent('5.1 %');
-    expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^HbA1c/ })).toBeInTheDocument();
     expect(api.listLabComparison).toHaveBeenCalledTimes(1);
   });
 
@@ -107,7 +108,7 @@ describe('Labs page', () => {
     renderPage();
     expect(await screen.findByText('No lab panels yet.')).toBeInTheDocument();
     expect(screen.getByText('Latest three panels')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^HbA1c/ })).toBeInTheDocument();
   });
 
   it('shows a comparison load failure while retaining the existing marker list', async () => {
@@ -118,7 +119,7 @@ describe('Labs page', () => {
     expect(
       await screen.findByText('Could not load the panel comparison.')
     ).toHaveAttribute('role', 'alert');
-    expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^HbA1c/ })).toBeInTheDocument();
     expect(screen.queryByText('No lab panels yet.')).not.toBeInTheDocument();
   });
 
@@ -143,6 +144,19 @@ describe('Labs page', () => {
     expect(
       screen.getByRole('button', { name: 'Add lab result' })
     ).toBeInTheDocument();
+  });
+
+  it('explains a listed marker without selecting it or loading its result history', async () => {
+    renderPage();
+    const list = await screen.findByRole('list', { name: 'Lab results' });
+    fireEvent.click(within(list).getByRole('button', { name: 'About HbA1c' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'average blood glucose'
+    );
+    expect(api.listLabResults).not.toHaveBeenCalled();
+    expect(
+      within(list).getByRole('button', { name: /^HbA1c/ })
+    ).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('resets a manual-panel draft when the active profile changes', async () => {
@@ -313,7 +327,7 @@ describe('Labs page', () => {
 
   it('opens a marker with its history and reference range', async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
 
     await waitFor(() =>
       expect(api.listLabResults).toHaveBeenCalledWith({
@@ -331,7 +345,7 @@ describe('Labs page', () => {
   it('deletes a result after confirming', async () => {
     api.deleteLabResult.mockResolvedValue(undefined);
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     const buttons = await screen.findAllByRole('button', {
       name: 'Delete result',
     });
@@ -350,7 +364,7 @@ describe('Labs page', () => {
     api.deleteLabMarker.mockResolvedValue(undefined);
     renderPage();
 
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     fireEvent.click(
       await screen.findByRole('button', {
         name: 'Delete marker and all results',
@@ -362,7 +376,7 @@ describe('Labs page', () => {
     );
 
     fireEvent.click(
-      await screen.findByRole('button', { name: /Homocysteine/ })
+      await screen.findByRole('button', { name: /^Homocysteine/ })
     );
     fireEvent.click(
       await screen.findByRole('button', {
@@ -465,7 +479,7 @@ describe('Labs page', () => {
   it('shows the load error, not an empty chart, when a history fails', async () => {
     api.listLabResults.mockRejectedValue(new Error('boom'));
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
 
     expect(
       await screen.findByText('Could not load your lab results.')
@@ -509,7 +523,7 @@ describe('Labs page', () => {
   it('drops the saved range when only the unit of a saved result is changed', async () => {
     api.updateLabResult.mockResolvedValue(result());
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     fireEvent.click(
       first(await screen.findAllByRole('button', { name: 'Edit' }))
     );
@@ -530,7 +544,7 @@ describe('Labs page', () => {
   it('keeps an edited range when the unit changes too', async () => {
     api.updateLabResult.mockResolvedValue(result());
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     fireEvent.click(
       first(await screen.findAllByRole('button', { name: 'Edit' }))
     );
@@ -583,7 +597,7 @@ describe('Labs page', () => {
     ]);
     api.updateLabResult.mockResolvedValue(result());
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     fireEvent.click(
       first(await screen.findAllByRole('button', { name: 'Edit' }))
     );
@@ -671,7 +685,7 @@ describe('Labs page', () => {
     ]);
     api.updateLabResult.mockResolvedValue(result());
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     fireEvent.click(
       first(await screen.findAllByRole('button', { name: 'Edit' }))
     );
@@ -693,7 +707,7 @@ describe('Labs page', () => {
     ]);
     api.updateLabResult.mockResolvedValue(result());
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     fireEvent.click(
       first(await screen.findAllByRole('button', { name: 'Edit' }))
     );
@@ -723,7 +737,7 @@ describe('Labs page', () => {
     ]);
     api.createLabResult.mockResolvedValue(result());
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /HbA1c/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^HbA1c/ }));
     // The marker view's own Add button (the page header has one too).
     const addButtons = await screen.findAllByRole('button', {
       name: 'Add lab result',

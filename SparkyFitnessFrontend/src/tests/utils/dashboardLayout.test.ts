@@ -8,6 +8,7 @@ import {
   mealWidgetKey,
   MEASURE_WINDOW_MS,
   reconcileLayouts,
+  placeAutomaticWidget,
   stabilizeGridWidth,
   type DashboardLayouts,
   type MeasureGuard,
@@ -258,5 +259,132 @@ describe('evaluateMeasurement', () => {
   it('does not trip when changes are spread across windows', () => {
     const spread = Array.from({ length: 30 }, (_, i) => i + 1);
     expect(run(spread, MEASURE_WINDOW_MS + 1)).toEqual(spread);
+  });
+});
+
+describe('new Diary medication widget placement', () => {
+  const defaults = generateDefaultLayouts([]);
+  for (const bp of Object.keys(defaults) as (keyof DashboardLayouts)[]) {
+    defaults[bp].push({
+      i: 'glp1',
+      x: 0,
+      y: 100,
+      w: bp === 'lg' ? 12 : bp === 'md' ? 10 : bp === 'sm' ? 6 : 4,
+      h: 15,
+    });
+  }
+  const place = { key: 'glp1', after: 'caffeine' };
+  const saved = (items: WidgetLayout[]) => ({
+    lg: items,
+    md: items,
+    sm: items,
+    xs: items,
+  });
+  it('inserts full width after caffeine without changing existing tiles', () => {
+    const items = [
+      { i: 'caffeine', x: 0, y: 10, w: 12, h: 11 },
+      { i: 'water', x: 0, y: 0, w: 3, h: 5 },
+    ];
+    const got = reconcileLayouts(
+      saved(items),
+      ['water', 'caffeine', 'glp1'],
+      defaults,
+      place
+    );
+    expect(got.lg.slice(0, 2)).toEqual(items);
+    expect(got.lg[2]).toMatchObject({ i: 'glp1', x: 0, y: 21, w: 12 });
+  });
+  it('skips occupied rows without pushing customized tiles', () => {
+    const items = [
+      { i: 'caffeine', x: 0, y: 0, w: 12, h: 11 },
+      { i: 'water', x: 4, y: 15, w: 3, h: 8 },
+    ];
+    const got = reconcileLayouts(
+      saved(items),
+      ['caffeine', 'water', 'glp1'],
+      defaults,
+      place
+    );
+    expect(got.lg.slice(0, 2)).toEqual(items);
+    expect(got.lg[2]?.y).toBe(23);
+  });
+  it('treats hidden caffeine as absent, and preserves explicit placement even when hidden', () => {
+    const items = [
+      { i: 'caffeine', x: 0, y: 80, w: 12, h: 11 },
+      { i: 'water', x: 0, y: 0, w: 3, h: 5 },
+    ];
+    expect(
+      reconcileLayouts(
+        saved(items),
+        ['caffeine', 'water', 'glp1'],
+        defaults,
+        place,
+        ['caffeine']
+      ).lg[2]?.y
+    ).toBe(5);
+    const explicit = { i: 'glp1', x: 0, y: 150, w: 12, h: 20 };
+    expect(
+      reconcileLayouts(
+        saved([...items, explicit]),
+        ['caffeine', 'water', 'glp1'],
+        defaults,
+        place,
+        ['glp1']
+      ).lg[2]
+    ).toEqual(explicit);
+  });
+});
+
+describe('measured automatic medication chart placement', () => {
+  const placement = { key: 'glp1', after: 'caffeine' };
+  const all = (items: WidgetLayout[]): DashboardLayouts => ({
+    lg: items,
+    md: items,
+    sm: items,
+    xs: items,
+  });
+  it('moves only the automatic chart when two responsive charts outgrow the initial gap', () => {
+    const caffeine = { i: 'caffeine', x: 0, y: 0, w: 12, h: 11 };
+    const follower = { i: 'water', x: 4, y: 30, w: 3, h: 8 };
+    const glp = { i: 'glp1', x: 0, y: 11, w: 12, h: 15 };
+    const saved = all([caffeine, follower]);
+    const base = all([caffeine, follower, glp]);
+    const measured = applyAutoHeights(base, { glp1: 32 });
+    const got = placeAutomaticWidget(measured, saved, placement, []);
+    for (const bp of ['lg', 'md', 'sm', 'xs'] as const) {
+      expect(got[bp].slice(0, 2)).toEqual([caffeine, follower]);
+      expect(got[bp][2]).toMatchObject({ i: 'glp1', y: 38, h: 32 });
+    }
+    const narrower = placeAutomaticWidget(
+      applyAutoHeights(base, { glp1: 45 }),
+      saved,
+      placement,
+      []
+    );
+    expect(narrower.xs[2]).toMatchObject({ y: 38, h: 45 });
+  });
+  it('keeps the default bottom directly below visible caffeine and ignores hidden anchor', () => {
+    const caffeine = { i: 'caffeine', x: 0, y: 8, w: 12, h: 11 };
+    const water = { i: 'water', x: 0, y: 0, w: 3, h: 4 };
+    const glp = { i: 'glp1', x: 0, y: 19, w: 12, h: 32 };
+    expect(
+      placeAutomaticWidget(all([water, caffeine, glp]), null, placement, [])
+        .lg[2]
+    ).toEqual(glp);
+    expect(
+      placeAutomaticWidget(all([water, caffeine, glp]), null, placement, [
+        'caffeine',
+      ]).lg[2]?.y
+    ).toBe(4);
+  });
+  it('never relocates explicit saved placement while applying existing measured height policy', () => {
+    const items = [
+      { i: 'caffeine', x: 0, y: 0, w: 12, h: 11 },
+      { i: 'glp1', x: 0, y: 16, w: 12, h: 15 },
+    ];
+    const measured = applyAutoHeights(all(items), { glp1: 35 });
+    expect(
+      placeAutomaticWidget(measured, all(items), placement, ['glp1'])
+    ).toEqual(measured);
   });
 });

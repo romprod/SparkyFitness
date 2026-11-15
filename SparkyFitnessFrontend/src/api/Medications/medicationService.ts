@@ -27,9 +27,10 @@ import type {
 // --- Medications -----------------------------------------------------------
 
 export const listMedications = (
-  opts?: ListMedicationsOptions
+  opts?: ListMedicationsOptions,
+  signal?: AbortSignal
 ): Promise<Medication[]> =>
-  apiCall('/v2/medications', { method: 'GET', params: opts });
+  apiCall('/v2/medications', { method: 'GET', params: opts, signal });
 
 export const createMedication = (
   body: Partial<Medication> & { name: string }
