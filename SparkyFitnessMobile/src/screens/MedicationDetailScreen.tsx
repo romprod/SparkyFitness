@@ -23,6 +23,7 @@ import Icon from '../components/Icon';
 import DoseRow from '../components/medications/DoseRow';
 import {
   getDueDosesForDate,
+  resolvePreparedMedicationRoute,
   formatDose,
   formatStrengthPerUnit,
 } from '@workspace/shared';
@@ -353,7 +354,7 @@ const MedicationDetailScreen: React.FC<MedicationDetailScreenProps> = ({
             </View>
           )}
 
-          {(med.type_id === 'injection' ||
+          {(resolvePreparedMedicationRoute(med) !== null ||
             (med.is_glp1 && !med.is_supplement)) && (
             <TouchableOpacity
               onPress={() =>
@@ -365,24 +366,33 @@ const MedicationDetailScreen: React.FC<MedicationDetailScreenProps> = ({
             >
               <View className="flex-1">
                 <Text className="text-base font-semibold text-text-primary">
-                  {med.type_id === 'injection'
-                    ? t('medications.stock.injectionTrackerTitle', {
-                        defaultValue: 'Injection tracker',
+                  {resolvePreparedMedicationRoute(med) === 'nasal'
+                    ? t('medications.devices.tracker', {
+                        defaultValue: 'Prepared medication tracker',
                       })
-                    : t('medications.glp1.tracker.title', {
-                        defaultValue: 'GLP-1 tracker',
-                      })}
+                    : med.type_id === 'injection'
+                      ? t('medications.stock.injectionTrackerTitle', {
+                          defaultValue: 'Injection tracker',
+                        })
+                      : t('medications.glp1.tracker.title', {
+                          defaultValue: 'GLP-1 tracker',
+                        })}
                 </Text>
                 <Text className="text-sm text-text-muted mt-0.5">
-                  {med.type_id === 'injection'
-                    ? t('medications.stock.injectionTrackerSubtitle', {
+                  {resolvePreparedMedicationRoute(med) === 'nasal'
+                    ? t('medications.devices.trackerDescription', {
                         defaultValue:
-                          'Log injections, review history and manage vial stock',
+                          'Prepared vials, pump draws and dose history',
                       })
-                    : t('medications.glp1.tracker.subtitle', {
-                        defaultValue:
-                          'Daily check-ins, medication levels and titration',
-                      })}
+                    : med.type_id === 'injection'
+                      ? t('medications.stock.injectionTrackerSubtitle', {
+                          defaultValue:
+                            'Log injections, review history and manage vial stock',
+                        })
+                      : t('medications.glp1.tracker.subtitle', {
+                          defaultValue:
+                            'Daily check-ins, medication levels and titration',
+                        })}
                 </Text>
               </View>
               <Icon name="chevron-forward" size={16} color={textSecondary} />

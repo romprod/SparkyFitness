@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Text, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
@@ -7,6 +7,12 @@ import Toast from 'react-native-toast-message';
 import {
   INJECTION_SITES,
   positiveDrawDoseSchema,
+  drawDoseSchema,
+  deviceDoseSchema,
+  normalizeDeviceDose,
+  recordedDoseForEdit,
+  drawDeliveredMg,
+  type DeviceDose,
   type DrawPreviewInput,
   type MedicationEntryStatus,
   type UpdateInjectionInput,
@@ -16,7 +22,7 @@ import { useActiveWorkoutBarPadding } from '../components/ActiveWorkoutBar';
 import BottomSheetPicker from '../components/BottomSheetPicker';
 import FormInput from '../components/FormInput';
 import SyringeDrawPreview from '../components/glp1/SyringeDrawPreview';
-import { useSyringeDrawPreview } from '../hooks/useSyringes';
+import { useSyringes, useSyringeDrawPreview } from '../hooks/useSyringes';
 import SettingsRow, { SettingsRowGroup } from '../components/SettingsRow';
 import TimeSheet, { type TimeSheetRef } from '../components/TimeSheet';
 import { useUpdateInjection } from '../hooks/useGlp1';
@@ -26,6 +32,10 @@ import { useScreenHeader } from '../hooks/useScreenHeader';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import { addLog } from '../services/LogService';
 import type { RootStackScreenProps } from '../types/navigation';
+import {
+  deviceDoseUnitOptions,
+  deviceCalibrationContext,
+} from '../utils/medicationDevices';
 import { getDeviceTimezone } from '../utils/dateUtils';
 import { editedTakenAt, entryTimeOfDay } from '../utils/medicationAdherence';
 import { injectionSiteLabel } from '../utils/medicationLocalization';
@@ -48,7 +58,17 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
   navigation,
 }) => {
   const { t } = useTranslation();
-  const { entry } = route.params;
+  const entry =
+    'entry' in route.params
+      ? route.params.entry
+      : {
+          ...route.params.injection,
+          status: 'taken' as const,
+          taken_at: route.params.injection.injected_at,
+          med_name_snapshot: route.params.medicationName ?? null,
+          dose_amount_snapshot: route.params.injection.dose_mg,
+          entry_type: 'injection' as const,
+        };
   const isInjection = entry.entry_type === 'injection';
   const canEditStatus =
     !isInjection && EDITABLE_STATUSES.includes(entry.status);
@@ -69,48 +89,109 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
   const [timeTouched, setTimeTouched] = useState(false);
   const [status, setStatus] = useState<MedicationEntryStatus>(entry.status);
   const [site, setSite] = useState(entry.site ?? NO_SITE);
+  const [siteTouched, setSiteTouched] = useState(false);
   const [notes, setNotes] = useState(entry.notes ?? '');
 
-  const [doseText, setDoseText] = useState(
-    entry.dose_amount_snapshot != null ? String(entry.dose_amount_snapshot) : ''
+  const devices = useSyringes();
+  const nasal = entry.administration_route === 'nasal';
+  const originalDevice = devices.data?.syringes.find(
+    (device) => device.id === entry.syringe_id
+  );
+  const originalUnit = drawDoseSchema.shape.unit.safeParse(
+    entry.dose_input_unit
+  );
+  const recorded = recordedDoseForEdit(
+    {
+      dose_mg: entry.dose_mg_exact ?? entry.dose_amount_snapshot,
+      volume_ml: entry.volume_ml,
+      syringe_units: entry.syringe_units,
+      dose_input_unit: originalUnit.success ? originalUnit.data : 'mg',
+    },
+    originalDevice
   );
   const calculatedInjection =
     isInjection && entry.volume_ml != null && entry.dose_input_unit != null;
   const doseReadOnly =
-    calculatedInjection && (!entry.syringe_id || !entry.pen_id);
+    calculatedInjection &&
+    (!entry.syringe_id ||
+      !entry.pen_id ||
+      (!devices.isLoading && !originalDevice));
+  const doseContext = JSON.stringify([
+    entry.preparation_id ?? entry.pen_id,
+    deviceCalibrationContext(originalDevice),
+  ]);
+  const [edits, setEdits] = useState<{
+    dose: DeviceDose;
+    context: string;
+  } | null>(null);
+  const staleContext = edits !== null && edits.context !== doseContext;
+  const dose: DeviceDose = doseReadOnly
+    ? (recorded ?? { value: '', unit: 'mg' })
+    : staleContext
+      ? { value: '', unit: recorded?.unit ?? 'mg' }
+      : (edits?.dose ?? recorded ?? { value: '', unit: 'mg' });
   const doseChanged =
-    calculatedInjection && Number(doseText) !== entry.dose_amount_snapshot;
-  // Updates use the existing numeric mg contract; preview exactly what will be submitted.
-  const parsedDose = positiveDrawDoseSchema.safeParse({
-    value:
-      Number.isFinite(Number(doseText)) && doseText.trim()
-        ? String(Number(doseText))
-        : '',
-    unit: 'mg',
-  });
+    calculatedInjection &&
+    !doseReadOnly &&
+    !(recorded === null && dose.value.trim() === '') &&
+    edits !== null &&
+    (staleContext ||
+      dose.value !== recorded?.value ||
+      dose.unit !== recorded?.unit);
+  const parsed = deviceDoseSchema.safeParse(dose);
+  let validDose = false;
+  if (parsed.success && originalDevice) {
+    try {
+      validDose = positiveDrawDoseSchema.safeParse(
+        normalizeDeviceDose(parsed.data, originalDevice)
+      ).success;
+    } catch {
+      validDose = false;
+    }
+  }
   const drawInput: DrawPreviewInput | null =
-    calculatedInjection && doseChanged && !doseReadOnly && parsedDose.success
+    calculatedInjection &&
+    doseChanged &&
+    !doseReadOnly &&
+    !staleContext &&
+    parsed.success &&
+    validDose
       ? {
           syringe_id: entry.syringe_id!,
           editing_injection_id: entry.id,
-          dose: parsedDose.data,
+          dose: parsed.data,
         }
       : null;
   const preview = useSyringeDrawPreview(
     drawInput ? (entry.pen_id ?? null) : null,
-    drawInput
+    drawInput,
+    doseContext
   );
+  const [reviewKey, setReviewKey] = useState<string | null>(null);
+  const previewKey =
+    drawInput && preview.data?.review?.state
+      ? JSON.stringify([drawInput, preview.data.review.state, doseContext])
+      : null;
+  const reviewing = previewKey !== null && reviewKey === previewKey;
   const drawBlocked =
     doseChanged &&
     (doseReadOnly ||
       !drawInput ||
       preview.isFetching ||
       preview.isError ||
-      !preview.data ||
+      !preview.data?.review?.state ||
       preview.data.warnings.some((warning) => warning.severity === 'block'));
+  const changeDose = (next: DeviceDose) => {
+    setEdits({ dose: next, context: doseContext });
+    setReviewKey(null);
+  };
 
-  const handleSave = useCallback(() => {
+  const handleSave = () => {
     if (isSaving || drawBlocked) return;
+    if (doseChanged && !reviewing) {
+      setReviewKey(previewKey);
+      return;
+    }
     const entryDay = entry.entry_date.slice(0, 10);
     const timeChange = timeTouched
       ? { at: editedTakenAt(entryDay, timeOfDay, timezone), day: entryDay }
@@ -127,6 +208,8 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
       navigation.goBack();
     };
     const onError = (error: Error) => {
+      setReviewKey(null);
+      if (doseChanged) void preview.refetch();
       addLog(`Failed to update medication entry: ${error.message}`, 'ERROR');
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
@@ -142,10 +225,20 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
         ...(timeChange
           ? { injected_at: timeChange.at, entry_date: timeChange.day }
           : {}),
-        site: site === NO_SITE ? null : site,
+        ...(siteTouched ? { site: site === NO_SITE ? null : site } : {}),
         notes: trimmedNotes,
-        ...(calculatedInjection && doseChanged
-          ? { dose_mg: Number(doseText) }
+        ...(calculatedInjection &&
+        doseChanged &&
+        drawInput &&
+        preview.data?.review
+          ? {
+              calculated_draw: {
+                syringe_id: drawInput.syringe_id,
+                dose: drawInput.dose,
+                expected_preview_state: preview.data.review.state,
+                review_intent: true,
+              },
+            }
           : {}),
       };
       updateInjection.mutate({ id: entry.id, body }, { onSuccess, onError });
@@ -159,26 +252,7 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
       };
       updateEntry.mutate({ id: entry.id, body }, { onSuccess, onError });
     }
-  }, [
-    isSaving,
-    drawBlocked,
-    calculatedInjection,
-    doseChanged,
-    doseText,
-    entry,
-    timeOfDay,
-    timeTouched,
-    timezone,
-    notes,
-    isInjection,
-    site,
-    canEditStatus,
-    status,
-    updateInjection,
-    updateEntry,
-    navigation,
-    t,
-  ]);
+  };
 
   const title = t('medications.entryEdit.title', {
     defaultValue: 'Edit logged dose',
@@ -189,7 +263,12 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
     left: { kind: 'dismiss', onPress: () => navigation.goBack() },
     right: {
       kind: 'primary',
-      label: t('common.save', { defaultValue: 'Save' }),
+      label:
+        doseChanged && !reviewing
+          ? t('medications.devices.reviewDose', {
+              defaultValue: 'Review dose change',
+            })
+          : t('common.save', { defaultValue: 'Save' }),
       busy: isSaving,
       disabled: drawBlocked,
       busyLabel: t('common.saving', { defaultValue: 'Saving…' }),
@@ -290,7 +369,7 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
           </View>
         )}
 
-        {isInjection && (
+        {isInjection && !nasal && (
           <View className="gap-1.5">
             <Text className="text-text-secondary text-sm font-medium">
               {t('medications.entryEdit.site', {
@@ -300,7 +379,12 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
             <BottomSheetPicker
               value={site}
               options={siteOptions}
-              onSelect={setSite}
+              onSelect={(value) => {
+                if (value !== site) {
+                  setSite(value);
+                  setSiteTouched(true);
+                }
+              }}
               title={t('medications.entryEdit.site', {
                 defaultValue: 'Injection site',
               })}
@@ -313,15 +397,34 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
             <Text className="text-sm font-medium text-text-secondary">
               {t('medications.glp1.log.dose', { defaultValue: 'Dose (mg)' })}
             </Text>
+            {recorded && (
+              <Text className="text-sm text-text-muted">
+                {t('medications.devices.recordedDose', {
+                  defaultValue: 'Recorded delivered dose: {{value}} {{unit}}',
+                  value: recorded.value,
+                  unit: recorded.unit,
+                })}
+              </Text>
+            )}
             <FormInput
-              accessibilityLabel={t('medications.glp1.log.dose', {
-                defaultValue: 'Dose (mg)',
+              accessibilityLabel={t('medications.devices.editDose', {
+                defaultValue: 'Dose value',
               })}
-              value={doseText}
-              onChangeText={setDoseText}
-              editable={!doseReadOnly}
+              value={dose.value}
+              onChangeText={(value) => changeDose({ value, unit: dose.unit })}
+              editable={!doseReadOnly && !devices.isLoading}
               keyboardType="decimal-pad"
             />
+            {!doseReadOnly && (
+              <BottomSheetPicker
+                value={dose.unit}
+                options={deviceDoseUnitOptions(originalDevice?.device_type, t)}
+                onSelect={(unit) => changeDose({ value: dose.value, unit })}
+                title={t('medications.syringes.inputUnit', {
+                  defaultValue: 'Input unit',
+                })}
+              />
+            )}
             {doseReadOnly && (
               <Text className="text-sm text-text-muted">
                 {t('medications.syringes.originalUnavailable', {
@@ -330,13 +433,41 @@ const MedicationEntryEditScreen: React.FC<MedicationEntryEditScreenProps> = ({
                 })}
               </Text>
             )}
-            {!doseReadOnly && (
+            {
               <SyringeDrawPreview
                 data={drawInput ? preview.data : undefined}
                 pending={preview.isFetching}
                 failed={preview.isError}
                 showNeutral
+                neutralDeviceType={
+                  nasal ? 'pump' : (originalDevice?.device_type ?? 'syringe')
+                }
               />
+            }
+            {reviewing && preview.data?.review && (
+              <View className="gap-2">
+                <Text className="text-sm text-text-primary">
+                  {t('medications.devices.doseReview', {
+                    defaultValue: 'Delivered dose: {{before}} → {{after}} mg',
+                    before: preview.data.review.previous?.doseMg ?? '—',
+                    after: drawDeliveredMg(preview.data),
+                  })}
+                </Text>
+                <Text className="text-sm text-text-secondary">
+                  {t('medications.devices.volumeReview', {
+                    defaultValue: 'Delivered volume: {{before}} → {{after}} mL',
+                    before: preview.data.review.previous?.volumeMl ?? '—',
+                    after: preview.data.deliveredVolumeMl,
+                  })}
+                </Text>
+                <Text className="text-sm text-text-secondary">
+                  {t('medications.devices.stockReview', {
+                    defaultValue: 'Remaining volume: {{before}} → {{after}} mL',
+                    before: preview.data.review.remainingBeforeMl ?? '—',
+                    after: preview.data.review.remainingAfterMl ?? '—',
+                  })}
+                </Text>
+              </View>
             )}
           </View>
         )}

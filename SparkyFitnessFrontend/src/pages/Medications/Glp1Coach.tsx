@@ -1,3 +1,4 @@
+import { resolvePreparedMedicationRoute } from '@workspace/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Syringe } from 'lucide-react';
@@ -62,6 +63,7 @@ export default function Glp1Coach({ med }: Glp1CoachProps) {
   // Injection-specific UI (body map, pens, shot log) only applies to injectable meds.
   // Oral/liquid GLP-1 (e.g. Rybelsus) still gets the PK curve, titration & fasting timer.
   const isInjectable = med.type_id === 'injection';
+  const hasPreparationTools = resolvePreparedMedicationRoute(med) !== null;
 
   const curveQ = useSerumCurve(medId);
   const injectionsQ = useMedicationInjections(medId);
@@ -241,7 +243,7 @@ export default function Glp1Coach({ med }: Glp1CoachProps) {
       {isOralGlp1 && <FastingTimer medId={medId} />}
 
       {/* Log injection + site rotation (injectable meds only) */}
-      {isInjectable && <Glp1LogInjection med={med} />}
+      {hasPreparationTools && <Glp1LogInjection key={med.id} med={med} />}
 
       {/* PK serum curve */}
       <Card>
@@ -545,13 +547,13 @@ export default function Glp1Coach({ med }: Glp1CoachProps) {
       </Card>
 
       {/* Pen / vial inventory (injectable meds only) */}
-      {isInjectable && <Glp1InventoryManager med={med} />}
+      {hasPreparationTools && <Glp1InventoryManager med={med} />}
 
       {/* Titration plan */}
       <Glp1TitrationManager med={med} />
 
       {/* Recent injections (injectable meds only) */}
-      {isInjectable && <Glp1RecentInjections med={med} />}
+      {hasPreparationTools && <Glp1RecentInjections med={med} />}
     </div>
   );
 }

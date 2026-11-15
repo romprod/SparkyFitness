@@ -1,5 +1,5 @@
 import {
-  calculatePreparationValues,
+  preparationCreationValues,
   addDays,
   type MedicationPreparationInput,
 } from '@workspace/shared';
@@ -9,12 +9,15 @@ import type {
 } from '../schemas/medicationSchemas.js';
 
 export function preparationValues(input: MedicationPreparationInput) {
-  const values = calculatePreparationValues(input);
+  const values = preparationCreationValues(input);
   if (!values)
     throw badPreparation(
       'Preparation amounts must produce a finite positive concentration.'
     );
-  return values;
+  return {
+    mass_mg: Number(values.mass_mg),
+    concentration_mg_ml: Number(values.concentration_mg_ml),
+  };
 }
 export function badPreparation(message: string) {
   return Object.assign(new Error(message), { status: 400, statusCode: 400 });

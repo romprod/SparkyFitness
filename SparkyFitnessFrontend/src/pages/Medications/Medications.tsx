@@ -1,3 +1,4 @@
+import { resolvePreparedMedicationRoute } from '@workspace/shared';
 import { useState, useEffect, useMemo } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
@@ -750,10 +751,10 @@ export default function Medications() {
                           />
                         </CardContent>
                       </Card>
-                      {selected.type_id === 'injection' && (
+                      {resolvePreparedMedicationRoute(selected) !== null && (
                         <>
                           <Glp1InventoryManager med={selected} />
-                          <Glp1LogInjection med={selected} />
+                          <Glp1LogInjection key={selected.id} med={selected} />
                           <Glp1RecentInjections med={selected} />
                         </>
                       )}

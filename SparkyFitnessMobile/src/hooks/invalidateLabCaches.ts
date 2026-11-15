@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import {
   labComparisonQueryKey,
+  labPanelsQueryKey,
   labHistoryRootQueryKey,
   labLatestQueryKey,
   labMarkersQueryKey,
@@ -13,6 +14,7 @@ export function invalidateLabCaches(client: QueryClient): void {
     labLatestQueryKey,
     labHistoryRootQueryKey,
     labComparisonQueryKey,
+    labPanelsQueryKey,
   ]) {
     void client.invalidateQueries({ queryKey });
   }

@@ -1,6 +1,8 @@
 import { apiCall } from '@/api/api';
 import type {
   CreateLabResultBody,
+  CreateManualLabPanelBody,
+  LabPanelHistoryResponse,
   DeleteLabImportsResponse,
   DeleteMarkerResultsResponse,
   ImportLabReportBody,
@@ -81,3 +83,19 @@ export const deleteBuiltinMarkerResults = (
     method: 'DELETE',
     params: { markerKey },
   });
+
+/** Complete history of real manual and imported panels. */
+export const listLabPanels = (): Promise<LabPanelHistoryResponse> =>
+  apiCall('/v2/lab-results/panels', { method: 'GET' });
+
+export const createManualLabPanel = (
+  body: CreateManualLabPanelBody
+): Promise<ImportLabReportResponse> =>
+  apiCall('/v2/lab-results/panels', {
+    method: 'POST',
+    body,
+    suppressErrorToast: true,
+  });
+
+export const deleteLabPanel = (id: string): Promise<DeleteLabImportsResponse> =>
+  apiCall(`/v2/lab-results/panels/${id}`, { method: 'DELETE' });

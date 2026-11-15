@@ -1,6 +1,9 @@
-import { buildLabComparison } from '@workspace/shared';
+import {
+  buildLabComparison,
+  type CreateManualLabPanelBody,
+} from '@workspace/shared';
 import { invalidateLabCaches } from './invalidateLabCaches';
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '../services/api/errors';
 import {
@@ -8,6 +11,9 @@ import {
   deleteLabImports,
 } from '../services/api/labReportApi';
 import {
+  fetchLabPanels,
+  createManualLabPanel,
+  deleteLabPanel,
   createLabMarker,
   createLabResult,
   deleteLabMarker,
@@ -21,6 +27,7 @@ import {
   type NewLabResultPayload,
 } from '../services/api/labResultsApi';
 import {
+  labPanelsQueryKey,
   labHistoryQueryKey,
   labComparisonQueryKey,
   labLatestQueryKey,
@@ -268,3 +275,38 @@ export function useLabComparison() {
     },
   };
 }
+
+export const useLabPanels = () =>
+  useQuery({ queryKey: labPanelsQueryKey, queryFn: fetchLabPanels });
+export function useCreateManualLabPanel() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateManualLabPanelBody) => createManualLabPanel(body),
+    onSuccess: () => invalidateLabCaches(client),
+  });
+}
+export function useDeleteLabPanel() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteLabPanel(id),
+    onSuccess: () => invalidateLabCaches(client),
+  });
+}
+
+/** Removed synchronously on context switches, before identity refresh completes. */
+export const useLabPanelScope = () => {
+  const client = useQueryClient();
+  const isCurrent = () => client.getQueryData(labPanelsQueryKey) !== undefined;
+  const ready = useSyncExternalStore(
+    (notify) =>
+      client.getQueryCache().subscribe((event) => {
+        if (
+          (event.type === 'removed' || event.type === 'updated') &&
+          event.query.queryKey[0] === 'labPanels'
+        )
+          notify();
+      }),
+    isCurrent
+  );
+  return { ready, isCurrent };
+};

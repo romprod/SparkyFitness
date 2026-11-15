@@ -199,6 +199,7 @@ export const customMeasurementsRootQueryKey = ['customMeasurements'] as const;
 export const labMarkersQueryKey = ['labMarkers'] as const;
 /** The newest result of every marker. */
 export const labLatestQueryKey = ['labLatest'] as const;
+export const labPanelsQueryKey = ['labPanels'] as const;
 export const labComparisonQueryKey = ['labComparison'] as const;
 /** Every lab result for one marker, newest first (`builtin:<key>` or `custom:<id>`). */
 export const labHistoryRootQueryKey = ['labHistory'] as const;

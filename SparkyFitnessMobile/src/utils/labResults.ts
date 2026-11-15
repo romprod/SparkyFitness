@@ -67,7 +67,9 @@ export const formatLabValue = (value: number, unit: string): string =>
   unit ? `${labNumber(value)} ${unit}` : labNumber(value);
 
 /** Exact numbers retain locale formatting; qualified/categorical text stays opaque. */
-export const labResultText = (result: LabResultResponse): string => {
+export const labResultText = (
+  result: Pick<LabResultResponse, 'value_numeric' | 'value_text' | 'unit'>
+): string => {
   const value = exactLabResultValue(result);
   if (value !== null) return formatLabValue(value, result.unit);
   return result.value_text

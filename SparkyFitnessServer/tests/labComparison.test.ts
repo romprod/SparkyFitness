@@ -211,7 +211,7 @@ describe('latest imported report comparison', () => {
       'r.report_id=p.id AND r.user_id=$1'
     );
     expect(query.mock.calls[0][0]).toContain('DESC NULLS LAST');
-    expect(query.mock.calls[0][1]).toEqual(['owner']);
+    expect(query.mock.calls[0][1]).toEqual(['owner', 3]);
     expect(output.panels[0].results[0]).not.toHaveProperty('notes');
     expect(output.panels[0].results[0]).not.toHaveProperty('user_id');
   });

@@ -1,6 +1,13 @@
 import {
+  reviewPreparationCorrection,
+  commitPreparationCorrection,
+} from '../../models/medicationPreparationCorrectionRepository.js';
+import { previewMedicationDraw } from '../../services/medicationDrawReviewService.js';
+import {
   medicationSyringeInputSchema,
   drawPreviewInputSchema,
+  medicationPreparationReviewInputSchema,
+  medicationPreparationCorrectionInputSchema,
 } from '@workspace/shared';
 import { z } from 'zod/v4';
 import * as syringeRepository from '../../models/medicationSyringeRepository.js';
@@ -962,7 +969,7 @@ router.delete(
  * /v2/medications/pens/{id}/draw-preview:
  *   post:
  *     summary: Calculate a draw from stored preparation, syringe and current stock
- *     description: Accepts syringe_id, dose.value as a decimal string, dose.unit (mcg/mg/ml/units), and optional editing_injection_id to credit a matching previous draw. Returns decimal-string target/delivered amounts, markings and structured warnings. Injection POST accepts the same dose/syringe input as calculated_draw and recomputes under the vial lock. Explicit lifecycle changes use lifecycle_intent true with status on the existing pen update endpoint.
+ *     description: Accepts syringe_id, dose.value as a decimal string, dose.unit (mcg/mg/ml/units/pumps), and optional editing_injection_id to credit a matching previous draw. Returns decimal-string target/delivered amounts, markings and structured warnings. Injection POST accepts the same dose/syringe input as calculated_draw and recomputes under the vial lock. Preview review.state binds stock, calibration, preparation and the raw target. New reviewed confirmations set review_intent true and expected_preview_state; older authoritative recomputation contracts remain supported. Explicit lifecycle changes use lifecycle_intent true with status on the existing pen update endpoint.
  *     tags: [Medications & GLP-1]
  *     responses: { 200: { description: Draw result and source-equivalent guardrails. } }
  */
@@ -1035,7 +1042,34 @@ router.post('/pens/:id/draw-preview', async (req, res, next) => {
     const body = drawPreviewInputSchema.safeParse(req.body);
     if (!body.success) return badRequest(res, body.error);
     res.json(
-      await syringeRepository.previewDraw(req.userId, params.data.id, body.data)
+      await previewMedicationDraw(req.userId, params.data.id, body.data)
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/pens/:id/preparation-review', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = medicationPreparationReviewInputSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    res.json(
+      await reviewPreparationCorrection(req.userId, params.data.id, body.data)
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+router.post('/pens/:id/preparation-corrections', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = medicationPreparationCorrectionInputSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    res.json(
+      await commitPreparationCorrection(req.userId, params.data.id, body.data)
     );
   } catch (error) {
     next(error);

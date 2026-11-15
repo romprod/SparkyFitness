@@ -129,3 +129,45 @@ it('keeps the marking and empty figure visible before a valid amount exists', ()
   expect(screen.getByText('Draw to —')).toBeInTheDocument();
   expect(fill()).toHaveAttribute('width', '0');
 });
+
+it('labels the pump equivalent as the rounded marking count for a fractional pump target', () => {
+  const pump = {
+    name: 'Synthetic pump',
+    device_type: 'pump' as const,
+    graduation_type: 'ml' as const,
+    units_per_ml: 100,
+    capacity_ml: '5',
+    capacity_units: 50,
+    increment: '0.1',
+  };
+  const preview = {
+    ...computeDraw({
+      dose: { value: '0.14', unit: 'ml' },
+      concentrationMcgPerMl: '2000',
+      syringe: pump,
+    }),
+    device: { ...pump, id: 'pump' },
+  };
+  render(
+    <MedicationDrawPreview
+      preview={preview}
+      isFetching={false}
+      isError={false}
+    />
+  );
+  expect(screen.getByText('Pumps (rounded)')).toBeInTheDocument();
+  expect(
+    screen.getByText('Measurable marking: 1 pump (0.1 mL)')
+  ).toBeInTheDocument();
+  expect(screen.queryByText('units')).not.toBeInTheDocument();
+});
+it('uses device-neutral validation wording for a pump preview error', () => {
+  render(
+    <MedicationDrawPreview deviceType="pump" isFetching={false} isError />
+  );
+  expect(
+    screen.getByText(
+      'Could not calculate a marking. Check the entered amount and device settings.'
+    )
+  ).toBeInTheDocument();
+});

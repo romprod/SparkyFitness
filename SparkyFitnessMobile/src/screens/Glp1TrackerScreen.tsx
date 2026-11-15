@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolvePreparedMedicationRoute } from '@workspace/shared';
 import { useTranslation } from 'react-i18next';
 import { View, Text, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,10 +39,14 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
   const { data: med, isLoading } = useMedicationDetail(medicationId);
 
   const title =
-    med?.type_id === 'injection'
-      ? t('medications.stock.injectionTrackerTitle', {
-          defaultValue: 'Injection tracker',
-        })
+    med && resolvePreparedMedicationRoute(med)
+      ? resolvePreparedMedicationRoute(med) === 'nasal'
+        ? t('medications.devices.tracker', {
+            defaultValue: 'Prepared medication tracker',
+          })
+        : t('medications.stock.injectionTrackerTitle', {
+            defaultValue: 'Injection tracker',
+          })
       : t('medications.glp1.tracker.title', { defaultValue: 'GLP-1 tracker' });
   const header = useScreenHeader({
     title,
@@ -49,7 +54,7 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
     left: { kind: 'back' },
   });
 
-  const isInjectable = med?.type_id === 'injection';
+  const isInjectable = !!med && resolvePreparedMedicationRoute(med) !== null;
 
   return (
     <View
@@ -76,7 +81,7 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
           <Text className="text-2xl font-bold text-text-primary mb-3">
             {med.name}
           </Text>
-          {med.is_glp1 && (
+          {med.is_glp1 && resolvePreparedMedicationRoute(med) !== 'nasal' && (
             <Glp1CheckInCard key={selectedDate} date={selectedDate} />
           )}
           {isInjectable && (
@@ -85,7 +90,7 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
               onManageSyringes={() => navigation.navigate('SyringeSettings')}
             />
           )}
-          {med.is_glp1 && (
+          {med.is_glp1 && resolvePreparedMedicationRoute(med) !== 'nasal' && (
             <Glp1SerumCard medicationId={med.id} title={med.name} />
           )}
           {isInjectable && (
@@ -102,7 +107,7 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
               }
             />
           )}
-          {med.is_glp1 && (
+          {med.is_glp1 && resolvePreparedMedicationRoute(med) !== 'nasal' && (
             <Glp1TitrationCard
               medicationId={med.id}
               onAdd={() =>
@@ -118,7 +123,17 @@ const Glp1TrackerScreen: React.FC<Glp1TrackerScreenProps> = ({
               }
             />
           )}
-          {isInjectable && <Glp1RecentInjectionsCard medicationId={med.id} />}
+          {isInjectable && (
+            <Glp1RecentInjectionsCard
+              medicationId={med.id}
+              onEdit={(injection) =>
+                navigation.navigate('MedicationEntryEdit', {
+                  injection,
+                  medicationName: med.name,
+                })
+              }
+            />
+          )}
           <MedicalDisclaimer />
         </ScrollView>
       )}

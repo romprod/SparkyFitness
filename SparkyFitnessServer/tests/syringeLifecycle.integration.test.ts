@@ -62,7 +62,11 @@ describe.runIf(process.env.SYRINGE_INTEGRATION === '1')(
       expect((await devices.listSyringes(owner)).default_syringe_id).toBe(
         device.id
       );
-      expect((await devices.listSyringes(other)).syringes).toEqual([]);
+      expect(
+        (await devices.listSyringes(other)).syringes.some(
+          (s) => s.id === device.id
+        )
+      ).toBe(false);
       await expect(devices.setDefaultSyringe(other, device.id)).rejects.toThrow(
         'Syringe not found'
       );

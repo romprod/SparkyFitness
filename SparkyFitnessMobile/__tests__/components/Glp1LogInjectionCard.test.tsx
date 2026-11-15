@@ -327,7 +327,7 @@ test('explicit Manual remains selected across saved default changes', () => {
     <Glp1LogInjectionCard med={med} onManageSyringes={jest.fn()} />
   );
   expect(view.getByLabelText('Dose (mg)')).toBeTruthy();
-  expect(view.queryByText('Draw to —')).toBeNull();
+  expect(view.getByText('Draw to —')).toBeTruthy();
   fireEvent.changeText(view.getByLabelText('Dose (mg)'), '0.5');
   fireEvent.press(logButton(view));
   expect(mockLog.mock.calls[0][0].dose_mg).toBe(0.5);
@@ -339,8 +339,8 @@ test('does not create or invent a syringe when none are saved', () => {
   mockSavedSyringes = [];
   const view = setup();
   expect(view.getByLabelText('Dose (mg)')).toBeTruthy();
-  expect(view.queryByText('Draw to —')).toBeNull();
-  expect(view.queryByTestId('syringe-target-fill')).toBeNull();
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
 });
 
 test('keeps a neutral figure through pending, error and invalid dose without displaying a cached marking', () => {
@@ -441,7 +441,7 @@ test('deleting an explicit selected device clears the draft and blocks without a
   );
   expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
   expect(mockPreview).toHaveBeenLastCalledWith('vial', null);
-  expect(view.queryByTestId('syringe-target-fill')).toBeNull();
+  expect(view.getByTestId('syringe-target-fill').props.width).toBe(0);
   expect(view.queryByText(/^Measured marking:/)).toBeNull();
   fireEvent.press(logButton(view));
   expect(mockLog).not.toHaveBeenCalled();
@@ -539,4 +539,59 @@ test('changing preparation identity on the same vial clears the interpreted dose
   expect(view.getByLabelText('Target dose / volume').props.value).toBe('');
   expect(view.getByText('Draw to —')).toBeTruthy();
   expect(mockPreview).toHaveBeenLastCalledWith('vial', null);
+});
+
+test('prepared nasal automatically uses an eligible pump, hides the body map and submits no site', () => {
+  const pump = savedSyringe({
+    device_type: 'pump',
+    name: 'Example pump',
+    graduation_type: 'ml',
+    increment: '0.1',
+    units_per_ml: 1,
+  });
+  mockSavedSyringes = [savedSyringe({ id: 'injection-only' }), pump];
+  mockDefaultId = 'injection-only';
+  mockResult = {
+    ...mockResult,
+    markingValue: '0.1',
+    markingScale: 'ml',
+    device: {
+      id: pump.id,
+      device_type: 'pump',
+      increment: '0.1',
+      capacity_ml: '1',
+      graduation_type: 'ml',
+      units_per_ml: 1,
+    },
+    deliveredVolumeMl: '0.1',
+  };
+  const view = render(
+    <Glp1LogInjectionCard
+      med={{ ...med, type_id: 'nasal_spray', route_id: 'nasal' }}
+    />
+  );
+  expect(view.queryByTestId('injection-body-map')).toBeNull();
+  expect(view.getByText('Spray 1 pumps (0.1 mL)')).toBeTruthy();
+  fireEvent.press(view.getAllByText(/^Log prepared nasal dose/).at(-1)!);
+  expect(mockLog.mock.calls[0][0]).toEqual(
+    expect.objectContaining({
+      site: null,
+      pen_id: 'vial',
+      calculated_draw: {
+        syringe_id: pump.id,
+        dose: { value: '1', unit: 'pumps' },
+      },
+    })
+  );
+});
+test('nasal without an eligible pump stays neutral and cannot fall back to manual injection', () => {
+  const view = render(
+    <Glp1LogInjectionCard
+      med={{ ...med, type_id: 'nasal_spray', route_id: 'nasal' }}
+    />
+  );
+  expect(view.getByText('Spray —')).toBeTruthy();
+  expect(view.queryByText('Manual mg')).toBeNull();
+  fireEvent.press(view.getAllByText(/^Log prepared nasal dose/).at(-1)!);
+  expect(mockLog).not.toHaveBeenCalled();
 });

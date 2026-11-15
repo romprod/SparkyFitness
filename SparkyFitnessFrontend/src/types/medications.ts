@@ -6,7 +6,7 @@ import type {
   FoodVariantNutrientField,
   MedicationWithMeal,
   MedicationPen,
-  MedicationPreparationInput,
+  MedicationPreparationCreationInput,
 } from '@workspace/shared';
 
 /**
@@ -157,6 +157,6 @@ export type MedicationPenWriteInput = Omit<
   Partial<MedicationPen>,
   'preparation'
 > & {
-  preparation?: MedicationPreparationInput;
+  preparation?: MedicationPreparationCreationInput;
   lifecycle_intent?: boolean;
 };

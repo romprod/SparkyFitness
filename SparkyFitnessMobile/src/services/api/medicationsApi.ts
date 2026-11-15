@@ -11,7 +11,7 @@ import type {
   CreateScheduleInput,
   UpdateScheduleInput,
   MedicationPen,
-  MedicationPreparationInput,
+  MedicationPreparationCreationInput,
   InjectionEntry,
   LogInjectionInput,
   UpdateInjectionInput,
@@ -217,7 +217,7 @@ export const listPens = async (
 export const createPen = (
   medicationId: string,
   body: Omit<Partial<MedicationPen>, 'preparation'> & {
-    preparation?: MedicationPreparationInput;
+    preparation?: MedicationPreparationCreationInput;
     lifecycle_intent?: boolean;
   }
 ): Promise<MedicationPen> =>
@@ -232,7 +232,7 @@ export const createPen = (
 export const updatePen = (
   id: string,
   body: Omit<Partial<MedicationPen>, 'preparation'> & {
-    preparation?: MedicationPreparationInput;
+    preparation?: MedicationPreparationCreationInput;
     lifecycle_intent?: boolean;
   }
 ): Promise<MedicationPen> =>

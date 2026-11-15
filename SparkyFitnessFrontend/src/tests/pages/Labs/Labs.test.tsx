@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import * as labApi from '@/api/Labs/labResultsApi';
 import Labs from '@/pages/Labs/Labs';
@@ -8,8 +14,9 @@ jest.mock('react-i18next', () =>
   jest.requireActual('@/tests/mocks/reactI18next')
 );
 jest.mock('@/api/Labs/labResultsApi');
+let mockActiveUserId = 'u1';
 jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { id: 'u1' } }),
+  useAuth: () => ({ user: { id: 'u1', activeUserId: mockActiveUserId } }),
 }));
 jest.mock('@/hooks/Settings/useProfile', () => ({
   useProfileQuery: () => ({ data: { gender: 'male' } }),
@@ -43,8 +50,20 @@ const renderPage = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockActiveUserId = 'u1';
   api.listLabMarkers.mockResolvedValue([customMarker()]);
   api.listLabComparison.mockResolvedValue({ panels: [] });
+  api.listLabPanels.mockResolvedValue({
+    panels: [
+      {
+        id: 'existing-panel',
+        collected_on: '2026-09-12',
+        lab_name: null,
+        created_at: '2026-09-12T00:00:00Z',
+        results: [],
+      },
+    ],
+  });
   api.listLatestLabResults.mockResolvedValue([
     result(),
     result({
@@ -63,7 +82,7 @@ beforeEach(() => {
 });
 
 describe('Labs page', () => {
-  it('loads the imported-report comparison above the existing marker list', async () => {
+  it('loads the imported-panel comparison above the existing marker list', async () => {
     api.listLabComparison.mockResolvedValue({
       panels: [
         {
@@ -86,12 +105,8 @@ describe('Labs page', () => {
 
   it('keeps the comparison visible with an empty state for manual-only results', async () => {
     renderPage();
-    expect(
-      await screen.findByText('No imported reports yet.')
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Latest three imported reports')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('No lab panels yet.')).toBeInTheDocument();
+    expect(screen.getByText('Latest three panels')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
   });
 
@@ -101,12 +116,177 @@ describe('Labs page', () => {
     );
     renderPage();
     expect(
-      await screen.findByText('Could not load the report comparison.')
+      await screen.findByText('Could not load the panel comparison.')
     ).toHaveAttribute('role', 'alert');
     expect(screen.getByRole('button', { name: /HbA1c/ })).toBeInTheDocument();
+    expect(screen.queryByText('No lab panels yet.')).not.toBeInTheDocument();
+  });
+
+  it('opens the source-style manual panel form only after an empty history has loaded', async () => {
+    let finish: (value: { panels: [] }) => void = () => undefined;
+    api.listLabPanels.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    renderPage();
     expect(
-      screen.queryByText('No imported reports yet.')
+      screen.queryByRole('heading', { name: 'Add lab panel' })
     ).not.toBeInTheDocument();
+    finish({ panels: [] });
+    expect(
+      await screen.findByRole('heading', { name: 'Add lab panel' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Import from a report' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add lab result' })
+    ).toBeInTheDocument();
+  });
+
+  it('resets a manual-panel draft when the active profile changes', async () => {
+    api.listLabPanels.mockResolvedValue({ panels: [] });
+    api.listLabMarkers.mockResolvedValue([]);
+    api.listLatestLabResults.mockResolvedValue([]);
+    const { client, Wrapper } = wrapper();
+    const page = render(<Labs />, { wrapper: Wrapper });
+    await screen.findByRole('heading', { name: 'Add lab panel' });
+    fireEvent.change(screen.getByLabelText('Result', { exact: true }), {
+      target: { value: '<3' },
+    });
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Example draft' },
+    });
+    act(() => {
+      mockActiveUserId = 'u2';
+      client.clear();
+    });
+    page.rerender(<Labs />);
+    await screen.findByRole('heading', { name: 'Add lab panel' });
+    expect(screen.getByLabelText('Result', { exact: true })).toHaveValue('');
+    expect(screen.getByLabelText('Notes')).toHaveValue('');
+    expect(api.createManualLabPanel).not.toHaveBeenCalled();
+  });
+
+  it('hides an explicit draft during cache clear before the active identity changes', async () => {
+    const { client, Wrapper } = wrapper();
+    const page = render(<Labs />, { wrapper: Wrapper });
+    await waitFor(() => expect(api.listLabPanels).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Add lab panel' })
+      ).not.toBeDisabled()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add lab panel' }));
+    fireEvent.change(screen.getByLabelText('Result', { exact: true }), {
+      target: { value: '<3' },
+    });
+    fireEvent.change(screen.getByLabelText('Notes'), {
+      target: { value: 'Old context draft' },
+    });
+    api.listLabPanels.mockReturnValue(new Promise(() => {}));
+    act(() => {
+      client.clear();
+    });
+    expect(mockActiveUserId).toBe('u1');
+    expect(
+      screen.queryByRole('button', { name: 'Save lab panel' })
+    ).not.toBeInTheDocument();
+    expect(api.createManualLabPanel).not.toHaveBeenCalled();
+    act(() => {
+      mockActiveUserId = 'u2';
+    });
+    page.rerender(<Labs />);
+    expect(
+      screen.queryByDisplayValue('Old context draft')
+    ).not.toBeInTheDocument();
+  });
+
+  it('never flashes the manual form on a failed history load', async () => {
+    api.listLabPanels.mockRejectedValue(new Error('Synthetic failure'));
+    renderPage();
+    expect(
+      await screen.findByText('Could not load the lab panels.')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Add lab panel' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('deletes one explicit manual panel after confirmation and refreshes all Labs views', async () => {
+    api.listLabPanels.mockResolvedValue({
+      panels: [
+        {
+          id: 'manual',
+          collected_on: '2026-01-01',
+          lab_name: 'Example lab',
+          notes: 'Example note',
+          origin: 'manual',
+          created_at: '2026-01-01',
+          results: [result({ value_numeric: null, value_text: '<3' })],
+        },
+      ],
+    });
+    api.deleteLabPanel.mockResolvedValue({
+      reports: 1,
+      results: 1,
+      markers: 0,
+    });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete lab panel 2026-01-01' })
+    );
+    expect(api.deleteLabPanel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() =>
+      expect(api.deleteLabPanel).toHaveBeenCalledWith('manual')
+    );
+    await waitFor(() => expect(api.listLabComparison).toHaveBeenCalledTimes(2));
+    expect(api.deleteLabImports).not.toHaveBeenCalled();
+  });
+
+  it('keeps manual panels visible after the imported-only bulk delete refresh', async () => {
+    const manual = {
+      id: 'manual',
+      collected_on: '2026-01-01',
+      lab_name: null,
+      notes: 'Manual note',
+      origin: 'manual' as const,
+      created_at: '2026-01-01',
+      results: [result({ value_numeric: null, value_text: 'Negative' })],
+    };
+    const imported = {
+      ...manual,
+      id: 'imported',
+      origin: 'imported' as const,
+      notes: null,
+    };
+    api.listLabPanels
+      .mockResolvedValueOnce({ panels: [manual, imported] })
+      .mockResolvedValue({ panels: [manual] });
+    api.deleteLabImports.mockResolvedValue({
+      reports: 1,
+      results: 1,
+      markers: 0,
+    });
+    renderPage();
+    expect(await screen.findByText('Manual note')).toBeInTheDocument();
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'More actions' }),
+      { button: 0, ctrlKey: false }
+    );
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Delete imported results' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(api.deleteLabImports).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByText('Imported report')).not.toBeInTheDocument()
+    );
+    expect(screen.getByText('Manual panel')).toBeInTheDocument();
+    expect(screen.getByText('Manual note')).toBeInTheDocument();
+    expect(api.deleteLabPanel).not.toHaveBeenCalled();
   });
 
   it('lists the markers with their latest result and range status', async () => {

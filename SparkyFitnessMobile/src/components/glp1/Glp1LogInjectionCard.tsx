@@ -6,8 +6,12 @@ import {
   INJECTION_SITES,
   medicationDoseInMg,
   positiveDrawDoseSchema,
+  deviceDoseSchema,
+  normalizeDeviceDose,
+  resolvePreparedMedicationRoute,
+  isDeviceEligibleForRoute,
+  type DeviceDose,
   type CalculatedDrawInput,
-  type DrawDoseUnit,
   type Medication,
 } from '@workspace/shared';
 import BottomSheetPicker from '../BottomSheetPicker';
@@ -17,6 +21,7 @@ import FormInput from '../FormInput';
 import Button from '../ui/Button';
 import InjectionBodyMap from './InjectionBodyMap';
 import SyringeDrawPreview from './SyringeDrawPreview';
+import PreparationBudNotice from './PreparationBudNotice';
 import {
   useLogInjection,
   useMedicationPens,
@@ -26,6 +31,10 @@ import { useSyringeDrawPreview, useSyringes } from '../../hooks/useSyringes';
 import { getTodayDate } from '../../utils/dateUtils';
 import { resolveMapSites, usablePens, penDosesLeft } from '../../utils/glp1';
 import { injectionSiteLabel } from '../../utils/medicationLocalization';
+import {
+  deviceDoseUnitOptions,
+  deviceCalibrationContext,
+} from '../../utils/medicationDevices';
 import { addLog } from '../../services/LogService';
 
 interface Glp1LogInjectionCardProps {
@@ -46,20 +55,24 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
   onManageSyringes,
 }) => {
   const { t } = useTranslation();
+  const administrationRoute = resolvePreparedMedicationRoute(med);
+  const nasal = administrationRoute === 'nasal';
   const calendarRef = useRef<CalendarSheetRef>(null);
-  const siteQuery = useSiteSuggestion(med.id);
+  const siteQuery = useSiteSuggestion(nasal ? '' : med.id);
   const pensQuery = useMedicationPens(med.id);
   const logInjection = useLogInjection();
   const syringesQuery = useSyringes();
   const submittingRef = useRef(false);
 
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
-  const [doseText, setDoseText] = useState('');
+  const [doseText, setDoseText] = useState(nasal ? '1' : '');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(getTodayDate);
   const [penChoice, setPenChoice] = useState<string | null>(null);
   const [syringeChoice, setSyringeChoice] = useState<string | null>(null);
-  const [doseUnit, setDoseUnit] = useState<DrawDoseUnit>('mg');
+  const [doseUnit, setDoseUnit] = useState<DeviceDose['unit']>(
+    nasal ? 'pumps' : 'mg'
+  );
   const [doseContext, setDoseContext] = useState<string | null>(null);
 
   const mapSites = useMemo(
@@ -67,8 +80,11 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
     [siteQuery.data?.activeSiteIds]
   );
   const pens = useMemo(
-    () => usablePens(pensQuery.data ?? []),
-    [pensQuery.data]
+    () =>
+      usablePens(pensQuery.data ?? []).filter(
+        (pen) => !nasal || pen.kind === 'vial'
+      ),
+    [pensQuery.data, nasal]
   );
 
   const suggestedSite = siteQuery.data?.suggestedSiteId ?? null;
@@ -82,7 +98,9 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
   const penId = stalePenChoice ? NO_PEN : (penChoice ?? pens[0]?.id ?? NO_PEN);
 
   const selectedPen = pens.find((pen) => pen.id === penId);
-  const syringes = syringesQuery.data?.syringes ?? [];
+  const syringes = (syringesQuery.data?.syringes ?? []).filter((device) =>
+    isDeviceEligibleForRoute(device.device_type, administrationRoute)
+  );
   const preferredSyringe =
     syringes.find(
       (syringe) => syringe.id === syringesQuery.data?.default_syringe_id
@@ -93,35 +111,46 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
   const currentDoseContext = JSON.stringify([
     penId,
     selectedPen?.kind ?? '',
-    selectedPen?.preparation?.id ?? selectedPen?.concentration_mg_ml ?? null,
+    administrationRoute,
+    selectedPen?.preparation?.id ?? null,
+    selectedPen?.preparation?.revision ?? null,
+    selectedPen?.preparation?.exact?.concentration_mg_ml ??
+      selectedPen?.concentration_mg_ml ??
+      null,
     syringeId,
-    selectedSyringe
-      ? [
-          selectedSyringe.id,
-          selectedSyringe.graduation_type,
-          selectedSyringe.units_per_ml,
-          selectedSyringe.capacity_ml,
-          selectedSyringe.capacity_units,
-          selectedSyringe.increment,
-        ]
-      : null,
+    deviceCalibrationContext(selectedSyringe),
   ]);
   const doseContextChanged =
     doseContext !== null && doseContext !== currentDoseContext;
   const effectiveDoseText = doseContextChanged ? '' : doseText;
-  const effectiveDoseUnit = doseContextChanged ? 'mg' : doseUnit;
+  const effectiveDoseUnit = doseContextChanged
+    ? nasal
+      ? 'pumps'
+      : 'mg'
+    : doseUnit;
   const manualUnitMismatch = !calculatedMode && effectiveDoseUnit !== 'mg';
-  const parsedDose = positiveDrawDoseSchema.safeParse({
+  const parsedDose = deviceDoseSchema.safeParse({
     value: effectiveDoseText.trim(),
     unit: effectiveDoseUnit,
   });
+  let validDose = false;
+  if (parsedDose.success && selectedSyringe) {
+    try {
+      validDose = positiveDrawDoseSchema.safeParse(
+        normalizeDeviceDose(parsedDose.data, selectedSyringe)
+      ).success;
+    } catch {
+      validDose = false;
+    }
+  }
   const drawInput: CalculatedDrawInput | null =
-    calculatedMode && selectedSyringe && parsedDose.success
+    calculatedMode && selectedSyringe && parsedDose.success && validDose
       ? { syringe_id: syringeId, dose: parsedDose.data }
       : null;
   const preview = useSyringeDrawPreview(
     calculatedMode ? penId : null,
-    drawInput
+    drawInput,
+    currentDoseContext
   );
   const drawBlocked =
     calculatedMode &&
@@ -141,12 +170,16 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
   );
   const penOptions = useMemo(
     () => [
-      {
-        label: t('medications.glp1.log.dontDeduct', {
-          defaultValue: "Don't deduct",
-        }),
-        value: NO_PEN,
-      },
+      ...(!nasal
+        ? [
+            {
+              label: t('medications.glp1.log.dontDeduct', {
+                defaultValue: "Don't deduct",
+              }),
+              value: NO_PEN,
+            },
+          ]
+        : []),
       ...pens.map((p) => {
         const left = penDosesLeft(p);
         return {
@@ -173,12 +206,13 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
         };
       }),
     ],
-    [pens, t]
+    [pens, t, nasal]
   );
 
   const handleLog = () => {
     if (
-      !site ||
+      (!nasal && !site) ||
+      (nasal && (!selectedPen || !selectedSyringe || !calculatedMode)) ||
       logInjection.isPending ||
       submittingRef.current ||
       stalePenChoice ||
@@ -211,7 +245,7 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
     logInjection.mutate(
       {
         medication_id: med.id,
-        site,
+        site: nasal ? null : site,
         ...(calculatedMode && drawInput
           ? { calculated_draw: drawInput }
           : { dose_mg: dose }),
@@ -229,7 +263,7 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
           setSelectedSite(null);
           setDoseText('');
           setDoseContext(null);
-          setDoseUnit('mg');
+          setDoseUnit(nasal ? 'pumps' : 'mg');
           setNotes('');
           setPenChoice(null);
           Toast.show({
@@ -260,7 +294,11 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
   return (
     <View className="bg-surface rounded-xl p-4 mb-3 shadow-sm">
       <Text className="text-base font-semibold text-text-primary">
-        {t('medications.glp1.log.title', { defaultValue: 'Log injection' })}
+        {nasal
+          ? t('medications.devices.logNasal', {
+              defaultValue: 'Log prepared nasal dose',
+            })
+          : t('medications.glp1.log.title', { defaultValue: 'Log injection' })}
       </Text>
       <View className="flex-row gap-4 mt-4">
         <View className="flex-1 gap-1.5">
@@ -283,7 +321,8 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
             onChangeText={(value) => {
               setPenChoice(penId);
               setDoseContext(currentDoseContext);
-              if (doseContextChanged || !calculatedMode) setDoseUnit('mg');
+              if (doseContextChanged || !calculatedMode)
+                setDoseUnit(nasal ? 'pumps' : 'mg');
               setDoseText(value);
             }}
             keyboardType="decimal-pad"
@@ -307,7 +346,7 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
               setPenChoice(value);
               setDoseText('');
               setDoseContext(null);
-              setDoseUnit('mg');
+              setDoseUnit(nasal ? 'pumps' : 'mg');
             }}
             title={t('medications.glp1.log.penTitle', {
               defaultValue: 'Deduct from',
@@ -334,6 +373,9 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
       )}
 
       {selectedPen?.kind === 'vial' && (
+        <PreparationBudNotice date={selectedPen.bud_date} />
+      )}
+      {
         <View className="gap-3 mt-4">
           <View className="flex-row items-center justify-between">
             <Text className="text-sm font-medium text-text-secondary">
@@ -344,13 +386,13 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
               onPress={() => {
                 setDoseText('');
                 setDoseContext(null);
-                setDoseUnit('mg');
+                setDoseUnit(nasal ? 'pumps' : 'mg');
                 onManageSyringes();
               }}
             >
               <Text className="text-sm font-semibold text-accent-primary">
-                {t('medications.syringes.manage', {
-                  defaultValue: 'Manage syringes',
+                {t('medications.devices.manage', {
+                  defaultValue: 'Manage devices',
                 })}
               </Text>
             </TouchableOpacity>
@@ -361,19 +403,23 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
               setSyringeChoice(value);
               setDoseText('');
               setDoseContext(null);
-              setDoseUnit('mg');
+              setDoseUnit(nasal ? 'pumps' : 'mg');
             }}
             title={t('medications.syringes.syringe', {
               defaultValue: 'Syringe',
             })}
             options={[
-              {
-                value: '',
-                label: t('medications.syringes.manual', {
-                  defaultValue: 'Manual dose (mg)',
-                }),
-              },
-              ...(syringesQuery.data?.syringes ?? []).map((syringe) => ({
+              ...(!nasal
+                ? [
+                    {
+                      value: '',
+                      label: t('medications.syringes.manual', {
+                        defaultValue: 'Manual dose (mg)',
+                      }),
+                    },
+                  ]
+                : []),
+              ...syringes.map((syringe) => ({
                 value: syringe.id,
                 label: syringe.name,
               })),
@@ -392,72 +438,56 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
                 title={t('medications.syringes.inputUnit', {
                   defaultValue: 'Input unit',
                 })}
-                options={[
-                  {
-                    value: 'mcg' as const,
-                    label: t('medications.preparation.unitMcg', {
-                      defaultValue: 'mcg',
-                    }),
-                  },
-                  {
-                    value: 'mg' as const,
-                    label: t('medications.preparation.unitMg', {
-                      defaultValue: 'mg',
-                    }),
-                  },
-                  {
-                    value: 'ml' as const,
-                    label: t('medications.syringes.ml', { defaultValue: 'mL' }),
-                  },
-                  {
-                    value: 'units' as const,
-                    label: t('medications.syringes.units', {
-                      defaultValue: 'Units',
-                    }),
-                  },
-                ]}
-              />
-              <SyringeDrawPreview
-                data={drawInput ? preview.data : undefined}
-                pending={preview.isFetching}
-                failed={preview.isError}
-                showNeutral={!!selectedSyringe}
+                options={deviceDoseUnitOptions(selectedSyringe?.device_type, t)}
               />
             </>
           )}
         </View>
-      )}
+      }
 
-      <Text className="text-xs text-text-muted mt-4 mb-3">
-        {t('medications.glp1.log.legend', {
-          defaultValue:
-            'Green is the suggested site. Amber was used in the last {{days}} days.',
-          days: siteQuery.data?.restDays ?? 7,
-        })}
-      </Text>
-
-      <InjectionBodyMap
-        sites={mapSites}
-        selectedSiteId={site}
-        suggestedSiteId={suggestedSite}
-        restingSiteIds={siteQuery.data?.restingSiteIds}
-        onSelect={setSelectedSite}
+      <SyringeDrawPreview
+        data={drawInput ? preview.data : undefined}
+        pending={!!drawInput && preview.isFetching}
+        failed={!!drawInput && preview.isError}
+        showNeutral
+        neutralDeviceType={
+          nasal ? 'pump' : (selectedSyringe?.device_type ?? 'syringe')
+        }
       />
-      {/* The map is touch-only; the picker is the accessible way to choose a site. */}
-      <View className="mt-3">
-        <BottomSheetPicker
-          value={site ?? ''}
-          options={siteOptions}
-          onSelect={setSelectedSite}
-          placeholder={t('medications.glp1.log.chooseSite', {
-            defaultValue: 'Choose a site',
-          })}
-          title={t('medications.glp1.log.siteTitle', {
-            defaultValue: 'Injection site',
-          })}
-        />
-      </View>
 
+      {!nasal && (
+        <>
+          <Text className="text-xs text-text-muted mt-4 mb-3">
+            {t('medications.glp1.log.legend', {
+              defaultValue:
+                'Green is the suggested site. Amber was used in the last {{days}} days.',
+              days: siteQuery.data?.restDays ?? 7,
+            })}
+          </Text>
+
+          <InjectionBodyMap
+            sites={mapSites}
+            selectedSiteId={site}
+            suggestedSiteId={suggestedSite}
+            restingSiteIds={siteQuery.data?.restingSiteIds}
+            onSelect={setSelectedSite}
+          />
+          {/* The map is touch-only; the picker is the accessible way to choose a site. */}
+          <View className="mt-3">
+            <BottomSheetPicker
+              value={site ?? ''}
+              options={siteOptions}
+              onSelect={setSelectedSite}
+              placeholder={t('medications.glp1.log.chooseSite', {
+                defaultValue: 'Choose a site',
+              })}
+              title={t('medications.glp1.log.siteTitle', {
+                defaultValue: 'Injection site',
+              })}
+            />
+          </View>
+        </>
+      )}
       <View className="mt-4">
         <DateSelectRow
           date={date}
@@ -483,7 +513,8 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
         className="mt-4"
         onPress={handleLog}
         disabled={
-          !site ||
+          (!nasal && !site) ||
+          (nasal && (!selectedPen || !selectedSyringe || !calculatedMode)) ||
           stalePenChoice ||
           doseContextChanged ||
           manualUnitMismatch ||
@@ -491,12 +522,18 @@ const Glp1LogInjectionCard: React.FC<Glp1LogInjectionCardProps> = ({
         }
         loading={logInjection.isPending}
       >
-        {siteLabel
+        {!nasal && siteLabel
           ? t('medications.glp1.log.logAt', {
               defaultValue: 'Log injection: {{site}}',
               site: siteLabel,
             })
-          : t('medications.glp1.log.title', { defaultValue: 'Log injection' })}
+          : nasal
+            ? t('medications.devices.logNasal', {
+                defaultValue: 'Log prepared nasal dose',
+              })
+            : t('medications.glp1.log.title', {
+                defaultValue: 'Log injection',
+              })}
       </Button>
 
       <CalendarSheet

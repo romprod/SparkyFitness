@@ -1,5 +1,9 @@
 import type {
   LabComparisonResponse,
+  LabPanelHistoryResponse,
+  CreateManualLabPanelBody,
+  ImportLabReportResponse,
+  DeleteLabImportsResponse,
   LabMarkerResponse,
   LabResultResponse,
 } from '@workspace/shared';
@@ -109,4 +113,28 @@ export const fetchLabComparison = (): Promise<LabComparisonResponse> =>
     serviceName: SERVICE,
     operation: 'fetch imported report comparison',
     logResponseBody: false,
+  });
+
+export const fetchLabPanels = (): Promise<LabPanelHistoryResponse> =>
+  apiFetch({
+    endpoint: '/api/v2/lab-results/panels',
+    serviceName: SERVICE,
+    operation: 'fetch lab panels',
+  });
+export const createManualLabPanel = (
+  body: CreateManualLabPanelBody
+): Promise<ImportLabReportResponse> =>
+  apiFetch({
+    endpoint: '/api/v2/lab-results/panels',
+    serviceName: SERVICE,
+    operation: 'create lab panel',
+    method: 'POST',
+    body,
+  });
+export const deleteLabPanel = (id: string): Promise<DeleteLabImportsResponse> =>
+  apiFetch({
+    endpoint: `/api/v2/lab-results/panels/${encodeURIComponent(id)}`,
+    serviceName: SERVICE,
+    operation: 'delete lab panel',
+    method: 'DELETE',
   });

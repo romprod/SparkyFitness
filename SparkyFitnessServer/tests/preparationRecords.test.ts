@@ -68,7 +68,7 @@ describe('persisted preparation contract', () => {
       preparation: prep,
     });
     expect(result.preparation.mass_mg).toBe(12);
-    expect(query.mock.calls[2][1].slice(5, 7)).toEqual([4, 3]);
+    expect(query.mock.calls[2][1].slice(5, 7)).toEqual(['4', '3']);
     expect(query.mock.calls[3][1]).toContain('owner');
     expect(query).toHaveBeenCalledWith('COMMIT');
   });

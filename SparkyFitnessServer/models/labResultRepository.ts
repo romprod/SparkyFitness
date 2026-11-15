@@ -1,6 +1,12 @@
+import {
+  createManualLabPanelBodySchema,
+  parseLabValue,
+} from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreateLabMarkerBody,
+  CreateManualLabPanelBody,
+  LabPanelHistoryResponse,
   LabComparisonResponse,
   DeleteLabImportsResponse,
   ImportLabReportBody,
@@ -416,6 +422,8 @@ function mapRowToReport(
     id: String(row.id),
     user_id: String(row.user_id),
     lab_name: toStringOrNull(row.lab_name),
+    origin: row.origin === 'manual' ? 'manual' : 'imported',
+    notes: toStringOrNull(row.notes),
     collected_on: toStringOrNull(row.collected_on)?.split('T')[0] ?? null,
     created_at: toIso(row.created_at),
   };
@@ -551,7 +559,8 @@ export async function importLabReport(
 export async function deleteLabReports(
   userId: string,
   reportId: string | null,
-  authenticatedUserId?: string
+  authenticatedUserId?: string,
+  importedOnly = true
 ): Promise<DeleteLabImportsResponse | null> {
   const client = await getClient(userId, authenticatedUserId);
   try {
@@ -559,13 +568,15 @@ export async function deleteLabReports(
     const affected = await client.query(
       `SELECT custom_marker_id FROM lab_results
        WHERE user_id = $1 AND report_id IS NOT NULL
-         AND ($2::uuid IS NULL OR report_id = $2::uuid)`,
-      [userId, reportId]
+         AND ($2::uuid IS NULL OR report_id = $2::uuid)
+         AND report_id IN (SELECT id FROM lab_reports WHERE user_id=$1 AND (NOT $3::boolean OR origin='imported'))`,
+      [userId, reportId, importedOnly]
     );
     const reports = await client.query(
       `DELETE FROM lab_reports
-       WHERE user_id = $1 AND ($2::uuid IS NULL OR id = $2::uuid)`,
-      [userId, reportId]
+       WHERE user_id = $1 AND ($2::uuid IS NULL OR id = $2::uuid)
+         AND (NOT $3::boolean OR origin='imported')`,
+      [userId, reportId, importedOnly]
     );
     if (reportId !== null && (reports.rowCount ?? 0) === 0) {
       await client.query('ROLLBACK');
@@ -620,27 +631,37 @@ export async function deleteResultsForMarkerKey(
   }
 }
 
-/** Complete contents of the latest three explicit imported reports, never inferred date buckets. */
+/** Complete contents of the latest three explicit panels, never inferred date buckets. */
 export async function listLatestLabPanels(
   userId: string,
   authenticatedUserId?: string
 ): Promise<LabComparisonResponse> {
+  return listLabPanels(userId, authenticatedUserId, 3);
+}
+
+export async function listLabPanels(
+  userId: string,
+  authenticatedUserId?: string,
+  limit: number | null = null
+): Promise<LabPanelHistoryResponse> {
   const client = await getClient(userId, authenticatedUserId);
   try {
     const result = await client.query(
-      `SELECT p.id,p.lab_name,p.collected_on,p.created_at,
+      `SELECT p.id,p.lab_name,p.collected_on,p.created_at,p.origin,p.notes,
     COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.created_at DESC,r.id DESC) FILTER(WHERE r.id IS NOT NULL),'[]'::jsonb) AS results
-    FROM (SELECT id,lab_name,collected_on,created_at FROM lab_reports WHERE user_id=$1
-      ORDER BY collected_on DESC NULLS LAST,created_at DESC,id DESC LIMIT 3) p
+    FROM (SELECT id,lab_name,collected_on,created_at,origin,notes FROM lab_reports WHERE user_id=$1
+      ORDER BY collected_on DESC NULLS LAST,created_at DESC,id DESC LIMIT $2) p
     LEFT JOIN lab_results r ON r.report_id=p.id AND r.user_id=$1
-    GROUP BY p.id,p.lab_name,p.collected_on,p.created_at
+    GROUP BY p.id,p.lab_name,p.collected_on,p.created_at,p.origin,p.notes
     ORDER BY p.collected_on DESC NULLS LAST,p.created_at DESC,p.id DESC`,
-      [userId]
+      [userId, limit]
     );
     return {
       panels: result.rows.map((row: Record<string, unknown>) => ({
         id: String(row.id),
         lab_name: toStringOrNull(row.lab_name),
+        origin: row.origin === 'manual' ? 'manual' : 'imported',
+        notes: toStringOrNull(row.notes),
         collected_on: toStringOrNull(row.collected_on),
         created_at: toIso(row.created_at),
         results: (row.results as Record<string, unknown>[]).map((r) => ({
@@ -659,4 +680,102 @@ export async function listLatestLabPanels(
   } finally {
     client.release();
   }
+}
+
+/** A real manual panel. Marker resolution and every row share one transaction. */
+export async function createManualLabPanel(
+  userId: string,
+  input: CreateManualLabPanelBody,
+  authenticatedUserId?: string
+): Promise<ImportLabReportResponse> {
+  const data = createManualLabPanelBodySchema.parse(input);
+  const client = await getClient(userId, authenticatedUserId);
+  const actor = authenticatedUserId ?? userId;
+  try {
+    await client.query('BEGIN');
+    const report = await client.query(
+      "INSERT INTO lab_reports (user_id,lab_name,collected_on,origin,notes,created_by_user_id,updated_by_user_id) VALUES ($1,$2,$3,'manual',$4,$5,$5) RETURNING *",
+      [
+        userId,
+        data.lab_name ?? null,
+        data.entry_date,
+        data.notes ?? null,
+        actor,
+      ]
+    );
+    const results: LabResultResponse[] = [];
+    const seen = new Set<string>();
+    for (const item of data.results) {
+      let markerId = item.custom_marker_id ?? null;
+      if (markerId) {
+        const owned = await client.query(
+          'SELECT id FROM lab_markers WHERE user_id=$1 AND id=$2',
+          [userId, markerId]
+        );
+        if (!owned.rows[0])
+          throw Object.assign(new Error('Unknown custom marker'), {
+            status: 400,
+          });
+      } else if (item.custom_marker_name) {
+        markerId = await findOrCreateMarker(
+          client,
+          userId,
+          {
+            name: item.custom_marker_name,
+            unit: item.unit,
+            ref_range_low: item.ref_range_low ?? null,
+            ref_range_high: item.ref_range_high ?? null,
+          },
+          actor
+        );
+      }
+      const key = item.marker_key
+        ? `system:${item.marker_key}`
+        : `custom:${markerId}`;
+      if (seen.has(key))
+        throw Object.assign(new Error('Duplicate marker in panel'), {
+          status: 400,
+        });
+      seen.add(key);
+      // Text is authoritative: a qualifier/category never becomes an exact number.
+      const numeric =
+        item.value_text !== null && item.value_text !== undefined
+          ? parseLabValue(item.value_text)
+          : (item.value_numeric ?? null);
+      const saved = await client.query(
+        "INSERT INTO lab_results (user_id,marker_key,custom_marker_id,entry_date,value_numeric,value_text,unit,ref_range_low,ref_range_high,lab_name,source,report_id,created_by_user_id,updated_by_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'manual',$11,$12,$12) RETURNING *",
+        [
+          userId,
+          item.marker_key ?? null,
+          markerId,
+          data.entry_date,
+          numeric,
+          item.value_text ?? null,
+          item.unit,
+          item.ref_range_low ?? null,
+          item.ref_range_high ?? null,
+          data.lab_name ?? null,
+          report.rows[0].id,
+          actor,
+        ]
+      );
+      results.push(mapRowToResult(saved.rows[0]));
+    }
+    await client.query('COMMIT');
+    return { report: mapRowToReport(report.rows[0]), results };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Explicit panel delete is distinct from deleting imported reports in bulk. */
+export async function deleteLabPanel(
+  userId: string,
+  panelId: string,
+  authenticatedUserId?: string
+): Promise<DeleteLabImportsResponse | null> {
+  return deleteLabReports(userId, panelId, authenticatedUserId, false);
 }

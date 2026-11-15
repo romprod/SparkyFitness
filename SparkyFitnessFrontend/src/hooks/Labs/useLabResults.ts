@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import {
   useMutation,
   useQuery,
@@ -10,6 +11,7 @@ import * as labApi from '@/api/Labs/labResultsApi';
 import { labKeys } from '@/api/keys/labs';
 import type {
   CreateLabResultBody,
+  CreateManualLabPanelBody,
   ImportLabReportBody,
   UpdateLabResultBody,
 } from '@workspace/shared';
@@ -54,7 +56,7 @@ export const useLabComparison = () =>
     meta: {
       errorMessage: i18n.t(
         'labs.comparison.loadFailed',
-        'Could not load the report comparison.'
+        'Could not load the panel comparison.'
       ),
     },
   });
@@ -179,4 +181,59 @@ export const useImportLabReport = () => {
       ),
     },
   });
+};
+
+export const useLabPanels = () =>
+  useQuery({
+    queryKey: labKeys.panels(),
+    queryFn: labApi.listLabPanels,
+    meta: {
+      errorMessage: i18n.t(
+        'labs.panels.loadFailed',
+        'Could not load the lab panels.'
+      ),
+    },
+  });
+
+export const useCreateManualLabPanel = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateManualLabPanelBody) =>
+      labApi.createManualLabPanel(body),
+    onSuccess: () => invalidateLabs(client),
+    meta: { silentError: true },
+  });
+};
+
+export const useDeleteLabPanel = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => labApi.deleteLabPanel(id),
+    onSuccess: () => invalidateLabs(client),
+    meta: {
+      errorMessage: i18n.t(
+        'labs.panels.deleteFailed',
+        'Could not delete the lab panel.'
+      ),
+    },
+  });
+};
+
+/** Removed synchronously on context switches, before identity refresh completes. */
+export const useLabPanelScope = () => {
+  const client = useQueryClient();
+  const isCurrent = () => client.getQueryData(labKeys.panels()) !== undefined;
+  const ready = useSyncExternalStore(
+    (notify) =>
+      client.getQueryCache().subscribe((event) => {
+        if (
+          (event.type === 'removed' || event.type === 'updated') &&
+          event.query.queryKey[0] === 'labs' &&
+          event.query.queryKey[1] === 'panels'
+        )
+          notify();
+      }),
+    isCurrent
+  );
+  return { ready, isCurrent };
 };

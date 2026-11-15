@@ -1,3 +1,4 @@
+import { resolvePreparedMedicationRoute } from '@workspace/shared';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, FlaskConical } from 'lucide-react';
@@ -25,7 +26,9 @@ import Glp1InventoryManager from './Glp1InventoryManager';
 export default function PeptideStock({ meds }: { meds: Medication[] }) {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
-  const injectables = meds.filter((m) => m.type_id === 'injection');
+  const injectables = meds.filter(
+    (m) => resolvePreparedMedicationRoute(m) !== null
+  );
   const selected =
     injectables.find((m) => m.id === params.get('medication')) ??
     injectables.find((m) => m.is_active) ??

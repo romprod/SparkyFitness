@@ -9,8 +9,40 @@ const mockCreate = jest.fn();
 const mockUpdate = jest.fn();
 let mockPens: MedicationPen[] = [];
 let mockSave: () => void;
+let mockCreationDevice = false;
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+jest.mock('../../src/hooks/useMedications', () => ({
+  useMedicationDetail: () => ({
+    data: {
+      type_id: 'injection',
+      route_id: 'subcutaneous',
+      dose_amount: 1,
+      dose_unit: 'mg',
+    },
+  }),
+}));
+jest.mock('../../src/hooks/useSyringes', () => ({
+  useSyringes: () => ({
+    data: {
+      syringes: mockCreationDevice
+        ? [
+            {
+              id: 'device',
+              name: 'Example syringe',
+              device_type: 'syringe',
+              graduation_type: 'units',
+              units_per_ml: 100,
+              capacity_ml: '1',
+              capacity_units: 100,
+              increment: '1',
+            },
+          ]
+        : [],
+      default_syringe_id: null,
+    },
+  }),
 }));
 jest.mock('../../src/hooks/useGlp1', () => ({
   useMedicationPens: () => ({ data: mockPens }),
@@ -110,6 +142,7 @@ const screen = (editing = false) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockPens = [];
+  mockCreationDevice = false;
 });
 
 test('unrelated legacy edits omit preparation and BUD fields', () => {
@@ -127,28 +160,26 @@ test('unrelated legacy edits omit preparation and BUD fields', () => {
   expect(body).not.toHaveProperty('lifecycle_intent');
 });
 
-test('records mcg input without requiring an injection dose or inventing a BUD', () => {
+test('reviews dry mcg preparation without requiring dose or inventing a BUD', () => {
   const view = screen();
-  fireEvent.press(view.getByText('Vial'));
-  fireEvent(view.getAllByRole('switch')[0], 'valueChange', true);
+  fireEvent.press(view.getByText('Next'));
   fireEvent.changeText(view.getByLabelText('Labelled vial content'), '1000');
   fireEvent.press(view.getByText('mcg'));
-  fireEvent.press(view.getByText('Premixed'));
   fireEvent.changeText(view.getByLabelText('Final volume (mL)'), '2');
   fireEvent.changeText(view.getByLabelText('Prepared date'), '2026-11-15');
+  fireEvent.press(view.getByText('Review preparation'));
   act(() => mockSave());
   expect(mockCreate).toHaveBeenCalledWith(
     expect.objectContaining({
       body: expect.objectContaining({
         preparation: {
-          mode: 'premixed',
-          mass_value: 1000,
+          mode: 'reconstituted',
+          mass_value: '1000',
           mass_unit: 'mcg',
-          final_volume_ml: 2,
+          final_volume_ml: '2',
           prepared_date: '2026-11-15',
           diluent: null,
         },
-        concentration_mg_ml: 0.5,
       }),
     }),
     expect.anything()
@@ -165,7 +196,7 @@ test('saved preparation is visible and its volume cannot be edited or resubmitte
         mode: 'reconstituted',
         mass_value: 10,
         mass_unit: 'mg',
-        final_volume_ml: 2,
+        final_volume_ml: '2',
         prepared_date: '2026-11-01',
         diluent: 'Example diluent',
         mass_mg: 10,
@@ -175,7 +206,7 @@ test('saved preparation is visible and its volume cannot be edited or resubmitte
     },
   ];
   const view = screen(true);
-  expect(view.getByText('Saved preparation (read-only)')).toBeTruthy();
+  expect(view.getByText('Saved preparation')).toBeTruthy();
   expect(view.getByLabelText('Final volume (mL)').props.editable).toBe(false);
   expect(view.queryByText('Save preparation details')).toBeNull();
   act(() => mockSave());
@@ -272,4 +303,47 @@ test('choosing the existing naturally finished status does not signal manual ret
   expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
     'lifecycle_intent'
   );
+});
+
+test('premix creation reviews the exact labelled concentration and fill without a synthetic target', () => {
+  const view = screen();
+  fireEvent.press(view.getByText('Premixed'));
+  fireEvent.press(view.getByText('Next'));
+  fireEvent.changeText(
+    view.getByLabelText('Label concentration (mg/mL)'),
+    '1.234567890123456789'
+  );
+  fireEvent.changeText(
+    view.getByLabelText('Final volume (mL)'),
+    '3.000000000000000001'
+  );
+  fireEvent.press(view.getByText('Review preparation'));
+  expect(
+    view.getByText('Concentration: 1.234567890123456789 mg/mL')
+  ).toBeTruthy();
+  expect(view.getByText('Draw to —')).toBeTruthy();
+  expect(view.getByText('Estimated doses in vial: —')).toBeTruthy();
+  act(() => mockSave());
+  expect(mockCreate.mock.calls[0][0].body.preparation).toEqual(
+    expect.objectContaining({
+      mode: 'premixed',
+      label_concentration_value: '1.234567890123456789',
+      final_volume_ml: '3.000000000000000001',
+    })
+  );
+  expect(mockCreate.mock.calls[0][0].body).not.toHaveProperty(
+    'calculated_draw'
+  );
+});
+
+test('creation review calculates estimated yield from the actual dose and one saved eligible device without logging', () => {
+  mockCreationDevice = true;
+  const view = screen();
+  fireEvent.press(view.getByText('Next'));
+  fireEvent.changeText(view.getByLabelText('Labelled vial content'), '10');
+  fireEvent.changeText(view.getByLabelText('Final volume (mL)'), '2');
+  fireEvent.press(view.getByText('Review preparation'));
+  expect(view.getByText('Measured marking: 20 Units')).toBeTruthy();
+  expect(view.getByText('Estimated doses in vial: 10')).toBeTruthy();
+  expect(mockCreate).not.toHaveBeenCalled();
 });

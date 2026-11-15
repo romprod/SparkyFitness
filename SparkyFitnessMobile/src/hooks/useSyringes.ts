@@ -29,10 +29,11 @@ export function useSyringeMutations() {
 }
 export function useSyringeDrawPreview(
   penId: string | null,
-  input: DrawPreviewInput | null
+  input: DrawPreviewInput | null,
+  context?: string
 ) {
   return useQuery({
-    queryKey: ['medications', 'drawPreview', penId, input],
+    queryKey: ['medications', 'drawPreview', penId, input, context],
     queryFn: ({ signal }) => previewSyringeDraw(penId!, input!, signal),
     enabled: !!penId && !!input,
     // Every preview rechecks the current stock, including on returning to this screen.

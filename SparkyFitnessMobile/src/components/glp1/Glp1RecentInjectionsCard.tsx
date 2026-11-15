@@ -14,15 +14,19 @@ import { addLog } from '../../services/LogService';
 
 const RECENT_LIMIT = 10;
 
-const Glp1RecentInjectionsCard: React.FC<{ medicationId: string }> = ({
-  medicationId,
-}) => {
+const Glp1RecentInjectionsCard: React.FC<{
+  medicationId: string;
+  onEdit?: (entry: InjectionEntry) => void;
+}> = ({ medicationId, onEdit }) => {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language.startsWith('pl') ? 'pl-PL' : 'en-US';
   const { preferences } = usePreferences();
   const { data: injections = [] } = useInjections(medicationId);
   const deleteInjection = useDeleteInjection();
-  const [iconDanger] = useCSSVariable(['--color-icon-danger']) as [string];
+  const [iconDanger, iconAccent] = useCSSVariable([
+    '--color-icon-danger',
+    '--color-accent-primary',
+  ]) as [string, string];
 
   const recent = [...injections]
     .sort((a, b) => b.injected_at.localeCompare(a.injected_at))
@@ -32,11 +36,11 @@ const Glp1RecentInjectionsCard: React.FC<{ medicationId: string }> = ({
     (injection: InjectionEntry) => {
       Alert.alert(
         t('medications.glp1.recent.deleteTitle', {
-          defaultValue: 'Delete injection',
+          defaultValue: 'Delete recorded dose',
         }),
         t('medications.glp1.recent.deleteMessage', {
           defaultValue:
-            'Delete this injection? A dose deducted from a pen or vial is credited back.',
+            'Delete this recorded dose? A dose deducted from a pen or vial is credited back.',
         }),
         [
           {
@@ -56,7 +60,7 @@ const Glp1RecentInjectionsCard: React.FC<{ medicationId: string }> = ({
                   Toast.show({
                     type: 'error',
                     text1: t('medications.glp1.recent.deleteFailed', {
-                      defaultValue: 'Failed to delete injection',
+                      defaultValue: 'Failed to delete recorded dose',
                     }),
                   });
                 },
@@ -72,13 +76,13 @@ const Glp1RecentInjectionsCard: React.FC<{ medicationId: string }> = ({
     <View className="bg-surface rounded-xl p-4 mb-3 shadow-sm">
       <Text className="text-base font-semibold text-text-primary mb-2">
         {t('medications.glp1.recent.title', {
-          defaultValue: 'Recent injections',
+          defaultValue: 'Recent doses',
         })}
       </Text>
       {recent.length === 0 ? (
         <Text className="text-sm text-text-muted">
           {t('medications.glp1.recent.empty', {
-            defaultValue: 'No injections logged yet.',
+            defaultValue: 'No doses logged yet.',
           })}
         </Text>
       ) : (
@@ -97,7 +101,18 @@ const Glp1RecentInjectionsCard: React.FC<{ medicationId: string }> = ({
                 </Text>
                 <Text className="text-xs text-text-muted mt-0.5">
                   {[
-                    injection.site
+                    injection.administration_route === 'nasal'
+                      ? t('medications.devices.nasalHistory', {
+                          defaultValue: 'Nasal dose',
+                        })
+                      : injection.administration_route === 'injection'
+                        ? t('medications.devices.injectionHistory', {
+                            defaultValue: 'Injection',
+                          })
+                        : t('medications.devices.recordedHistory', {
+                            defaultValue: 'Recorded dose',
+                          }),
+                    injection.administration_route !== 'nasal' && injection.site
                       ? injectionSiteLabel(injection.site, t)
                       : null,
                     injection.dose_mg != null
@@ -109,6 +124,19 @@ const Glp1RecentInjectionsCard: React.FC<{ medicationId: string }> = ({
                     .join(' · ')}
                 </Text>
               </View>
+              {onEdit && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.edit', {
+                    defaultValue: 'Edit',
+                  })}
+                  onPress={() => onEdit(injection)}
+                  hitSlop={8}
+                  className="ml-3"
+                >
+                  <Icon name="pencil" size={18} color={iconAccent} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={() => handleDelete(injection)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

@@ -1,5 +1,11 @@
 import { apiCall } from '@/api/api';
 import type {
+  MedicationPreparationReviewInput,
+  MedicationPreparationReview,
+  MedicationPreparationCorrectionInput,
+  MedicationPreparationCorrectionResult,
+} from '@workspace/shared';
+import type {
   Medication,
   MedicationSchedule,
   MedicationPen,
@@ -92,6 +98,24 @@ export const updatePen = (
 
 export const deletePen = (id: string): Promise<void> =>
   apiCall(`/v2/medications/pens/${id}`, { method: 'DELETE' });
+
+export const reviewPreparation = (
+  id: string,
+  body: MedicationPreparationReviewInput
+): Promise<MedicationPreparationReview> =>
+  apiCall(`/v2/medications/pens/${id}/preparation-review`, {
+    method: 'POST',
+    body,
+  });
+
+export const correctPreparation = (
+  id: string,
+  body: MedicationPreparationCorrectionInput
+): Promise<MedicationPreparationCorrectionResult> =>
+  apiCall(`/v2/medications/pens/${id}/preparation-corrections`, {
+    method: 'POST',
+    body,
+  });
 
 // --- Injections ------------------------------------------------------------
 

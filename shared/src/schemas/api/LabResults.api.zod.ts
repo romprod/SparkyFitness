@@ -204,11 +204,64 @@ export const importLabReportBodySchema = z.object({
 });
 export type ImportLabReportBody = z.infer<typeof importLabReportBodySchema>;
 
+/** A manually entered blood draw; raw text is preserved, including qualifiers. */
+export const manualLabPanelResultSchema = z
+  .object({ ...createLabResultBodySchema.shape })
+  .omit({
+    entry_date: true,
+    lab_name: true,
+    notes: true,
+    source: true,
+  })
+  .refine(
+    (row) =>
+      [row.marker_key, row.custom_marker_id, row.custom_marker_name].filter(
+        (v) => v != null
+      ).length === 1,
+    { message: 'Provide exactly one marker', path: ['marker_key'] }
+  )
+  .refine((row) => row.value_numeric != null || row.value_text != null, {
+    message: 'Provide value_numeric or value_text',
+    path: ['value_numeric'],
+  })
+  .refine(refRangeOrdered, refRangeOrderedIssue);
+export const createManualLabPanelBodySchema = z
+  .object({
+    /** Draft identity assertion only; the server still resolves ownership. */
+    expected_owner_id: z.string().uuid().optional(),
+    entry_date: dateStringSchema,
+    lab_name: z.string().trim().max(200).nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    results: z.array(manualLabPanelResultSchema).min(1).max(200),
+  })
+  .superRefine((body, ctx) => {
+    const seen = new Set<string>();
+    body.results.forEach((row, index) => {
+      const key = row.marker_key
+        ? `system:${row.marker_key}`
+        : row.custom_marker_id
+          ? `id:${row.custom_marker_id}`
+          : `name:${row.custom_marker_name?.toLowerCase()}`;
+      if (seen.has(key))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['results', index],
+          message: 'Duplicate marker in panel',
+        });
+      seen.add(key);
+    });
+  });
+export type CreateManualLabPanelBody = z.infer<
+  typeof createManualLabPanelBodySchema
+>;
+
 export const labReportResponseSchema = z.object({
   id: z.string(),
   user_id: z.string(),
   lab_name: z.string().nullable(),
   collected_on: z.string().nullable(),
+  origin: z.enum(['imported', 'manual']).optional(),
+  notes: z.string().nullable().optional(),
   created_at: z.string(),
 });
 export type LabReportResponse = z.infer<typeof labReportResponseSchema>;
@@ -239,7 +292,7 @@ export type DeleteMarkerResultsResponse = z.infer<
   typeof deleteMarkerResultsResponseSchema
 >;
 
-/** Explicit imported report groups only; individual manual/FHIR rows are not panels. */
+/** Explicit manual/imported panel groups; individual ungrouped rows are not panels. */
 export const labComparisonResultSchema = labResultResponseSchema.pick({
   id: true,
   marker_key: true,
@@ -260,3 +313,10 @@ export const labComparisonResponseSchema = z.object({
   panels: z.array(labComparisonPanelSchema).max(3),
 });
 export type LabComparisonResponse = z.infer<typeof labComparisonResponseSchema>;
+
+export const labPanelHistoryResponseSchema = z.object({
+  panels: z.array(labComparisonPanelSchema),
+});
+export type LabPanelHistoryResponse = z.infer<
+  typeof labPanelHistoryResponseSchema
+>;

@@ -1,9 +1,12 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import {
   useDeleteLabImports,
   useDeleteLabMarker,
   useSaveLabResult,
   useLabComparison,
+  useLabPanels,
+  useCreateManualLabPanel,
+  useDeleteLabPanel,
 } from '../../src/hooks/useLabResults';
 import {
   createLabMarker,
@@ -11,6 +14,9 @@ import {
   deleteLabMarker,
   fetchLabComparison,
   fetchLabMarkers,
+  fetchLabPanels,
+  createManualLabPanel,
+  deleteLabPanel,
 } from '../../src/services/api/labResultsApi';
 import {
   deleteBuiltinMarkerResults,
@@ -28,6 +34,9 @@ jest.mock('../../src/services/api/labResultsApi', () => ({
   fetchLabResults: jest.fn(),
   fetchLatestLabResults: jest.fn(),
   fetchLabComparison: jest.fn(),
+  fetchLabPanels: jest.fn(),
+  createManualLabPanel: jest.fn(),
+  deleteLabPanel: jest.fn(),
 }));
 jest.mock('../../src/services/api/labReportApi', () => ({
   deleteBuiltinMarkerResults: jest.fn(),
@@ -246,4 +255,74 @@ test('loads bounded imported-report panels and combines current custom-marker me
   });
   unmount();
   client.clear();
+});
+
+it('saves a raw multi-marker panel in one request and refreshes panel and analysis caches', async () => {
+  jest.mocked(createManualLabPanel).mockResolvedValue({} as never);
+  const client = createTestQueryClient();
+  const invalidate = jest.spyOn(client, 'invalidateQueries');
+  const { result } = renderHook(() => useCreateManualLabPanel(), {
+    wrapper: createQueryWrapper(client),
+  });
+  const body = {
+    entry_date: '2026-01-01',
+    results: [
+      { marker_key: 'hba1c', value_text: '≤3', unit: '%' },
+      { marker_key: 'ldl', value_text: 'Negative', unit: 'mmol/L' },
+    ],
+  };
+  result.current.mutate(body);
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(createManualLabPanel).toHaveBeenCalledWith(body);
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labPanels'] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labLatest'] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labComparison'] });
+});
+it('deletes the selected explicit panel and refreshes history', async () => {
+  jest
+    .mocked(deleteLabPanel)
+    .mockResolvedValue({ reports: 1, results: 2, markers: 0 });
+  const client = createTestQueryClient();
+  const invalidate = jest.spyOn(client, 'invalidateQueries');
+  const { result } = renderHook(() => useDeleteLabPanel(), {
+    wrapper: createQueryWrapper(client),
+  });
+  result.current.mutate('manual-panel');
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(deleteLabPanel).toHaveBeenCalledWith('manual-panel');
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labPanels'] });
+});
+
+it('clears old panel data across the existing account identity-change cache lifecycle', async () => {
+  const client = createTestQueryClient();
+  client.setQueryDefaults(['labPanels'], { staleTime: Infinity });
+  client.setQueryData(['labPanels'], {
+    panels: [
+      {
+        id: 'previous-owner-panel',
+        collected_on: null,
+        lab_name: null,
+        created_at: '2026-01-01',
+        results: [],
+      },
+    ],
+  });
+  let finish: (value: { panels: [] }) => void = () => undefined;
+  jest.mocked(fetchLabPanels).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    })
+  );
+  const hook = renderHook(() => useLabPanels(), {
+    wrapper: createQueryWrapper(client),
+  });
+  expect(hook.result.current.data?.panels[0]?.id).toBe('previous-owner-panel');
+  act(() => {
+    client.clear();
+  });
+  hook.rerender({});
+  expect(hook.result.current.data).toBeUndefined();
+  finish({ panels: [] });
+  await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+  expect(hook.result.current.data).toEqual({ panels: [] });
 });

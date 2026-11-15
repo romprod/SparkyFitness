@@ -7,15 +7,38 @@ import MedicationEntryEditScreen from '../../src/screens/MedicationEntryEditScre
 import { useUpdateMedicationEntry } from '../../src/hooks/useMedications';
 import { useUpdateInjection } from '../../src/hooks/useGlp1';
 import type { RootStackScreenProps } from '../../src/types/navigation';
-import { pressAction } from './helpers/nativeHeaderTestUtils';
+import {
+  pressAction,
+  skipDuplicatePressWindow,
+} from './helpers/nativeHeaderTestUtils';
 import { buildEntry } from '../helpers/medicationFixtures';
 
 type ScreenProps = RootStackScreenProps<'MedicationEntryEdit'>;
 
 const mockDrawPreview = jest.fn();
+let mockOriginalDeviceAvailable = true;
 let mockTimezone = 'UTC';
 let mockTimeSelection = '21:15';
 jest.mock('../../src/hooks/useSyringes', () => ({
+  useSyringes: () => ({
+    data: {
+      syringes: mockOriginalDeviceAvailable
+        ? [
+            {
+              id: 'syringe',
+              name: 'Example syringe',
+              graduation_type: 'units',
+              units_per_ml: 100,
+              capacity_ml: '1',
+              capacity_units: 100,
+              increment: '1',
+              device_type: 'syringe',
+            },
+          ]
+        : [],
+    },
+    isLoading: false,
+  }),
   useSyringeDrawPreview: (...args: unknown[]) => mockDrawPreview(...args),
 }));
 jest.mock('../../src/hooks/useMedications', () => ({
@@ -114,6 +137,7 @@ describe('MedicationEntryEditScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTimezone = 'UTC';
+    mockOriginalDeviceAvailable = true;
     mockTimeSelection = '21:15';
     mockDrawPreview.mockReturnValue({
       data: {
@@ -126,6 +150,12 @@ describe('MedicationEntryEditScreen', () => {
         deliveredVolumeMl: '0.2',
         roundingErrorMcg: '0',
         warnings: [],
+        review: {
+          state: 'review-state',
+          previous: { doseMg: '0.1', volumeMl: '0.1' },
+          remainingBeforeMl: '1',
+          remainingAfterMl: '0.9',
+        },
       },
       isFetching: false,
       isError: false,
@@ -266,15 +296,23 @@ describe('MedicationEntryEditScreen', () => {
         dose_amount_snapshot: 0.1,
       })
     );
-    fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '0.2');
-    expect(mockDrawPreview).toHaveBeenLastCalledWith('vial', {
-      syringe_id: 'syringe',
-      editing_injection_id: 'inj-1',
-      dose: { value: '0.2', unit: 'mg' },
-    });
+    fireEvent.changeText(screen.getByLabelText('Dose value'), '0.2');
+    expect(mockDrawPreview.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      'vial',
+      {
+        syringe_id: 'syringe',
+        editing_injection_id: 'inj-1',
+        dose: { value: '0.2', unit: 'mg' },
+      },
+    ]);
     expect(screen.getByText('Measured marking: 20 Units')).toBeTruthy();
+    pressAction(screen, mockNavigation, 'Review dose change');
+    skipDuplicatePressWindow();
+    expect(updateInjectionMutate).not.toHaveBeenCalled();
     pressAction(screen, mockNavigation, 'Save');
-    expect(updateInjectionMutate.mock.calls[0]![0].body.dose_mg).toBe(0.2);
+    expect(
+      updateInjectionMutate.mock.calls[0]![0].body.calculated_draw.dose
+    ).toEqual({ value: '0.2', unit: 'mg' });
   });
 
   it('preserves calculated numeric snapshots when only metadata changes', () => {
@@ -289,7 +327,10 @@ describe('MedicationEntryEditScreen', () => {
       })
     );
     pressAction(screen, mockNavigation, 'Save');
-    expect(mockDrawPreview).toHaveBeenLastCalledWith(null, null);
+    expect(mockDrawPreview.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      null,
+      null,
+    ]);
     expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
       'dose_mg'
     );
@@ -306,7 +347,7 @@ describe('MedicationEntryEditScreen', () => {
         dose_amount_snapshot: 0.1,
       })
     );
-    expect(screen.getByLabelText('Dose (mg)').props.editable).toBe(false);
+    expect(screen.getByLabelText('Dose value').props.editable).toBe(false);
     expect(
       screen.getByText(
         'The original syringe or vial is no longer available. The dose is read-only; other details can still be edited.'
@@ -335,7 +376,7 @@ describe('MedicationEntryEditScreen', () => {
         dose_amount_snapshot: 0.1,
       })
     );
-    fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '0.2');
+    fireEvent.changeText(screen.getByLabelText('Dose value'), '0.2');
     pressAction(screen, mockNavigation, 'Save');
     expect(updateInjectionMutate).not.toHaveBeenCalled();
   });
@@ -352,8 +393,11 @@ describe('MedicationEntryEditScreen', () => {
     );
     expect(screen.getByText('Draw to —')).toBeTruthy();
     expect(screen.getByTestId('syringe-target-fill').props.width).toBe(0);
-    expect(mockDrawPreview).toHaveBeenLastCalledWith(null, null);
-    fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '');
+    expect(mockDrawPreview.mock.calls.at(-1)?.slice(0, 2)).toEqual([
+      null,
+      null,
+    ]);
+    fireEvent.changeText(screen.getByLabelText('Dose value'), '');
     expect(screen.getByText('Draw to —')).toBeTruthy();
     expect(screen.queryByText(/^Measured marking:/)).toBeNull();
   });
@@ -409,12 +453,17 @@ describe('MedicationEntryEditScreen', () => {
       );
       if (change === 'site')
         fireEvent.press(screen.getByText('opt-stomach_upper_right'));
-      else fireEvent.changeText(screen.getByLabelText('Dose (mg)'), '0.2');
+      else {
+        fireEvent.changeText(screen.getByLabelText('Dose value'), '0.2');
+        pressAction(screen, mockNavigation, 'Review dose change');
+        skipDuplicatePressWindow();
+      }
       pressAction(screen, mockNavigation, 'Save');
       const body = updateInjectionMutate.mock.calls[0]![0].body;
       expect(body).not.toHaveProperty('injected_at');
       expect(body).not.toHaveProperty('entry_date');
-      if (change === 'dose') expect(body.dose_mg).toBe(0.2);
+      if (change === 'dose')
+        expect(body.calculated_draw.dose.value).toBe('0.2');
       else expect(body.site).toBe('stomach_upper_right');
     }
   );
@@ -457,6 +506,108 @@ describe('MedicationEntryEditScreen', () => {
     );
     expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
       'entry_date'
+    );
+  });
+
+  it('four-unit correction initializes from exact delivered mass in the recorded unit and reviews the new raw target', () => {
+    const screen = renderScreen(
+      buildEntry({
+        id: 'inj-1',
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: 'syringe',
+        volume_ml: '0.1',
+        dose_input_unit: 'mcg',
+        dose_amount_snapshot: 0.1,
+        dose_mg_exact: '0.123456789012345678901',
+      })
+    );
+    expect(screen.getByLabelText('Dose value').props.value).toBe(
+      '123.456789012345678901'
+    );
+    fireEvent.press(screen.getByText('opt-ml'));
+    fireEvent.changeText(
+      screen.getByLabelText('Dose value'),
+      '0.200000000000000001'
+    );
+    pressAction(screen, mockNavigation, 'Review dose change');
+    skipDuplicatePressWindow();
+    expect(screen.getByText('Delivered volume: 0.1 → 0.2 mL')).toBeTruthy();
+    pressAction(screen, mockNavigation, 'Save');
+    expect(
+      updateInjectionMutate.mock.calls[0]![0].body.calculated_draw
+    ).toEqual({
+      syringe_id: 'syringe',
+      dose: { value: '0.200000000000000001', unit: 'ml' },
+      review_intent: true,
+      expected_preview_state: 'review-state',
+    });
+  });
+  it('unknown recorded unit amount left blank permits metadata changes without inventing a draw', () => {
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        pen_id: 'vial',
+        syringe_id: 'syringe',
+        volume_ml: 'not-known',
+        syringe_units: null,
+        dose_input_unit: 'units',
+      })
+    );
+    fireEvent.changeText(screen.getByLabelText('Dose value'), '');
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'calculated_draw'
+    );
+  });
+  it('known historic nasal dose hides site controls and metadata save preserves the stored site', () => {
+    const screen = renderScreen(
+      buildEntry({
+        entry_type: 'injection',
+        administration_route: 'nasal',
+        site: 'stomach_upper_left',
+      })
+    );
+    expect(screen.queryByText('opt-none')).toBeNull();
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'site'
+    );
+  });
+  it('device deletion during a draft discards the amount change but still permits notes-only correction', () => {
+    const entry = buildEntry({
+      id: 'inj-1',
+      entry_type: 'injection',
+      pen_id: 'vial',
+      syringe_id: 'syringe',
+      volume_ml: '0.1',
+      dose_input_unit: 'mg',
+      dose_amount_snapshot: 0.1,
+    });
+    const screen = renderScreen(entry);
+    fireEvent.changeText(screen.getByLabelText('Dose value'), '0.2');
+    mockOriginalDeviceAvailable = false;
+    screen.rerender(
+      <SafeAreaProvider initialMetrics={{ insets, frame }}>
+        <MedicationEntryEditScreen
+          route={{
+            key: 'MedicationEntryEdit-key',
+            name: 'MedicationEntryEdit',
+            params: { entry },
+          }}
+          navigation={mockNavigation}
+        />
+      </SafeAreaProvider>
+    );
+    expect(screen.getByLabelText('Dose value').props.editable).toBe(false);
+    expect(screen.getByText('Draw to —')).toBeTruthy();
+    expect(screen.queryByText(/^Measured marking:/)).toBeNull();
+    pressAction(screen, mockNavigation, 'Save');
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'calculated_draw'
+    );
+    expect(updateInjectionMutate.mock.calls[0]![0].body).not.toHaveProperty(
+      'dose_mg'
     );
   });
 });

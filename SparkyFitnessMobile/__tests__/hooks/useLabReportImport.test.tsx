@@ -74,6 +74,7 @@ describe('useImportLabReport', () => {
         'labLatest',
         'labHistory',
         'labComparison',
+        'labPanels',
       ])
     );
   });

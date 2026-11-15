@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import {
   computeDraw,
+  normalizeDeviceDose,
   type CalculatedDrawInput,
   type MedicationPen,
   type MedicationSyringe,
@@ -62,6 +63,7 @@ const syringe = {
 };
 const medication = {
   id: 'med',
+  type_id: 'injection',
   dose_amount: 0.6,
   dose_unit: 'mg',
 } as Medication;
@@ -99,13 +101,17 @@ beforeEach(() => {
   mockPreview.mockImplementation(
     (_pen: string | null, input: CalculatedDrawInput | null) => {
       try {
+        const device = {
+          ...syringe,
+          ...mockSyringes.find((row) => row.id === input?.syringe_id),
+        };
         return {
           data: input
             ? {
                 ...computeDraw({
-                  dose: input.dose,
+                  dose: normalizeDeviceDose(input.dose, device),
                   concentrationMcgPerMl: '4000',
-                  syringe,
+                  syringe: device,
                   remainingMl: String(mockPens[0]?.stock?.remainingMl ?? 3),
                 }),
                 syringeCapacityMl: syringe.capacity_ml,
@@ -142,7 +148,7 @@ it('submits the chosen syringe and original decimal input while the server deriv
 it('retains the explicit manual dose path', async () => {
   mockDefault = null;
   render(<Glp1LogInjection med={medication} />);
-  fireEvent.pointerDown(screen.getByLabelText('Syringe'), {
+  fireEvent.pointerDown(screen.getByLabelText('Device'), {
     button: 0,
     ctrlKey: false,
   });
@@ -247,7 +253,7 @@ it('clears 500 mcg when switching from calculated input to manual mg', async () 
   fireEvent.change(screen.getByLabelText('Entered amount'), {
     target: { value: '500' },
   });
-  fireEvent.pointerDown(screen.getByLabelText('Syringe'), {
+  fireEvent.pointerDown(screen.getByLabelText('Device'), {
     button: 0,
     ctrlKey: false,
   });
@@ -293,7 +299,7 @@ it('does not silently replace explicitly selected stock after it is retired', as
 it('automatically shows the first saved syringe and preview without a preferred device or dropdown interaction', () => {
   mockDefault = null;
   render(<Glp1LogInjection med={medication} />);
-  expect(screen.getByLabelText('Syringe')).toHaveTextContent('Synthetic U100');
+  expect(screen.getByLabelText('Device')).toHaveTextContent('Synthetic U100');
   expect(
     screen.getByRole('img', { name: 'Syringe target fill: draw to 15 units' })
   ).toBeInTheDocument();
@@ -306,16 +312,16 @@ it('automatically shows the first saved syringe and preview without a preferred 
 it('uses the first available device when the preferred device no longer exists', () => {
   mockDefault = 'deleted';
   render(<Glp1LogInjection med={medication} />);
-  expect(screen.getByLabelText('Syringe')).toHaveTextContent('Synthetic U100');
+  expect(screen.getByLabelText('Device')).toHaveTextContent('Synthetic U100');
 });
 it('does not invent a device when none have been configured', () => {
   mockSyringes = [];
   mockDefault = null;
   render(<Glp1LogInjection med={medication} />);
-  expect(screen.getByLabelText('Syringe')).toHaveTextContent(
-    'Manual dose (mg)'
-  );
-  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Device')).toHaveTextContent('Manual dose (mg)');
+  expect(
+    screen.getByRole('img', { name: 'Syringe target fill: draw to —' })
+  ).toBeInTheDocument();
 });
 it('clears a mcg draft and keeps an empty figure on implicit device replacement', async () => {
   mockDefault = null;
@@ -341,7 +347,7 @@ it('clears a mcg draft and keeps an empty figure on implicit device replacement'
 });
 it('keeps explicit manual mode when the preferred syringe changes', async () => {
   const { rerender } = render(<Glp1LogInjection med={medication} />);
-  fireEvent.pointerDown(screen.getByLabelText('Syringe'), {
+  fireEvent.pointerDown(screen.getByLabelText('Device'), {
     button: 0,
     ctrlKey: false,
   });
@@ -354,19 +360,21 @@ it('keeps explicit manual mode when the preferred syringe changes', async () => 
   mockDefault = null;
   rerender(<Glp1LogInjection med={medication} />);
   expect(screen.getByLabelText('Dose (mg)')).toHaveValue('0.4');
-  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('img', { name: 'Syringe target fill: draw to —' })
+  ).toBeInTheDocument();
 });
 
 it('does not request or draw a device after an explicitly selected syringe is deleted', async () => {
   const { rerender } = render(<Glp1LogInjection med={medication} />);
-  fireEvent.pointerDown(screen.getByLabelText('Syringe'), {
+  fireEvent.pointerDown(screen.getByLabelText('Device'), {
     button: 0,
     ctrlKey: false,
   });
   fireEvent.click(
     await screen.findByRole('option', { name: 'Manual dose (mg)' })
   );
-  fireEvent.pointerDown(screen.getByLabelText('Syringe'), {
+  fireEvent.pointerDown(screen.getByLabelText('Device'), {
     button: 0,
     ctrlKey: false,
   });
@@ -381,7 +389,9 @@ it('does not request or draw a device after an explicitly selected syringe is de
   expect(
     screen.getByText(/selected syringe is no longer available/)
   ).toBeInTheDocument();
-  expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('img', { name: 'Syringe target fill: draw to —' })
+  ).toBeInTheDocument();
   expect(mockPreview.mock.calls.at(-1)?.[1]).toBeNull();
   expect(button()).toBeDisabled();
   expect(screen.getByLabelText('Entered amount')).toHaveValue('');
@@ -413,4 +423,53 @@ it('clears a units draft when the same selected device calibration changes', asy
   expect(screen.getByLabelText('Entered amount')).toHaveValue('');
   expect(screen.getByLabelText('Amount unit')).toHaveTextContent('mg');
   expect(screen.getByText('Draw to —')).toBeInTheDocument();
+});
+
+it('uses a prepared nasal vial and eligible pump without body or site controls', () => {
+  const pump = {
+    ...syringe,
+    id: 'pump',
+    device_type: 'pump' as const,
+    graduation_type: 'ml' as const,
+    increment: '0.1',
+  };
+  mockSyringes = [{ ...syringe, id: 'injection-device' }, pump];
+  mockDefault = 'injection-device';
+  render(
+    <Glp1LogInjection
+      med={{ ...medication, type_id: 'nasal_spray', route_id: 'nasal' }}
+    />
+  );
+  expect(screen.getByLabelText('Device')).toHaveTextContent('Synthetic U100');
+  expect(screen.getByLabelText('Amount unit')).toHaveTextContent('pumps');
+  expect(screen.getByLabelText('Entered amount')).toHaveValue('1');
+  expect(mockPreview.mock.calls.at(-1)?.[1]).toMatchObject({
+    syringe_id: 'pump',
+    dose: { value: '1', unit: 'pumps' },
+  });
+  expect(screen.queryByText('Site picker')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Log nasal dose' }));
+  expect(mockLog.mock.calls[0][0]).toMatchObject({
+    site: null,
+    pen_id: 'vial',
+    deduct_pen: true,
+    calculated_draw: {
+      syringe_id: 'pump',
+      dose: { value: '1', unit: 'pumps' },
+    },
+  });
+});
+it('does not invent a pump or use manual injection logging for an unprepared nasal medication', () => {
+  mockSyringes = [];
+  mockPens = [];
+  render(
+    <Glp1LogInjection
+      med={{ ...medication, type_id: 'nasal_spray', route_id: 'nasal' }}
+    />
+  );
+  expect(
+    screen.getByRole('img', { name: 'Nasal pump: —' })
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Log nasal dose' })).toBeDisabled();
+  expect(mockPreview.mock.calls.at(-1)?.[1]).toBeNull();
 });

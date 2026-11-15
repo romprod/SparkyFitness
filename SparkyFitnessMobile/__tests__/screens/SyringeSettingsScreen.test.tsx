@@ -6,7 +6,8 @@ import SyringeSettingsScreen from '../../src/screens/SyringeSettingsScreen';
 const mockSave = jest.fn();
 const mockDefault = jest.fn();
 const mockDelete = jest.fn();
-let mockHeaderSave: () => void;
+let mockHeaderSave: (() => void) | undefined;
+let mockShared = false;
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -18,7 +19,9 @@ jest.mock('../../src/hooks/useSyringes', () => ({
         {
           id: 'syringe',
           name: 'Example syringe',
+          is_shared: mockShared,
           graduation_type: 'units',
+          device_type: 'syringe',
           units_per_ml: 100,
           capacity_ml: '1',
           capacity_units: 100,
@@ -40,7 +43,7 @@ jest.mock('../../src/hooks/useSyringes', () => ({
 }));
 jest.mock('../../src/hooks/useScreenHeader', () => ({
   useScreenHeader: (config: { right?: { onPress: () => void } }) => {
-    if (config.right) mockHeaderSave = config.right.onPress;
+    mockHeaderSave = config.right?.onPress;
     return null;
   },
 }));
@@ -86,7 +89,10 @@ const setup = () =>
       }
     />
   );
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockShared = false;
+});
 test('edits reusable settings while keeping decimal capacities and increment exact', () => {
   const view = setup();
   fireEvent.press(view.getAllByText('Example syringe')[1]!);
@@ -95,13 +101,14 @@ test('edits reusable settings while keeping decimal capacities and increment exa
     '0.3333333333333333333333333333333333333333'
   );
   fireEvent.changeText(view.getByLabelText('Marking increment'), '0.5');
-  act(() => mockHeaderSave());
+  act(() => mockHeaderSave?.());
   expect(mockSave).toHaveBeenCalledWith(
     {
       id: 'syringe',
       body: {
         name: 'Example syringe',
         graduation_type: 'units',
+        device_type: 'syringe',
         units_per_ml: 100,
         capacity_ml: '0.3333333333333333333333333333333333333333',
         capacity_units: 100,
@@ -131,4 +138,37 @@ test('deletion remains available for an existing syringe and preserves numeric h
   act(() => buttons[1]!.onPress!());
   expect(mockDelete).toHaveBeenCalledWith('syringe', expect.anything());
   alert.mockRestore();
+});
+
+test('pump settings use mL per spray and cannot retain insulin-unit calibration', () => {
+  const view = setup();
+  fireEvent.press(view.getByText('Add device'));
+  fireEvent.press(view.getByText('Nasal pump'));
+  fireEvent.changeText(view.getByLabelText('Name'), 'Example nasal pump');
+  fireEvent.changeText(view.getByLabelText('Capacity (mL)'), '10');
+  fireEvent.changeText(view.getByLabelText('mL per spray'), '0.1');
+  expect(view.queryByLabelText('Units per mL')).toBeNull();
+  expect(view.queryByLabelText('Capacity (units)')).toBeNull();
+  act(() => mockHeaderSave?.());
+  expect(mockSave.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({
+      device_type: 'pump',
+      graduation_type: 'ml',
+      units_per_ml: 1,
+      capacity_ml: '10',
+      capacity_units: 100,
+      increment: '0.1',
+    })
+  );
+});
+test('shared devices remain selectable as default but their editor is read-only', () => {
+  mockShared = true;
+  const view = setup();
+  fireEvent.press(view.getAllByText('Example syringe')[0]!);
+  expect(mockDefault).toHaveBeenCalledWith('syringe', expect.anything());
+  fireEvent.press(view.getAllByText('Example syringe')[1]!);
+  expect(view.getByLabelText('Name').props.editable).toBe(false);
+  expect(view.queryByText('Delete')).toBeNull();
+  expect(mockHeaderSave).toBeUndefined();
+  expect(mockSave).not.toHaveBeenCalled();
 });

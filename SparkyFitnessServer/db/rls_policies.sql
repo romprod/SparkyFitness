@@ -113,8 +113,11 @@ BEGIN
     'medication_entries',
     'medication_pens',
     'medication_syringes',
+    'medication_device_preferences',
     'medication_stock_status_audit',
     'medication_preparations',
+    'medication_preparation_corrections',
+    'medication_preparation_dose_corrections',
     'injection_entries',
     'medication_titration_steps',
     'user_custom_symptoms',
@@ -1073,9 +1076,16 @@ SELECT create_medication_policy('medications');
 SELECT create_medication_policy('medication_schedules');
 SELECT create_medication_policy('medication_entries');
 SELECT create_medication_policy('medication_pens');
-SELECT create_medication_policy('medication_syringes');
+CREATE POLICY select_policy ON public.medication_syringes FOR SELECT TO PUBLIC
+USING (user_id IS NULL OR has_medication_read_access(user_id));
+CREATE POLICY modify_policy ON public.medication_syringes FOR ALL TO PUBLIC
+USING (user_id IS NOT NULL AND has_medication_access(user_id))
+WITH CHECK (user_id IS NOT NULL AND has_medication_access(user_id));
+SELECT create_medication_policy('medication_device_preferences');
 SELECT create_medication_policy('medication_stock_status_audit');
 SELECT create_medication_policy('medication_preparations');
+SELECT create_medication_policy('medication_preparation_corrections');
+SELECT create_medication_policy('medication_preparation_dose_corrections');
 SELECT create_medication_policy('injection_entries');
 SELECT create_medication_policy('medication_titration_steps');
 

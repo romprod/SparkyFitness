@@ -1,5 +1,11 @@
-import { drawDeliveredMg } from '@workspace/shared';
-import { calculateStoredDraw } from './medicationSyringeRepository.js';
+import {
+  drawDeliveredMg,
+  resolvePreparedMedicationRoute,
+} from '@workspace/shared';
+import {
+  calculateMedicationDrawReview,
+  lockDrawMedication,
+} from '../services/medicationDrawReviewService.js';
 import { badPreparation } from '../services/medicationPreparationService.js';
 import { medicationDoseInMg } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
@@ -14,7 +20,7 @@ const USED_MASS_SQL =
   '(SELECT COALESCE(SUM(si.dose_mg),0) FROM injection_entries si WHERE si.pen_id = medication_pens.id AND si.user_id = medication_pens.user_id)';
 
 const INJECTION_COLS = `id, medication_id, user_id, pen_id, preparation_id, injected_at, entry_date,
-  site, dose_mg, volume_ml::text, syringe_units::text, dose_input_unit, syringe_id, notes, source, custom_fields, created_at, updated_at`;
+  site, administration_route, dose_mg, dose_mg::text AS dose_mg_exact, volume_ml::text, syringe_units::text, dose_input_unit, syringe_id, notes, source, custom_fields, created_at, updated_at`;
 
 /**
  * Create an injection entry. When `deduct_pen` is true, the pen's doses_used is incremented
@@ -28,6 +34,12 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
   const client = await getClient(userId);
   try {
     await client.query('BEGIN');
+    const medication = await lockDrawMedication(
+      client,
+      userId,
+      data.medication_id
+    );
+    if (!medication) throw badPreparation('Medication not found.');
 
     // The pen this injection deducts from — and the only pen_id we persist on the
     // row. We record a pen_id ONLY when a dose is actually taken from it, so a stored
@@ -95,12 +107,14 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
 
     const draw =
       data.calculated_draw && resolvedPenId
-        ? await calculateStoredDraw(
+        ? await calculateMedicationDrawReview(
             client,
             userId,
             resolvedPenId,
             data.calculated_draw,
-            data.medication_id
+            data.medication_id,
+            undefined,
+            true
           )
         : null;
     const blocker = draw?.warnings.find((w) => w.severity === 'block');
@@ -115,9 +129,9 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
        )
        INSERT INTO injection_entries (
          medication_id, user_id, pen_id, preparation_id, injected_at, entry_date, site, dose_mg, notes,
-         source, custom_fields,volume_ml,syringe_units,dose_input_unit,syringe_id)
+         source, custom_fields,volume_ml,syringe_units,dose_input_unit,syringe_id,administration_route)
        SELECT $1,$2,$3, (SELECT p.id FROM medication_preparations p WHERE p.pen_id=$3 AND p.user_id=$2 AND p.medication_id=$1), COALESCE($4::timestamptz, NOW()), COALESCE($5::date, CURRENT_DATE),$6,$7,$8,
-         COALESCE($9,'manual'), COALESCE($10::jsonb,'{}'::jsonb),$11,$12,$13,$14
+         COALESCE($9,'manual'), COALESCE($10::jsonb,'{}'::jsonb),$11,$12,$13,$14,$15
        WHERE $3 IS NULL OR EXISTS (SELECT 1 FROM locked_pen)
        RETURNING ${INJECTION_COLS}`,
       [
@@ -126,15 +140,16 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
         resolvedPenId,
         data.injected_at ?? null,
         data.entry_date ?? null,
-        data.site ?? null,
+        draw?.administrationRoute === 'nasal' ? null : (data.site ?? null),
         draw ? drawDeliveredMg(draw) : resolvedDoseMg,
         data.notes ?? null,
         data.source ?? null,
         data.custom_fields ? JSON.stringify(data.custom_fields) : null,
         draw?.deliveredVolumeMl ?? null,
         draw?.markingScale === 'units' ? draw.markingValue : null,
-        data.calculated_draw?.dose.unit ?? null,
+        draw?.doseInputUnit ?? null,
         data.calculated_draw?.syringe_id ?? null,
+        draw?.administrationRoute ?? resolvePreparedMedicationRoute(medication),
       ]
     );
 
@@ -233,6 +248,12 @@ async function editCalculatedInjection(
 ) {
   await client.query('BEGIN');
   try {
+    const parent = await client.query(
+      'SELECT medication_id FROM medication_pens WHERE id=$1 AND user_id=$2',
+      [penId, userId]
+    );
+    if (parent.rows[0])
+      await lockDrawMedication(client, userId, parent.rows[0].medication_id);
     await client.query(
       'SELECT id FROM medication_pens WHERE id=$1 AND user_id=$2 FOR UPDATE',
       [penId, userId]
@@ -259,23 +280,32 @@ async function editCalculatedInjection(
       throw badPreparation(
         'Original syringe is missing; an amount correction needs the original syringe.'
       );
-    if (data.dose_mg === null || data.dose_mg === undefined)
+    if (
+      data.calculated_draw &&
+      data.calculated_draw.syringe_id !== entry.syringe_id
+    )
+      throw badPreparation('Use the original device for this correction.');
+    if (
+      !data.calculated_draw &&
+      (data.dose_mg === null || data.dose_mg === undefined)
+    )
       throw badPreparation('Enter a dose amount for this correction.');
-    const draw = await calculateStoredDraw(
+    const draw = await calculateMedicationDrawReview(
       client,
       userId,
       penId,
-      {
+      data.calculated_draw ?? {
         syringe_id: entry.syringe_id,
         dose: { value: String(data.dose_mg), unit: 'mg' },
       },
       entry.medication_id,
-      id
+      id,
+      true
     );
     const blocker = draw.warnings.find((w) => w.severity === 'block');
     if (blocker) throw badPreparation(blocker.message);
     const result = await client.query(
-      `UPDATE injection_entries SET dose_mg=$3,volume_ml=$4,syringe_units=$5,dose_input_unit='mg',injected_at=COALESCE($6::timestamptz,injected_at),entry_date=COALESCE($7::date,entry_date),site=CASE WHEN $8 THEN $9 ELSE site END,notes=CASE WHEN $10 THEN $11 ELSE notes END,custom_fields=CASE WHEN $12 THEN $13::jsonb ELSE custom_fields END,updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING ${INJECTION_COLS}`,
+      `UPDATE injection_entries SET dose_mg=$3,volume_ml=$4,syringe_units=$5,dose_input_unit=$14,injected_at=COALESCE($6::timestamptz,injected_at),entry_date=COALESCE($7::date,entry_date),site=CASE WHEN $8 THEN $9 ELSE site END,notes=CASE WHEN $10 THEN $11 ELSE notes END,custom_fields=CASE WHEN $12 THEN $13::jsonb ELSE custom_fields END,updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING ${INJECTION_COLS}`,
       [
         id,
         userId,
@@ -284,12 +314,13 @@ async function editCalculatedInjection(
         draw.markingScale === 'units' ? draw.markingValue : null,
         data.injected_at ?? null,
         data.entry_date ?? null,
-        data.site !== undefined,
-        data.site ?? null,
+        entry.administration_route === 'nasal' || data.site !== undefined,
+        entry.administration_route === 'nasal' ? null : (data.site ?? null),
         data.notes !== undefined,
         data.notes ?? null,
         data.custom_fields !== undefined,
         JSON.stringify(data.custom_fields ?? {}),
+        draw.doseInputUnit,
       ]
     );
     await client.query(
@@ -310,17 +341,27 @@ async function updateInjection(
   data: UpdateInjectionBody
 ) {
   const client = await getClient(userId);
+  let manualQuantityTransaction = false;
+  let manualPenId: string | null = null;
   try {
-    if (data.dose_mg !== undefined) {
+    if (data.dose_mg !== undefined || data.calculated_draw) {
       const current = await client.query(
         'SELECT * FROM injection_entries WHERE id=$1 AND user_id=$2',
         [id, userId]
       );
       const entry = current.rows[0];
       if (
+        data.calculated_draw &&
+        (!entry?.dose_input_unit ||
+          entry.volume_ml === null ||
+          entry.volume_ml === undefined)
+      )
+        throw badPreparation('This entry has no calculated draw to correct.');
+      if (
         entry &&
         !entry.dose_input_unit &&
         data.dose_mg !== null &&
+        data.dose_mg !== undefined &&
         data.dose_mg <= 0
       )
         throw badPreparation('Manual dose must be positive.');
@@ -329,7 +370,8 @@ async function updateInjection(
         entry.volume_ml !== null &&
         entry.volume_ml !== undefined &&
         entry.dose_input_unit &&
-        (data.dose_mg === null ||
+        (data.calculated_draw ||
+          data.dose_mg === null ||
           Number(data.dose_mg) !== Number(entry.dose_mg))
       ) {
         if (!entry.pen_id)
@@ -355,6 +397,34 @@ async function updateInjection(
         void _echoedDose;
         data = metadata;
       }
+    }
+    if (data.dose_mg !== undefined) {
+      await client.query('BEGIN');
+      manualQuantityTransaction = true;
+      const ref = await client.query(
+        'SELECT medication_id,pen_id FROM injection_entries WHERE id=$1 AND user_id=$2',
+        [id, userId]
+      );
+      if (ref.rows[0]?.medication_id)
+        await lockDrawMedication(client, userId, ref.rows[0].medication_id);
+      manualPenId = ref.rows[0]?.pen_id ?? null;
+      if (manualPenId)
+        await client.query(
+          'SELECT id FROM medication_pens WHERE id=$1 AND user_id=$2 FOR UPDATE',
+          [manualPenId, userId]
+        );
+      await client.query(
+        'SELECT id FROM injection_entries WHERE id=$1 AND user_id=$2 FOR UPDATE',
+        [id, userId]
+      );
+    }
+    if (data.site !== undefined) {
+      const route = await client.query(
+        'SELECT administration_route FROM injection_entries WHERE id=$1 AND user_id=$2',
+        [id, userId]
+      );
+      if (route.rows[0]?.administration_route === 'nasal')
+        data = { ...data, site: null };
     }
     const updates: string[] = [];
     const values: unknown[] = [id, userId];
@@ -399,7 +469,18 @@ async function updateInjection(
        RETURNING ${INJECTION_COLS}`,
       values
     );
+    if (manualQuantityTransaction) {
+      if (manualPenId)
+        await client.query(
+          `UPDATE medication_pens SET status=CASE WHEN finished_at IS NOT NULL OR status='discarded' THEN status WHEN ${MASS_STOCK_SQL} THEN CASE WHEN ${USED_MASS_SQL} >= concentration_mg_ml*volume_ml THEN 'finished' ELSE 'in_use' END ELSE status END,updated_at=NOW() WHERE id=$1 AND user_id=$2`,
+          [manualPenId, userId]
+        );
+      await client.query('COMMIT');
+    }
     return result.rows[0] ?? null;
+  } catch (error) {
+    if (manualQuantityTransaction) await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
@@ -416,9 +497,11 @@ async function deleteInjection(userId: string, id: string) {
   try {
     await client.query('BEGIN');
     const original = await client.query(
-      'SELECT pen_id FROM injection_entries WHERE id=$1 AND user_id=$2',
+      'SELECT pen_id,medication_id FROM injection_entries WHERE id=$1 AND user_id=$2',
       [id, userId]
     );
+    if (original.rows[0]?.medication_id)
+      await lockDrawMedication(client, userId, original.rows[0].medication_id);
     if (original.rows[0]?.pen_id)
       await client.query(
         'SELECT id FROM medication_pens WHERE id=$1 AND user_id=$2 FOR UPDATE',

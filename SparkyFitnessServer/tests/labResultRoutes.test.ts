@@ -9,6 +9,9 @@ import * as labRepo from '../models/labResultRepository.js';
 
 vi.mock('../models/labResultRepository.js', () => ({
   listLabMarkers: vi.fn(),
+  listLabPanels: vi.fn(),
+  createManualLabPanel: vi.fn(),
+  deleteLabPanel: vi.fn(),
   listLatestLabPanels: vi.fn(),
   createLabMarker: vi.fn(),
   updateLabMarker: vi.fn(),
@@ -83,6 +86,86 @@ const result = {
 describe('Lab result routes (v2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('manual panels', () => {
+    it('lists full real panel history', async () => {
+      vi.mocked(labRepo.listLabPanels).mockResolvedValue({ panels: [] });
+      expect(
+        (await request(app).get('/api/v2/lab-results/panels')).body
+      ).toEqual({ panels: [] });
+      expect(labRepo.listLabPanels).toHaveBeenCalledWith(
+        'test-user-id',
+        'test-user-id'
+      );
+    });
+    it('saves raw panel values through the actor-scoped repository', async () => {
+      vi.mocked(labRepo.createManualLabPanel).mockResolvedValue({
+        report: {
+          id: ID,
+          user_id: 'test-user-id',
+          lab_name: null,
+          collected_on: '2026-11-15',
+          created_at: result.created_at,
+          origin: 'manual',
+        },
+        results: [result],
+      });
+      const response = await request(app)
+        .post('/api/v2/lab-results/panels')
+        .send({
+          entry_date: '2026-11-15',
+          results: [{ marker_key: 'sodium', value_text: '<3', unit: 'mmol/L' }],
+        });
+      expect(response.status).toBe(201);
+      expect(labRepo.createManualLabPanel).toHaveBeenCalledWith(
+        'test-user-id',
+        expect.objectContaining({
+          results: [expect.objectContaining({ value_text: '<3' })],
+        }),
+        'test-user-id'
+      );
+    });
+    it('rejects a stale draft owner before any repository write', async () => {
+      const response = await request(app)
+        .post('/api/v2/lab-results/panels')
+        .send({
+          expected_owner_id: ID,
+          entry_date: '2026-11-15',
+          results: [
+            {
+              custom_marker_name: 'Synthetic race marker',
+              value_text: 'Positive',
+              unit: 'index',
+            },
+          ],
+        });
+      expect(response.status).toBe(409);
+      expect(response.body.error).toBe(
+        'The active profile changed. Review the panel again.'
+      );
+      expect(labRepo.createManualLabPanel).not.toHaveBeenCalled();
+    });
+    it('rejects duplicate markers before any write and scopes panel deletion', async () => {
+      const row = { marker_key: 'sodium', value_text: '1', unit: 'mmol/L' };
+      expect(
+        (
+          await request(app)
+            .post('/api/v2/lab-results/panels')
+            .send({ entry_date: '2026-11-15', results: [row, row] })
+        ).status
+      ).toBe(400);
+      expect(labRepo.createManualLabPanel).not.toHaveBeenCalled();
+      vi.mocked(labRepo.deleteLabPanel).mockResolvedValue(null);
+      expect(
+        (await request(app).delete(`/api/v2/lab-results/panels/${ID}`)).status
+      ).toBe(404);
+      expect(labRepo.deleteLabPanel).toHaveBeenCalledWith(
+        'test-user-id',
+        ID,
+        'test-user-id'
+      );
+    });
   });
 
   describe('markers', () => {

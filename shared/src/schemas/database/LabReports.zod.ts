@@ -5,6 +5,8 @@ export const labReportsIdSchema = z.string();
 export const labReportsSchema = z.object({
   id: labReportsIdSchema,
   user_id: z.string(),
+  origin: z.enum(['imported', 'manual']),
+  notes: z.string().nullable(),
   lab_name: z.string().nullable(),
   collected_on: z.string().nullable(),
   client_request_id: z.string().nullable(),
@@ -17,6 +19,8 @@ export const labReportsSchema = z.object({
 export const labReportsInitializerSchema = z.object({
   id: labReportsIdSchema.optional(),
   user_id: z.string(),
+  origin: z.enum(['imported', 'manual']).optional(),
+  notes: z.string().optional().nullable(),
   lab_name: z.string().optional().nullable(),
   collected_on: z.string().optional().nullable(),
   client_request_id: z.string().optional().nullable(),

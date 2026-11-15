@@ -29,7 +29,7 @@ const show = (panels: LabComparisonPanel[]) =>
     />
   );
 
-describe('Latest imported report comparison', () => {
+describe('Latest panel comparison', () => {
   it('shows newest-first report columns and union rows with missing readings', () => {
     show([
       panel('old', '2026-01-01', [
@@ -46,16 +46,14 @@ describe('Latest imported report comparison', () => {
         result({ id: 'excluded', marker_key: 'alt' }),
       ]),
     ]);
-    expect(
-      screen.getByText('Latest three imported reports')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Latest three panels')).toBeInTheDocument();
     const headers = screen
       .getAllByRole('columnheader')
       .map((node) => node.textContent);
     expect(headers.slice(3)).toEqual([
-      'LatestReport collection date2026-03-01',
-      'PriorReport collection date2026-02-01',
-      'EarlierReport collection date2026-01-01',
+      'LatestPanel collection date2026-03-01',
+      'PriorPanel collection date2026-02-01',
+      'EarlierPanel collection date2026-01-01',
     ]);
     expect(
       screen.getAllByRole('rowheader').map((node) => node.textContent)
@@ -66,7 +64,7 @@ describe('Latest imported report comparison', () => {
     if (!row) throw new Error('Missing marker row');
     expect(within(row).getAllByLabelText('No results')).toHaveLength(2);
     expect(
-      screen.getByText('Closer to the reference range than the prior report')
+      screen.getByText('Closer to the reference range than the prior panel')
     ).toBeInTheDocument();
   });
 
@@ -91,7 +89,7 @@ describe('Latest imported report comparison', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('(High)')).toBeInTheDocument();
     expect(
-      screen.queryByText('Closer to the reference range than the prior report')
+      screen.queryByText('Closer to the reference range than the prior panel')
     ).not.toBeInTheDocument();
   });
 
@@ -110,7 +108,7 @@ describe('Latest imported report comparison', () => {
     expect(screen.getByText('<3 %')).toBeInTheDocument();
     expect(screen.queryByText('(Low)')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Closer to the reference range than the prior report')
+      screen.queryByText('Closer to the reference range than the prior panel')
     ).not.toBeInTheDocument();
   });
 
@@ -124,7 +122,7 @@ describe('Latest imported report comparison', () => {
     expect(screen.getByText('<3 %')).toBeInTheDocument();
     expect(screen.queryByText('(Low)')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Closer to the reference range than the prior report')
+      screen.queryByText('Closer to the reference range than the prior panel')
     ).not.toBeInTheDocument();
   });
 
@@ -145,7 +143,7 @@ describe('Latest imported report comparison', () => {
       'md:sr-only'
     );
     expect(
-      screen.getByRole('region', { name: 'Latest three imported reports' })
+      screen.getByRole('region', { name: 'Latest three panels' })
     ).toHaveAttribute('tabindex', '0');
   });
 
@@ -158,7 +156,7 @@ describe('Latest imported report comparison', () => {
         collected_on: null,
       },
     ]);
-    expect(screen.getByText('Report collection date')).toBeInTheDocument();
+    expect(screen.getByText('Panel collection date')).toBeInTheDocument();
     expect(
       screen.getByText('Collection date not recorded')
     ).toBeInTheDocument();
@@ -167,10 +165,8 @@ describe('Latest imported report comparison', () => {
 
   it('shows an honest empty state when there are no imported reports', () => {
     show([]);
-    expect(
-      screen.getByText('Latest three imported reports')
-    ).toBeInTheDocument();
-    expect(screen.getByText('No imported reports yet.')).toBeInTheDocument();
+    expect(screen.getByText('Latest three panels')).toBeInTheDocument();
+    expect(screen.getByText('No lab panels yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 });

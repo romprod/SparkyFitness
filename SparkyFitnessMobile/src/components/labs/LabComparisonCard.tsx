@@ -6,25 +6,14 @@ import { useRefetchOnFocus } from '../../hooks/useRefetchOnFocus';
 import { formatDateLabel } from '../../utils/dateUtils';
 import {
   formatLabRange,
-  formatLabValue,
-  parseLabValue,
+  labResultText,
   sameLabUnit,
 } from '../../utils/labResults';
 import Button from '../ui/Button';
 import LabStatusBadge from './LabStatusBadge';
 
 function comparisonValue(cell: LabComparisonCell): string {
-  const result = cell.result;
-  if (!result) return '—';
-  if (
-    result.value_text?.trim() &&
-    (result.value_numeric === null ||
-      parseLabValue(result.value_text) !== result.value_numeric)
-  )
-    return [result.value_text, cell.unit].filter(Boolean).join(' ');
-  return result.value_numeric !== null
-    ? formatLabValue(result.value_numeric, cell.unit)
-    : (result.value_text ?? '—');
+  return cell.result ? labResultText({ ...cell.result, unit: cell.unit }) : '—';
 }
 
 /** Read-only latest-report matrix within the existing Labs screen. */
@@ -37,20 +26,20 @@ export default function LabComparisonCard() {
     <View className="bg-surface rounded-xl p-4 mb-4 gap-3">
       <Text className="text-base font-semibold text-text-primary">
         {t('labs.comparison.title', {
-          defaultValue: 'Latest three imported reports',
+          defaultValue: 'Latest three panels',
         })}
       </Text>
       {isLoading ? (
         <Text className="text-sm text-text-muted">
           {t('labs.comparison.loading', {
-            defaultValue: 'Loading report comparison…',
+            defaultValue: 'Loading panel comparison…',
           })}
         </Text>
       ) : isError ? (
         <>
           <Text className="text-sm text-text-warning">
             {t('labs.comparison.failed', {
-              defaultValue: 'Could not load the imported report comparison.',
+              defaultValue: 'Could not load the panel comparison.',
             })}
           </Text>
           <Button variant="secondary" onPress={() => void refetch()}>
@@ -60,14 +49,13 @@ export default function LabComparisonCard() {
       ) : !columns.length ? (
         <Text className="text-sm text-text-muted">
           {t('labs.comparison.empty', {
-            defaultValue: 'No imported reports available to compare.',
+            defaultValue: 'No lab panels available to compare.',
           })}
         </Text>
       ) : !comparison.rows.length ? (
         <Text className="text-sm text-text-muted">
           {t('labs.comparison.noResults', {
-            defaultValue:
-              'These imported reports have no lab results to compare.',
+            defaultValue: 'These panels have no lab results to compare.',
           })}
         </Text>
       ) : (
@@ -215,7 +203,7 @@ export default function LabComparisonCard() {
                         className="text-xs text-text-success"
                         accessibilityLabel={t('labs.comparison.closer', {
                           defaultValue:
-                            'Closer to reference range than prior report',
+                            'Closer to reference range than prior panel',
                         })}
                       >
                         {cell.improved === 'up' ? '▲' : '▼'}

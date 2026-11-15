@@ -4,17 +4,30 @@ import type {
   MedicationSyringe,
   MedicationSyringeInput,
 } from '@workspace/shared';
-import { computeDraw, drawConcentration } from '@workspace/shared';
+import {
+  computeDraw,
+  drawConcentration,
+  normalizeMedicationDevice,
+  normalizeDeviceDose,
+  resolvePreparedMedicationRoute,
+  isDeviceEligibleForRoute,
+} from '@workspace/shared';
 import type { PoolClient } from 'pg';
 import { getClient } from '../db/poolManager.js';
 import { badPreparation } from '../services/medicationPreparationService.js';
 const COLS =
-  'id,name,graduation_type,units_per_ml,capacity_ml::text,capacity_units,increment::text,is_default,created_at,updated_at';
+  's.id,s.name,s.device_type,s.graduation_type,s.units_per_ml,s.capacity_ml::text,s.capacity_units,s.increment::text,(s.user_id IS NULL) AS is_shared,(s.id=(SELECT default_syringe_id FROM medication_device_preferences WHERE user_id=$1)) IS TRUE AS is_default,s.created_at,s.updated_at';
+export interface StoredDrawContext {
+  vial: Record<string, unknown>;
+  device: MedicationSyringe;
+  previous: Record<string, unknown> | null;
+  concentrationMcgPerMl: string;
+}
 export async function listSyringes(userId: string) {
   const client: PoolClient = await getClient(userId);
   try {
     const result = await client.query<MedicationSyringe>(
-      `SELECT ${COLS} FROM medication_syringes WHERE user_id=$1 ORDER BY name,id`,
+      `SELECT ${COLS} FROM medication_syringes s WHERE s.user_id=$1 OR s.user_id IS NULL ORDER BY s.name,s.id`,
       [userId]
     );
     return {
@@ -32,25 +45,48 @@ export async function saveSyringe(
 ) {
   const client: PoolClient = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    // Older clients omit the newly introduced category on edits. Preserve it
+    // rather than turning an existing pen or pump into a syringe.
+    if (id && data.device_type === undefined) {
+      const existing = await client.query<MedicationSyringe>(
+        `SELECT ${COLS} FROM medication_syringes s WHERE s.user_id=$1 AND s.id=$2 FOR UPDATE`,
+        [userId, id]
+      );
+      if (!existing.rows[0]) {
+        await client.query('COMMIT');
+        return null;
+      }
+      data = {
+        ...data,
+        device_type: existing.rows[0].device_type ?? 'syringe',
+      };
+    }
+    const normalized = normalizeMedicationDevice(data);
     const values = [
       userId,
-      data.name,
-      data.graduation_type,
-      data.units_per_ml,
-      data.capacity_ml,
-      data.capacity_units,
-      data.increment,
+      normalized.name,
+      normalized.graduation_type,
+      normalized.units_per_ml,
+      normalized.capacity_ml,
+      normalized.capacity_units,
+      normalized.increment,
+      normalized.device_type,
     ];
     const result = id
       ? await client.query(
-          `UPDATE medication_syringes SET name=$2,graduation_type=$3,units_per_ml=$4,capacity_ml=$5,capacity_units=$6,increment=$7,updated_at=NOW() WHERE user_id=$1 AND id=$8 RETURNING ${COLS}`,
+          `UPDATE medication_syringes s SET name=$2,graduation_type=$3,units_per_ml=$4,capacity_ml=$5,capacity_units=$6,increment=$7,device_type=$8,updated_at=NOW() WHERE s.user_id=$1 AND s.id=$9 RETURNING ${COLS}`,
           [...values, id]
         )
       : await client.query(
-          `INSERT INTO medication_syringes(user_id,name,graduation_type,units_per_ml,capacity_ml,capacity_units,increment) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING ${COLS}`,
+          `INSERT INTO medication_syringes AS s(user_id,name,graduation_type,units_per_ml,capacity_ml,capacity_units,increment,device_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${COLS}`,
           values
         );
+    await client.query('COMMIT');
     return result.rows[0] ?? null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
@@ -64,20 +100,16 @@ export async function setDefaultSyringe(userId: string, id: string | null) {
     ]);
     if (id) {
       const row = await client.query(
-        'SELECT id FROM medication_syringes WHERE id=$1 AND user_id=$2 FOR KEY SHARE',
+        'SELECT id FROM medication_syringes WHERE id=$1 AND (user_id=$2 OR user_id IS NULL)',
         [id, userId]
       );
       if (!row.rows[0]) throw badPreparation('Syringe not found.');
     }
     await client.query(
-      'UPDATE medication_syringes SET is_default=false WHERE user_id=$1 AND is_default',
-      [userId]
+      `INSERT INTO medication_device_preferences(user_id,default_syringe_id) VALUES($1,$2)
+       ON CONFLICT(user_id) DO UPDATE SET default_syringe_id=EXCLUDED.default_syringe_id`,
+      [userId, id]
     );
-    if (id)
-      await client.query(
-        'UPDATE medication_syringes SET is_default=true WHERE id=$1 AND user_id=$2',
-        [id, userId]
-      );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -117,15 +149,16 @@ export async function calculateStoredDraw(
   penId: string,
   input: CalculatedDrawInput,
   medicationId?: string,
-  editingInjectionId?: string
+  editingInjectionId?: string,
+  onContext?: (context: StoredDrawContext) => void
 ) {
   const vial = await client.query(
-    `SELECT v.kind,v.medication_id,v.concentration_mg_ml::text,v.volume_ml::text,v.doses_used,
+    `SELECT v.kind,v.medication_id,m.type_id,m.route_id,v.status,v.finished_at,v.concentration_mg_ml::text,v.volume_ml::text,v.doses_used,to_jsonb(p)::text AS preparation_state,
  p.id AS preparation_id,p.mass_value::text,p.mass_unit,p.final_volume_ml::text,
  (SELECT COALESCE(SUM(i.dose_mg),0)::text FROM injection_entries i WHERE i.pen_id=v.id AND i.user_id=v.user_id) AS used_mg,
  (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id=v.id AND i.user_id=v.user_id) AS linked_count,
  (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id=v.id AND i.user_id=v.user_id AND (i.dose_mg IS NULL OR i.dose_mg<0 OR (i.dose_mg=0 AND (i.volume_ml IS NULL OR i.dose_input_unit IS NULL)))) AS missing_count
- FROM medication_pens v LEFT JOIN medication_preparations p ON p.pen_id=v.id AND p.user_id=v.user_id
+ FROM medication_pens v JOIN medications m ON m.id=v.medication_id AND m.user_id=v.user_id LEFT JOIN medication_preparations p ON p.pen_id=v.id AND p.user_id=v.user_id
  WHERE v.id=$1 AND v.user_id=$2`,
     [penId, userId]
   );
@@ -137,14 +170,27 @@ export async function calculateStoredDraw(
   )
     throw badPreparation('Vial not found for this medication.');
   const syringe = await client.query<MedicationSyringe>(
-    `SELECT ${COLS} FROM medication_syringes WHERE id=$1 AND user_id=$2 FOR SHARE`,
-    [input.syringe_id, userId]
+    `SELECT ${COLS} FROM medication_syringes s WHERE s.id=$2 AND (s.user_id=$1 OR s.user_id IS NULL)`,
+    [userId, input.syringe_id]
   );
   if (!syringe.rows[0]) throw badPreparation('Syringe not found.');
+  let device = syringe.rows[0];
+  // PostgreSQL row-locking SELECT also applies UPDATE policies. Shared devices
+  // are deliberately read-only, so only lock/re-read an owned device. The FK
+  // protects a shared reference against concurrent deletion when it is saved.
+  if (device.is_shared === false) {
+    const locked = await client.query<MedicationSyringe>(
+      `SELECT ${COLS} FROM medication_syringes s WHERE s.id=$2 AND s.user_id=$1 FOR SHARE`,
+      [userId, input.syringe_id]
+    );
+    if (!locked.rows[0]) throw badPreparation('Syringe not found.');
+    device = locked.rows[0];
+  }
   let credit = '0';
+  let previous: Record<string, unknown> | null = null;
   if (editingInjectionId) {
     const original = await client.query(
-      'SELECT pen_id,preparation_id,syringe_id,dose_mg::text,volume_ml::text,dose_input_unit FROM injection_entries WHERE id=$1 AND user_id=$2',
+      'SELECT id,updated_at::text,administration_route,pen_id,preparation_id,syringe_id,dose_mg::text,volume_ml::text,dose_input_unit FROM injection_entries WHERE id=$1 AND user_id=$2',
       [editingInjectionId, userId]
     );
     const entry = original.rows[0];
@@ -160,7 +206,22 @@ export async function calculateStoredDraw(
         'The edited injection does not match this vial, preparation and syringe.'
       );
     credit = entry.dose_mg;
+    previous = entry;
   }
+  const snapshotRoute = previous?.administration_route;
+  const route =
+    snapshotRoute === 'injection' || snapshotRoute === 'nasal'
+      ? snapshotRoute
+      : resolvePreparedMedicationRoute(row);
+  if (!route || !isDeviceEligibleForRoute(device.device_type, route))
+    throw badPreparation('Device does not match the medication route.');
+  let normalizedDose;
+  try {
+    normalizedDose = normalizeDeviceDose(input.dose, device);
+  } catch {
+    throw badPreparation('Dose unit does not match the selected device.');
+  }
+
   const concentration = drawConcentration(
     row.mass_value !== null
       ? {
@@ -183,14 +244,30 @@ export async function calculateStoredDraw(
         )
       : undefined;
   try {
+    onContext?.({
+      vial: row,
+      device,
+      previous,
+      concentrationMcgPerMl: concentration,
+    });
     return {
       ...computeDraw({
-        dose: input.dose,
+        dose: normalizedDose,
         concentrationMcgPerMl: concentration,
-        syringe: syringe.rows[0],
+        syringe: device,
         ...(remaining === undefined ? {} : { remainingMl: remaining }),
       }),
-      syringeCapacityMl: syringe.rows[0].capacity_ml,
+      syringeCapacityMl: device.capacity_ml,
+      administrationRoute: route,
+      doseInputUnit: normalizedDose.unit,
+      device: {
+        id: device.id,
+        device_type: device.device_type ?? 'syringe',
+        increment: device.increment,
+        capacity_ml: device.capacity_ml,
+        graduation_type: device.graduation_type,
+        units_per_ml: device.units_per_ml,
+      },
     };
   } catch (error) {
     if (

@@ -21,29 +21,32 @@ export default function SavedPreparation({
         <dt className="text-muted-foreground">
           {t('medications.preparation.mode', 'Preparation type')}
         </dt>
-        <dd>
+        <dd className="min-w-0 break-words">
           {t(`medications.preparation.${preparation.mode}`, preparation.mode)}
         </dd>
         <dt className="text-muted-foreground">
           {t('medications.preparation.massValue', 'Vial content')}
         </dt>
-        <dd>
-          {preparation.mass_value} {preparation.mass_unit}
+        <dd className="min-w-0 break-words">
+          {preparation.exact?.mass_value ?? preparation.mass_value}{' '}
+          {preparation.mass_unit}
         </dd>
         <dt className="text-muted-foreground">
           {t('medications.preparation.finalVolume', 'Final volume')}
         </dt>
-        <dd>{preparation.final_volume_ml} mL</dd>
+        <dd className="min-w-0 break-words">
+          {preparation.exact?.final_volume_ml ?? preparation.final_volume_ml} mL
+        </dd>
         <dt className="text-muted-foreground">
           {t('medications.preparation.preparedDate', 'Prepared date')}
         </dt>
-        <dd>{preparation.prepared_date}</dd>
+        <dd className="min-w-0 break-words">{preparation.prepared_date}</dd>
         {preparation.diluent && (
           <>
             <dt className="text-muted-foreground">
               {t('medications.preparation.diluent', 'Diluent (optional)')}
             </dt>
-            <dd>{preparation.diluent}</dd>
+            <dd className="min-w-0 break-words">{preparation.diluent}</dd>
           </>
         )}
         <dt className="text-muted-foreground">
@@ -52,12 +55,16 @@ export default function SavedPreparation({
             'Concentration (mg/mL)'
           )}
         </dt>
-        <dd>{preparation.concentration_mg_ml} mg/mL</dd>
+        <dd className="min-w-0 break-words">
+          {preparation.exact?.concentration_mg_ml ??
+            preparation.concentration_mg_ml}{' '}
+          mg/mL
+        </dd>
       </dl>
       <p className="mt-2 text-xs text-muted-foreground">
         {t(
-          'medications.preparation.immutable',
-          'Original preparation details are saved and cannot be changed.'
+          'medications.preparationFlow.reviewCorrections',
+          'Preparation corrections must be reviewed before saving.'
         )}
       </p>
     </details>

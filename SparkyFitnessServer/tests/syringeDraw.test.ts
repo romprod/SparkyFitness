@@ -34,6 +34,7 @@ describe('reference syringe draw semantics', () => {
         rows: [
           {
             kind: 'vial',
+            type_id: 'injection',
             mass_value: null,
             concentration_mg_ml: null,
             volume_ml: null,
@@ -59,6 +60,7 @@ describe('reference syringe draw semantics', () => {
         rows: [
           {
             kind: 'vial',
+            type_id: 'injection',
             mass_value: null,
             concentration_mg_ml: '1',
             volume_ml: '1',

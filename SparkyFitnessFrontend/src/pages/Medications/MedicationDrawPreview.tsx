@@ -3,26 +3,45 @@ import {
   drawTargetDisplay,
   drawTargetFillFraction,
   type DrawResult,
+  type MedicationDeviceType,
+  mlToPumps,
 } from '@workspace/shared';
+import { Badge } from '@/components/ui/badge';
 import SyringeDrawFigure from './SyringeDrawFigure';
 export default function MedicationDrawPreview({
   preview: cachedPreview,
   isFetching,
   isError,
+  deviceType,
 }: {
   preview?: DrawResult;
   isFetching: boolean;
   isError: boolean;
+  deviceType?: MedicationDeviceType;
 }) {
   const { t } = useTranslation();
   const preview = !isFetching && !isError ? cachedPreview : undefined;
   const targetDisplay = preview ? drawTargetDisplay(preview) : null;
-  const fillFraction = preview?.syringeCapacityMl
-    ? drawTargetFillFraction(preview.targetVolumeMl, preview.syringeCapacityMl)
+  const capacity = preview?.device?.capacity_ml ?? preview?.syringeCapacityMl;
+  const currentDeviceType =
+    preview?.device?.device_type ?? deviceType ?? 'syringe';
+  const fillFraction = capacity
+    ? drawTargetFillFraction(preview!.targetVolumeMl, capacity)
     : null;
-  const markingLabel = preview
-    ? `${preview.markingValue} ${preview.markingScale === 'ml' ? 'mL' : t('medications.syringes.units', 'units')}`
-    : '';
+  const pumps =
+    currentDeviceType === 'pump' && preview?.device
+      ? mlToPumps(preview.markingValue, preview.device.increment)
+      : null;
+  const markingLabel =
+    pumps !== null
+      ? `${pumps} ${pumps === '1' ? t('medications.devices.pump', 'pump') : t('medications.devices.pumps', 'pumps')} (${preview!.markingValue} mL)`
+      : preview
+        ? `${preview.markingValue} ${preview.markingScale === 'ml' ? 'mL' : t('medications.syringes.units', 'units')}`
+        : '';
+  const equivalenceLabel =
+    currentDeviceType === 'pump'
+      ? t('medications.devices.doseEquivalents', 'Dose equivalents')
+      : t('medications.syringes.targetEquivalents', 'Target dose equivalents');
   const blocked =
     preview?.warnings.some((warning) => warning.severity === 'block') ?? false;
   return (
@@ -33,29 +52,23 @@ export default function MedicationDrawPreview({
         </p>
       )}
       {isError && (
-        <p className="text-destructive">
+        <Badge
+          variant="destructive"
+          className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+        >
           {t(
             'medications.syringes.previewError',
-            'Could not calculate a marking. Check the entered amount and syringe settings.'
+            'Could not calculate a marking. Check the entered amount and device settings.'
           )}
-        </p>
+        </Badge>
       )}
       <p className="font-medium break-words">
         {preview
-          ? t(
-              'medications.syringes.marking',
-              'Measurable marking: {{value}} {{scale}}',
-              {
-                value: preview.markingValue,
-                scale:
-                  preview.markingScale === 'ml'
-                    ? 'mL'
-                    : t('medications.syringes.units', 'units'),
-              }
-            )
+          ? `${t('medications.devices.measurable', 'Measurable marking')}: ${markingLabel}`
           : t('medications.syringes.emptyMarking', 'Measurable marking: —')}
       </p>
       <SyringeDrawFigure
+        deviceType={currentDeviceType}
         fillFraction={fillFraction ?? 0}
         markingLabel={fillFraction !== null ? markingLabel : '—'}
         blocked={fillFraction !== null && blocked}
@@ -64,17 +77,9 @@ export default function MedicationDrawPreview({
         <>
           {targetDisplay && (
             <div className="space-y-1">
-              <p className="text-xs font-medium">
-                {t(
-                  'medications.syringes.targetEquivalents',
-                  'Target dose equivalents'
-                )}
-              </p>
+              <p className="text-xs font-medium">{equivalenceLabel}</p>
               <dl
-                aria-label={t(
-                  'medications.syringes.targetEquivalents',
-                  'Target dose equivalents'
-                )}
+                aria-label={equivalenceLabel}
                 className="grid grid-cols-2 gap-2 text-center text-xs tabular-nums sm:grid-cols-4"
               >
                 {(['mcg', 'mg', 'ml', 'units'] as const).map((unit) => (
@@ -83,10 +88,19 @@ export default function MedicationDrawPreview({
                       {unit === 'ml'
                         ? 'mL'
                         : unit === 'units'
-                          ? t('medications.syringes.units', 'units')
+                          ? currentDeviceType === 'pump'
+                            ? t(
+                                'medications.devices.roundedPumps',
+                                'Pumps (rounded)'
+                              )
+                            : t('medications.syringes.units', 'units')
                           : unit}
                     </dt>
-                    <dd className="break-words">{targetDisplay[unit]}</dd>
+                    <dd className="break-words">
+                      {unit === 'units' && currentDeviceType === 'pump'
+                        ? (pumps ?? '—')
+                        : targetDisplay[unit]}
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -110,18 +124,24 @@ export default function MedicationDrawPreview({
             </dt>
             <dd className="break-words">{preview.roundingErrorMcg} mcg</dd>
           </dl>
-          {preview.warnings.map((warning) => (
-            <p
-              key={warning.code}
-              className={
-                warning.severity === 'block'
-                  ? 'text-destructive'
-                  : 'text-amber-700 dark:text-amber-400'
-              }
-            >
-              {warning.message}
-            </p>
-          ))}
+          {preview.warnings.map((warning) =>
+            warning.severity === 'block' ? (
+              <Badge
+                key={warning.code}
+                variant="destructive"
+                className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+              >
+                {warning.message}
+              </Badge>
+            ) : (
+              <p
+                key={warning.code}
+                className="text-amber-700 dark:text-amber-400"
+              >
+                {warning.message}
+              </p>
+            )
+          )}
         </>
       )}
     </div>

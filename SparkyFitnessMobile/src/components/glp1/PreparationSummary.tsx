@@ -23,7 +23,7 @@ export default function PreparationSummary({
     <View className="gap-1">
       <Text className="text-sm font-medium text-text-primary">
         {t('medications.preparation.saved', {
-          defaultValue: 'Saved preparation (read-only)',
+          defaultValue: 'Saved preparation',
         })}
       </Text>
       <Text className="text-sm text-text-secondary">

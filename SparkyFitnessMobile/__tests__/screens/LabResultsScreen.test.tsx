@@ -6,6 +6,9 @@ import {
   useDeleteLabImports,
   useLabMarkers,
   useLabComparison,
+  useLabPanels,
+  useDeleteLabPanel,
+  useCreateManualLabPanel,
 } from '../../src/hooks/useLabResults';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -13,6 +16,11 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('react-native-toast-message', () => ({ show: jest.fn() }));
 jest.mock('../../src/components/Icon', () => 'Icon');
+jest.mock('../../src/hooks/useProfile', () => ({
+  useProfile: () => ({ profile: { id: 'example-owner' }, isLoading: false }),
+}));
+jest.mock('../../src/components/CalendarSheet', () => 'CalendarSheet');
+jest.mock('../../src/components/BottomSheetPicker', () => 'BottomSheetPicker');
 const mockHeaderConfigs: { right: unknown }[] = [];
 jest.mock('../../src/hooks/useScreenHeader', () => ({
   useScreenHeader: (config: { right: unknown }) => {
@@ -27,6 +35,10 @@ jest.mock('../../src/hooks/useLabResults', () => ({
   useDeleteLabImports: jest.fn(),
   useLabMarkers: jest.fn(),
   useLabComparison: jest.fn(),
+  useLabPanels: jest.fn(),
+  useLabPanelScope: () => ({ ready: true, isCurrent: () => true }),
+  useDeleteLabPanel: jest.fn(),
+  useCreateManualLabPanel: jest.fn(),
 }));
 
 const navigation = { navigate: jest.fn(), goBack: jest.fn() } as never;
@@ -62,6 +74,32 @@ describe('LabResultsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHeaderConfigs.length = 0;
+    jest.mocked(useLabPanels).mockReturnValue({
+      data: {
+        panels: [
+          {
+            id: 'existing',
+            collected_on: null,
+            lab_name: null,
+            created_at: '2026-01-01',
+            results: [],
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useLabPanels>);
+    jest.mocked(useDeleteLabPanel).mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteLabPanel>);
+    jest.mocked(useCreateManualLabPanel).mockReturnValue({
+      mutateAsync: jest.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateManualLabPanel>);
+
     jest.mocked(useLabComparison).mockReturnValue({
       comparison: { panels: [], rows: [] },
       isLoading: false,
@@ -75,6 +113,45 @@ describe('LabResultsScreen', () => {
       refetch: jest.fn(),
     } as never);
     jest.mocked(useDeleteLabImports).mockReturnValue({ mutate } as never);
+  });
+
+  it('opens the manual panel form only after an empty panel history is settled', () => {
+    jest.mocked(useLabPanels).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      isSuccess: false,
+      refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useLabPanels>);
+    const page = render(
+      <LabResultsScreen navigation={navigation} route={route} />
+    );
+    expect(page.queryByText('Save lab panel')).toBeNull();
+    jest.mocked(useLabPanels).mockReturnValue({
+      data: { panels: [] },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+      refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useLabPanels>);
+    page.rerender(<LabResultsScreen navigation={navigation} route={route} />);
+    expect(page.getByText('Save lab panel')).toBeTruthy();
+    expect(page.getByText('Import from a report')).toBeTruthy();
+  });
+
+  it('keeps the manual form closed on a panel-history failure', () => {
+    jest.mocked(useLabPanels).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isSuccess: false,
+      refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useLabPanels>);
+    const page = render(
+      <LabResultsScreen navigation={navigation} route={route} />
+    );
+    expect(page.queryByText('Save lab panel')).toBeNull();
+    expect(page.getByText('Could not load the lab panels.')).toBeTruthy();
   });
 
   it('offers to import a report when there are no results, and when there are', () => {

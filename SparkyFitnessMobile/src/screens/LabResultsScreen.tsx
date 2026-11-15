@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,9 +14,18 @@ import Button from '../components/ui/Button';
 import Icon from '../components/Icon';
 import LabStatusBadge from '../components/labs/LabStatusBadge';
 import LabComparisonCard from '../components/labs/LabComparisonCard';
+import LabPanelForm from '../components/labs/LabPanelForm';
+import LabPanelHistory from '../components/labs/LabPanelHistory';
+import { useProfile } from '../hooks/useProfile';
+import { useLabMarkerLabels } from '../utils/labMarkerLabels';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import { useScreenHeader } from '../hooks/useScreenHeader';
-import { useDeleteLabImports, useLabMarkers } from '../hooks/useLabResults';
+import {
+  useDeleteLabImports,
+  useLabMarkers,
+  useLabPanels,
+  useLabPanelScope,
+} from '../hooks/useLabResults';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import { formatDateLabel } from '../utils/dateUtils';
 import {
@@ -37,7 +46,45 @@ const LabResultsScreen: React.FC<Props> = ({ navigation }) => {
   const dateLocale = i18n.language.startsWith('pl') ? 'pl-PL' : 'en-US';
   const { markers, isLoading, isError, refetch } = useLabMarkers();
   const deleteImports = useDeleteLabImports();
-  useRefetchOnFocus(() => void refetch(), true);
+  const panels = useLabPanels();
+  const { ready: panelScopeReady, isCurrent: isPanelScopeCurrent } =
+    useLabPanelScope();
+  const labels = useLabMarkerLabels();
+  const {
+    profile,
+    isLoading: profileLoading,
+    isError: profileError,
+  } = useProfile();
+  const activeOwnerId = profile?.id ?? null;
+  const [panelFormControl, setPanelFormControl] = useState<{
+    owner: string | null;
+    open: boolean;
+  } | null>(null);
+  const panelFormOpen =
+    panelFormControl?.owner === activeOwnerId ? panelFormControl.open : null;
+  const showPanelForm =
+    panelScopeReady &&
+    !!activeOwnerId &&
+    (panelFormOpen ??
+      (panels.isSuccess &&
+        !!activeOwnerId &&
+        !profileLoading &&
+        !profileError &&
+        !isLoading &&
+        !isError &&
+        panels.data.panels.length === 0));
+  const customMarkers = useMemo(
+    () =>
+      markers.flatMap((marker) =>
+        marker.markerId
+          ? [{ id: marker.markerId, name: marker.name, unit: marker.unit }]
+          : []
+      ),
+    [markers]
+  );
+  useRefetchOnFocus(() => {
+    void Promise.all([refetch(), panels.refetch()]);
+  }, true);
 
   const confirmDeleteImports = () => {
     Alert.alert(
@@ -124,6 +171,45 @@ const LabResultsScreen: React.FC<Props> = ({ navigation }) => {
           paddingBottom: insets.bottom + 24,
         }}
       >
+        <View className="mb-4">
+          <Button
+            variant="secondary"
+            disabled={
+              isLoading ||
+              isError ||
+              profileLoading ||
+              profileError ||
+              panels.isLoading ||
+              panels.isError
+            }
+            onPress={() =>
+              setPanelFormControl({
+                owner: activeOwnerId,
+                open: !showPanelForm,
+              })
+            }
+          >
+            {showPanelForm
+              ? t('common.close', { defaultValue: 'Close' })
+              : t('labs.panels.add', { defaultValue: 'Add lab panel' })}
+          </Button>
+        </View>
+        {showPanelForm && (
+          <LabPanelForm
+            key={`panel-form:${activeOwnerId}`}
+            ownerId={activeOwnerId!}
+            isScopeCurrent={isPanelScopeCurrent}
+            customMarkers={customMarkers}
+            labels={labels}
+            onSaved={() =>
+              setPanelFormControl((current) =>
+                current === null || current.owner === activeOwnerId
+                  ? { owner: activeOwnerId, open: false }
+                  : current
+              )
+            }
+          />
+        )}
         <LabComparisonCard />
         {isLoading ? (
           <ActivityIndicator />
@@ -221,6 +307,13 @@ const LabResultsScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
         )}
+        <LabPanelHistory
+          key={`panel-history:${activeOwnerId}:${panelScopeReady}`}
+          panels={panelScopeReady ? (panels.data?.panels ?? []) : []}
+          markers={markers}
+          isLoading={panels.isLoading || isLoading}
+          isError={panels.isError || isError}
+        />
       </ScrollView>
     </View>
   );

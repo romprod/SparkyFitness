@@ -76,12 +76,12 @@ test('shows a latest-report matrix with per-cell units and shared closer-to-rang
     panel('latest', '2026-01-30', [result('new', 4)]),
   ]);
   const view = render(<LabComparisonCard />);
-  expect(view.getByText('Latest three imported reports')).toBeTruthy();
+  expect(view.getByText('Latest three panels')).toBeTruthy();
   expect(view.getByText('Example analyte')).toBeTruthy();
   expect(view.getByText('4 mg/L')).toBeTruthy();
   expect(view.getByText('8 mg/L')).toBeTruthy();
   expect(
-    view.getByLabelText('Closer to reference range than prior report')
+    view.getByLabelText('Closer to reference range than prior panel')
   ).toBeTruthy();
   expect(view.getByText('High')).toBeTruthy();
 });
@@ -94,7 +94,7 @@ test('preserves qualified raw text and heterogeneous units without fabricating a
   expect(view.getByText('<3 mg/L')).toBeTruthy();
   expect(view.getByText('8 mmol/L')).toBeTruthy();
   expect(
-    view.queryByLabelText('Closer to reference range than prior report')
+    view.queryByLabelText('Closer to reference range than prior panel')
   ).toBeNull();
 });
 test('keeps collection dates distinct from edited result dates and unknown collection dates', () => {
@@ -108,23 +108,19 @@ test('keeps collection dates distinct from edited result dates and unknown colle
   expect(view.getByText('Collection date not recorded')).toBeTruthy();
   expect(view.getAllByText(/^Result date:/)).toHaveLength(2);
 });
-test('keeps an honest comparison empty state discoverable without imported reports', () => {
+test('keeps an honest comparison empty state discoverable without saved panels', () => {
   const view = render(<LabComparisonCard />);
-  expect(view.getByText('Latest three imported reports')).toBeTruthy();
-  expect(
-    view.getByText('No imported reports available to compare.')
-  ).toBeTruthy();
+  expect(view.getByText('Latest three panels')).toBeTruthy();
+  expect(view.getByText('No lab panels available to compare.')).toBeTruthy();
 });
 test('exposes loading and failure states and retries only the comparison request', () => {
   mockState.isLoading = true;
   const view = render(<LabComparisonCard />);
-  expect(view.getByText('Loading report comparison…')).toBeTruthy();
+  expect(view.getByText('Loading panel comparison…')).toBeTruthy();
   mockState.isLoading = false;
   mockState.isError = true;
   view.rerender(<LabComparisonCard />);
-  expect(
-    view.getByText('Could not load the imported report comparison.')
-  ).toBeTruthy();
+  expect(view.getByText('Could not load the panel comparison.')).toBeTruthy();
   fireEvent.press(view.getByText('Retry'));
   expect(mockRefetch).toHaveBeenCalledTimes(1);
 });

@@ -22,6 +22,10 @@ import type {
 } from '@/types/medications';
 
 import i18n from 'i18next';
+import type {
+  MedicationPreparationReviewInput,
+  MedicationPreparationCorrectionInput,
+} from '@workspace/shared';
 const medKeys = {
   list: (opts?: ListMedicationsOptions) => ['medications', opts ?? {}] as const,
   pens: (medId: string) => ['medication-pens', medId] as const,
@@ -31,6 +35,52 @@ const medKeys = {
   siteSuggestion: (medId: string) => ['glp1-site-suggestion', medId] as const,
   entries: (opts?: ListMedicationEntriesOptions) =>
     ['medication-entries', opts ?? {}] as const,
+};
+
+export const usePreparationReview = (
+  penId: string | null,
+  input: MedicationPreparationReviewInput | null
+) =>
+  useQuery({
+    queryKey: ['medication-preparation-review', penId, input],
+    queryFn: () => medicationService.reviewPreparation(penId!, input!),
+    enabled: !!penId && !!input,
+    retry: false,
+    staleTime: 0,
+  });
+
+export const useCorrectPreparationMutation = (medId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: MedicationPreparationCorrectionInput;
+    }) => medicationService.correctPreparation(id, body),
+    onError: () => {
+      client.invalidateQueries({ queryKey: medKeys.pens(medId) });
+      client.invalidateQueries({ queryKey: ['medication-preparation-review'] });
+    },
+    onSuccess: () => {
+      [
+        medKeys.pens(medId),
+        medKeys.injections(medId),
+        medKeys.serumCurve(medId),
+        ['medication-draw-preview'],
+        ['medication-preparation-review'],
+        ['medication-entries'],
+      ].forEach((queryKey) => client.invalidateQueries({ queryKey }));
+      invalidateReports(client);
+    },
+    meta: {
+      errorMessage: i18n.t(
+        'medications.preparation.correctError',
+        'Could not update preparation.'
+      ),
+    },
+  });
 };
 
 // The Reports > Medications tab bundles medications/entries/injections/titration

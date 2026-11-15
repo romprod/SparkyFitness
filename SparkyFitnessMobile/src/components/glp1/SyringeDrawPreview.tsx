@@ -1,6 +1,11 @@
 import { Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { drawTargetDisplay, type DrawResult } from '@workspace/shared';
+import {
+  drawTargetDisplay,
+  mlToPumps,
+  type DrawResult,
+  type MedicationDeviceType,
+} from '@workspace/shared';
 import SyringeVisual from './SyringeVisual';
 
 export default function SyringeDrawPreview({
@@ -8,35 +13,71 @@ export default function SyringeDrawPreview({
   pending,
   failed,
   showNeutral = false,
+  neutralDeviceType = 'syringe',
 }: {
   data?: DrawResult;
   pending: boolean;
   failed: boolean;
   showNeutral?: boolean;
+  neutralDeviceType?: MedicationDeviceType;
 }) {
   const { t } = useTranslation();
   const current = !pending && !failed ? data : undefined;
   const target = current ? drawTargetDisplay(current) : null;
+  const deviceType = current?.device?.device_type ?? neutralDeviceType;
+  const pumps =
+    current?.device && deviceType === 'pump'
+      ? mlToPumps(current.markingValue, current.device.increment)
+      : null;
   return (
     <>
       {(current || showNeutral) && (
         <>
-          <SyringeVisual draw={current} neutral={showNeutral} />
+          <SyringeVisual
+            draw={current}
+            neutral={showNeutral}
+            neutralDeviceType={deviceType}
+          />
           <Text className="text-base font-semibold text-text-primary">
-            {current
-              ? t('medications.syringes.marking', {
-                  defaultValue: 'Measured marking: {{value}} {{unit}}',
-                  value: current.markingValue,
-                  unit:
-                    current.markingScale === 'ml'
-                      ? t('medications.syringes.ml', { defaultValue: 'mL' })
-                      : t('medications.syringes.units', {
-                          defaultValue: 'Units',
-                        }),
+            {current && deviceType === 'pump'
+              ? t('medications.devices.sprayTo', {
+                  defaultValue: 'Spray {{value}} pumps ({{volume}} mL)',
+                  value: pumps ?? '—',
+                  volume: current.deliveredVolumeMl,
                 })
-              : t('medications.syringes.emptyMarking', {
-                  defaultValue: 'Draw to —',
-                })}
+              : current && deviceType === 'pen'
+                ? t('medications.devices.dialTo', {
+                    defaultValue: 'Dial to {{value}} {{unit}}',
+                    value: current.markingValue,
+                    unit:
+                      current.markingScale === 'ml'
+                        ? t('medications.syringes.ml', { defaultValue: 'mL' })
+                        : t('medications.syringes.units', {
+                            defaultValue: 'Units',
+                          }),
+                  })
+                : current
+                  ? t('medications.syringes.marking', {
+                      defaultValue: 'Measured marking: {{value}} {{unit}}',
+                      value: current.markingValue,
+                      unit:
+                        current.markingScale === 'ml'
+                          ? t('medications.syringes.ml', { defaultValue: 'mL' })
+                          : t('medications.syringes.units', {
+                              defaultValue: 'Units',
+                            }),
+                    })
+                  : deviceType === 'pump'
+                    ? t('medications.devices.emptySpray', {
+                        defaultValue: 'Spray —',
+                      })
+                    : deviceType === 'pen'
+                      ? t('medications.devices.emptyDial', {
+                          defaultValue: 'Dial to —',
+                        })
+                      : t('medications.syringes.emptyMarking', {
+                          defaultValue: 'Draw to —',
+                        })}
           </Text>
         </>
       )}
@@ -60,8 +101,8 @@ export default function SyringeDrawPreview({
           {target && (
             <View className="gap-1 my-2">
               <Text className="text-xs text-text-muted">
-                {t('medications.syringes.targetBreakdown', {
-                  defaultValue: 'Target dose in all units',
+                {t('medications.devices.equivalents', {
+                  defaultValue: 'Dose equivalents',
                 })}
               </Text>
               <View className="flex-row gap-2">
@@ -83,10 +124,21 @@ export default function SyringeDrawPreview({
                     unit: t('medications.syringes.ml', { defaultValue: 'mL' }),
                   },
                   {
-                    value: target.units,
-                    unit: t('medications.syringes.units', {
-                      defaultValue: 'Units',
-                    }),
+                    value:
+                      current.device && deviceType === 'pump'
+                        ? mlToPumps(
+                            current.markingValue,
+                            current.device.increment
+                          )
+                        : target.units,
+                    unit:
+                      deviceType === 'pump'
+                        ? t('medications.devices.pumpsRounded', {
+                            defaultValue: 'Pumps (rounded)',
+                          })
+                        : t('medications.syringes.units', {
+                            defaultValue: 'Units',
+                          }),
                   },
                 ].map((item) => (
                   <Text

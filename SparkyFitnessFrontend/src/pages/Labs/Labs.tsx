@@ -36,11 +36,15 @@ import {
   useDeleteLabResult,
   useLabHistory,
   useLabComparison,
+  useLabPanels,
+  useLabPanelScope,
   useLabMarkers,
   useLatestLabResults,
 } from '@/hooks/Labs/useLabResults';
 import LabImportDialog from './LabImportDialog';
 import LabComparison from './LabComparison';
+import LabPanelForm from './LabPanelForm';
+import LabPanelHistory from './LabPanelHistory';
 import LabMarkerChart from './LabMarkerChart';
 import LabResultDialog from './LabResultDialog';
 import { formatLabRange, labResultText } from './labFormat';
@@ -51,12 +55,30 @@ const statusVariant = (status: string) =>
 const Labs = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const profile = useProfileQuery(user?.id);
+  const activeOwnerId = user?.activeUserId ?? user?.id ?? null;
+  const profile = useProfileQuery(activeOwnerId ?? undefined);
   const sex = labSexFromGender(profile.data?.gender);
 
   const customMarkers = useLabMarkers();
   const latest = useLatestLabResults();
   const comparison = useLabComparison();
+  const panels = useLabPanels();
+  const { ready: panelScopeReady, isCurrent: isPanelScopeCurrent } =
+    useLabPanelScope();
+  const [panelFormControl, setPanelFormControl] = useState<{
+    owner: string | null;
+    open: boolean;
+  } | null>(null);
+  const panelFormOpen =
+    panelFormControl?.owner === activeOwnerId ? panelFormControl.open : null;
+  const showPanelForm =
+    panelScopeReady &&
+    !!activeOwnerId &&
+    (panelFormOpen ??
+      (panels.isSuccess &&
+        !customMarkers.isLoading &&
+        !customMarkers.isError &&
+        panels.data.panels.length === 0));
 
   // Built-in markers are named from the catalog, never from stored text.
   const labels: LabMarkerLabels = useMemo(
@@ -143,6 +165,27 @@ const Labs = () => {
           {t('nav.labs', 'Lab results')}
         </h1>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <Button
+            variant="outline"
+            disabled={
+              customMarkers.isLoading ||
+              customMarkers.isError ||
+              panels.isLoading ||
+              panels.isError
+            }
+            aria-expanded={showPanelForm}
+            onClick={() =>
+              setPanelFormControl({
+                owner: activeOwnerId,
+                open: !showPanelForm,
+              })
+            }
+          >
+            {!showPanelForm && <Plus className="mr-2 h-4 w-4" />}
+            {showPanelForm
+              ? t('common.close', 'Close')
+              : t('labs.panels.add', 'Add lab panel')}
+          </Button>
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <FileUp className="mr-2 h-4 w-4" />
             {t('labs.import.cta', 'Import from a report')}
@@ -169,6 +212,23 @@ const Labs = () => {
           </DropdownMenu>
         </div>
       </div>
+
+      {showPanelForm && (
+        <LabPanelForm
+          key={`panel-form:${activeOwnerId}`}
+          ownerId={activeOwnerId!}
+          customMarkers={customMarkers.data ?? []}
+          labels={labels}
+          isScopeCurrent={isPanelScopeCurrent}
+          onSaved={() =>
+            setPanelFormControl((current) =>
+              current === null || current.owner === activeOwnerId
+                ? { owner: activeOwnerId, open: false }
+                : current
+            )
+          }
+        />
+      )}
 
       <LabComparison
         panels={comparison.data?.panels ?? []}
@@ -363,6 +423,15 @@ const Labs = () => {
           )}
         </div>
       )}
+
+      <LabPanelHistory
+        key={`panel-history:${activeOwnerId}:${panelScopeReady}`}
+        panels={panelScopeReady ? (panels.data?.panels ?? []) : []}
+        customMarkers={customMarkers.data ?? []}
+        labels={labels}
+        isLoading={panels.isLoading || customMarkers.isLoading}
+        isError={panels.isError || customMarkers.isError}
+      />
 
       {(addOpen || editing) && (
         <LabResultDialog

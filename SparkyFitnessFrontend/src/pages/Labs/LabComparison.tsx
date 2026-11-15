@@ -56,7 +56,7 @@ const LabComparison = ({
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">
-          {t('labs.comparison.title', 'Latest three imported reports')}
+          {t('labs.comparison.title', 'Latest three panels')}
         </CardTitle>
       </CardHeader>
       <CardContent className="min-w-0">
@@ -66,29 +66,26 @@ const LabComparison = ({
           <p role="alert" className="text-sm text-destructive">
             {t(
               'labs.comparison.loadFailed',
-              'Could not load the report comparison.'
+              'Could not load the panel comparison.'
             )}
           </p>
         ) : comparison.panels.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {t('labs.comparison.empty', 'No imported reports yet.')}
+            {t('labs.comparison.empty', 'No lab panels yet.')}
           </p>
         ) : (
           <>
             <div
               role="region"
               tabIndex={0}
-              aria-label={t(
-                'labs.comparison.title',
-                'Latest three imported reports'
-              )}
+              aria-label={t('labs.comparison.title', 'Latest three panels')}
               className="overflow-x-auto rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <table className="w-full min-w-[36rem] caption-bottom text-sm">
                 <TableCaption className="sr-only">
                   {t(
                     'labs.comparison.caption',
-                    'Up to three saved reports, newest first. Arrows show a smaller distance outside the reference range than the prior report.'
+                    'Up to three saved panels, newest first. Arrows show a smaller distance outside the reference range than the prior panel.'
                   )}
                 </TableCaption>
                 <TableHeader>
@@ -115,7 +112,7 @@ const LabComparison = ({
                         <div className="text-xs font-normal">
                           {t(
                             'labs.comparison.collectionDate',
-                            'Report collection date'
+                            'Panel collection date'
                           )}
                         </div>
                         <div className="whitespace-nowrap">
@@ -201,7 +198,7 @@ const LabComparison = ({
                                     <span className="sr-only">
                                       {t(
                                         'labs.comparison.closer',
-                                        'Closer to the reference range than the prior report'
+                                        'Closer to the reference range than the prior panel'
                                       )}
                                     </span>
                                   </span>
@@ -257,7 +254,7 @@ const LabComparison = ({
             <p className="mt-4 text-sm text-muted-foreground">
               {t(
                 'labs.comparison.caption',
-                'Up to three saved reports, newest first. Arrows show a smaller distance outside the reference range than the prior report.'
+                'Up to three saved panels, newest first. Arrows show a smaller distance outside the reference range than the prior panel.'
               )}
             </p>
           </>

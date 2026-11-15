@@ -7,6 +7,7 @@ import {
   simulateSerumCurve,
   resolveGlp1Profile,
   computeDraw,
+  normalizeDeviceDose,
   calculatedDrawInputSchema,
   INJECTION_SITES,
 } from '@workspace/shared';
@@ -159,7 +160,7 @@ beforeEach(() => {
         const input = calculatedDrawInputSchema.parse(options?.body);
         return {
           ...computeDraw({
-            dose: input.dose,
+            dose: normalizeDeviceDose(input.dose, syringe),
             concentrationMcgPerMl: '2000',
             syringe,
             remainingMl: '2',
@@ -198,7 +199,7 @@ it('renders all three amounts and syringe controls through Cabinet selection usi
   ).toBeInTheDocument();
   expect(screen.getByText('Modelled at injection sites')).toBeInTheDocument();
   expect(
-    await screen.findByRole('button', { name: 'Manage syringes' })
+    await screen.findByRole('button', { name: 'Manage devices' })
   ).toBeInTheDocument();
   expect(
     await screen.findByText('Measurable marking: 25 units')
@@ -222,11 +223,11 @@ it('keeps syringe controls within a selected non-GLP1 injectable Cabinet detail'
   mockGlp1 = false;
   open();
   expect(
-    screen.queryByRole('button', { name: 'Manage syringes' })
+    screen.queryByRole('button', { name: 'Manage devices' })
   ).not.toBeInTheDocument();
   fireEvent.click(await screen.findByText('Synthetic injectable'));
   expect(
-    await screen.findByRole('button', { name: 'Manage syringes' })
+    await screen.findByRole('button', { name: 'Manage devices' })
   ).toBeInTheDocument();
 });
 it('keeps Preparation & stock inventory-only through the full Medications route', async () => {
@@ -240,7 +241,7 @@ it('keeps Preparation & stock inventory-only through the full Medications route'
     await screen.findByText('4.000 mg / 2.000 mL remaining')
   ).toBeInTheDocument();
   expect(
-    screen.queryByRole('button', { name: 'Manage syringes' })
+    screen.queryByRole('button', { name: 'Manage devices' })
   ).not.toBeInTheDocument();
   expect(screen.queryByText('Log injection')).not.toBeInTheDocument();
 });

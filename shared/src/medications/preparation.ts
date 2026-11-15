@@ -87,6 +87,8 @@ export function calculatePreparationValues(input: {
   mass_value: number;
   mass_unit: 'mg' | 'mcg';
   final_volume_ml: number;
+  mode?: 'reconstituted' | 'premixed';
+  label_concentration_value?: string;
 }) {
   if (
     ![input.mass_value, input.final_volume_ml].every(
@@ -95,7 +97,10 @@ export function calculatePreparationValues(input: {
   )
     return null;
   const mass_mg = input.mass_value * (input.mass_unit === 'mcg' ? 0.001 : 1);
-  const concentration_mg_ml = mass_mg / input.final_volume_ml;
+  const concentration_mg_ml =
+    input.mode === 'premixed' && input.label_concentration_value !== undefined
+      ? Number(input.label_concentration_value)
+      : mass_mg / input.final_volume_ml;
   return [mass_mg, concentration_mg_ml].every(
     (v) => Number.isFinite(v) && v > 0
   )

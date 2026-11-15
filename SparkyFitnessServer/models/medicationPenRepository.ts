@@ -3,14 +3,18 @@ import {
   preparationValues,
   resolveBud,
 } from '../services/medicationPreparationService.js';
-import { calculateVialStock, type MedicationPen } from '@workspace/shared';
+import {
+  calculateVialStock,
+  preparationCreationValues,
+  type MedicationPen,
+} from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreatePenBody,
   UpdatePenBody,
 } from '../schemas/medicationSchemas.js';
 
-const PREPARATION_SQL = `(SELECT to_jsonb(p) - 'user_id' - 'medication_id' - 'pen_id'
+const PREPARATION_SQL = `(SELECT (to_jsonb(p) - 'user_id' - 'medication_id' - 'pen_id') || jsonb_build_object('label_concentration_value',p.label_concentration_value::text,'exact',jsonb_build_object('mass_value',p.mass_value::text,'mass_mg',p.mass_mg::text,'concentration_mg_ml',p.concentration_mg_ml::text,'final_volume_ml',p.final_volume_ml::text))
   FROM medication_preparations p WHERE p.pen_id = medication_pens.id
     AND p.user_id = medication_pens.user_id AND p.medication_id = medication_pens.medication_id)`;
 const PEN_COLS = `id, medication_id, user_id, kind, label, dose_mg, concentration_mg_ml,
@@ -35,6 +39,9 @@ async function createPen(
       );
     const canonical = data.preparation
       ? preparationValues(data.preparation)
+      : null;
+    const exact = data.preparation
+      ? preparationCreationValues(data.preparation)
       : null;
     if (canonical && data.preparation) {
       if (
@@ -76,8 +83,8 @@ async function createPen(
         data.kind ?? null,
         data.label ?? null,
         data.dose_mg ?? null,
-        data.concentration_mg_ml ?? null,
-        data.volume_ml ?? null,
+        exact?.concentration_mg_ml ?? data.concentration_mg_ml ?? null,
+        exact?.final_volume_ml ?? data.volume_ml ?? null,
         data.doses_total ?? null,
         data.doses_used ?? null,
         data.status ?? null,
@@ -94,20 +101,26 @@ async function createPen(
     const pen = result.rows[0];
     if (data.preparation && canonical) {
       await client.query(
-        `INSERT INTO medication_preparations (pen_id,user_id,medication_id,mode,mass_value,mass_unit,final_volume_ml,mass_mg,concentration_mg_ml,prepared_date,diluent)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        `INSERT INTO medication_preparations (pen_id,user_id,medication_id,mode,mass_value,mass_unit,final_volume_ml,mass_mg,concentration_mg_ml,prepared_date,diluent,label_concentration_value,label_concentration_unit)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           pen.id,
           userId,
           medicationId,
           data.preparation.mode,
-          data.preparation.mass_value,
+          exact?.mass_value ?? data.preparation.mass_value,
           data.preparation.mass_unit,
-          data.preparation.final_volume_ml,
-          canonical.mass_mg,
-          canonical.concentration_mg_ml,
+          exact?.final_volume_ml ?? data.preparation.final_volume_ml,
+          exact?.mass_mg ?? canonical.mass_mg,
+          exact?.concentration_mg_ml ?? canonical.concentration_mg_ml,
           data.preparation.prepared_date,
           data.preparation.diluent ?? null,
+          'label_concentration_value' in data.preparation
+            ? data.preparation.label_concentration_value
+            : null,
+          'label_concentration_unit' in data.preparation
+            ? data.preparation.label_concentration_unit
+            : null,
         ]
       );
     }
@@ -209,6 +222,9 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
   const client = await getClient(userId);
   try {
     await client.query('BEGIN');
+    const exact = data.preparation
+      ? preparationCreationValues(data.preparation)
+      : null;
     const locked = await client.query(
       'SELECT * FROM medication_pens WHERE id = $1 AND user_id = $2 FOR UPDATE',
       [id, userId]
@@ -244,7 +260,13 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
           data.preparation.mass_value === Number(prep.mass_value) &&
           data.preparation.final_volume_ml === Number(prep.final_volume_ml) &&
           data.preparation.prepared_date === prep.prepared_date &&
-          (data.preparation.diluent ?? null) === prep.diluent;
+          (data.preparation.diluent ?? null) === prep.diluent &&
+          (!('label_concentration_value' in data.preparation) ||
+            (Number(data.preparation.label_concentration_value) ===
+              Number(prep.label_concentration_value) &&
+              'label_concentration_unit' in data.preparation &&
+              data.preparation.label_concentration_unit ===
+                prep.label_concentration_unit));
         if (!same)
           throw badPreparation('Saved preparation inputs are immutable.');
       }
@@ -259,6 +281,11 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
           'Vial concentration and volume must match its immutable preparation.'
         );
       }
+      // Legacy clients may echo rounded numeric display fields on metadata edits.
+      // Their equality was checked above; keep the exact stored canonical quantities.
+      data = { ...data };
+      delete data.volume_ml;
+      delete data.concentration_mg_ml;
     } else if (data.preparation) {
       const history = await client.query(
         'SELECT COUNT(*) AS count FROM injection_entries WHERE pen_id=$1 AND user_id=$2',
@@ -287,20 +314,26 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
           'Vial concentration and volume must match its preparation.'
         );
       await client.query(
-        `INSERT INTO medication_preparations (pen_id,user_id,medication_id,mode,mass_value,mass_unit,final_volume_ml,mass_mg,concentration_mg_ml,prepared_date,diluent)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        `INSERT INTO medication_preparations (pen_id,user_id,medication_id,mode,mass_value,mass_unit,final_volume_ml,mass_mg,concentration_mg_ml,prepared_date,diluent,label_concentration_value,label_concentration_unit)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           id,
           userId,
           existing.medication_id,
           data.preparation.mode,
-          data.preparation.mass_value,
+          exact?.mass_value ?? data.preparation.mass_value,
           data.preparation.mass_unit,
-          data.preparation.final_volume_ml,
-          canonical.mass_mg,
-          canonical.concentration_mg_ml,
+          exact?.final_volume_ml ?? data.preparation.final_volume_ml,
+          exact?.mass_mg ?? canonical.mass_mg,
+          exact?.concentration_mg_ml ?? canonical.concentration_mg_ml,
           data.preparation.prepared_date,
           data.preparation.diluent ?? null,
+          'label_concentration_value' in data.preparation
+            ? data.preparation.label_concentration_value
+            : null,
+          'label_concentration_unit' in data.preparation
+            ? data.preparation.label_concentration_unit
+            : null,
         ]
       );
       data = {
@@ -386,7 +419,13 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
             data.custom_fields ? JSON.stringify(data.custom_fields) : '{}'
           );
         } else {
-          values.push(data[key]);
+          values.push(
+            !prep && exact && key === 'concentration_mg_ml'
+              ? exact.concentration_mg_ml
+              : !prep && exact && key === 'volume_ml'
+                ? exact.final_volume_ml
+                : data[key]
+          );
         }
         index++;
       }

@@ -25,7 +25,7 @@ test('fills from target volume, preserves exact marking and separates target fro
   expect(view.getByTestId('syringe-target-fill').props.width).toBe(105);
   expect(view.getAllByTestId('syringe-quarter-tick')).toHaveLength(5);
   expect(view.getByText('Measured marking: 50.123456789 Units')).toBeTruthy();
-  expect(view.getByText('Target dose in all units')).toBeTruthy();
+  expect(view.getByText('Dose equivalents')).toBeTruthy();
   expect(view.getByText('500 mcg')).toBeTruthy();
   expect(view.getByText('0.5 mg')).toBeTruthy();
   expect(view.getByText('0.5 mL')).toBeTruthy();
@@ -104,3 +104,87 @@ test.each([
     expect(view.queryByText(/^Delivered:/)).toBeNull();
   }
 );
+
+test('same-response pen and pump metadata drive dial and spray captions without insulin-unit pump output', () => {
+  const pen = draw({
+    device: {
+      id: 'pen',
+      device_type: 'pen',
+      increment: '1',
+      capacity_ml: '1',
+      graduation_type: 'units',
+      units_per_ml: 100,
+    },
+  });
+  const view = render(
+    <SyringeDrawPreview data={pen} pending={false} failed={false} showNeutral />
+  );
+  expect(view.getByText('Dial to 50.123456789 Units')).toBeTruthy();
+  view.rerender(
+    <SyringeDrawPreview
+      data={draw({
+        device: {
+          id: 'pump',
+          device_type: 'pump',
+          increment: '0.1',
+          capacity_ml: '1',
+          graduation_type: 'ml',
+          units_per_ml: 1,
+        },
+        markingValue: '0.5',
+        markingScale: 'ml',
+        deliveredVolumeMl: '0.5',
+      })}
+      pending={false}
+      failed={false}
+      showNeutral
+    />
+  );
+  expect(view.getByText('Spray 5 pumps (0.5 mL)')).toBeTruthy();
+  expect(view.getByText('5 Pumps (rounded)')).toBeTruthy();
+  expect(view.queryByText('50 Units')).toBeNull();
+  view.rerender(
+    <SyringeDrawPreview
+      data={pen}
+      pending
+      failed={false}
+      showNeutral
+      neutralDeviceType="pump"
+    />
+  );
+  expect(view.getByText('Spray —')).toBeTruthy();
+  expect(view.queryByText(/^Dial to/)).toBeNull();
+  expect(view.queryByText(/^Delivered:/)).toBeNull();
+});
+
+test('pump equivalents retain source target mass/volume but explicitly label the rounded 1.4-to-1 spray count', () => {
+  const view = render(
+    <SyringeDrawPreview
+      data={draw({
+        targetMassMcg: '140',
+        targetVolumeMl: '0.14',
+        rawUnits: '999',
+        markingValue: '0.1',
+        markingScale: 'ml',
+        deliveredMassMcg: '100',
+        deliveredVolumeMl: '0.1',
+        device: {
+          id: 'pump',
+          device_type: 'pump',
+          increment: '0.1',
+          capacity_ml: '1',
+          graduation_type: 'ml',
+          units_per_ml: 987,
+        },
+      })}
+      pending={false}
+      failed={false}
+    />
+  );
+  expect(view.getByText('Dose equivalents')).toBeTruthy();
+  expect(view.getByText('0.14 mL')).toBeTruthy();
+  expect(view.getByText('140 mcg')).toBeTruthy();
+  expect(view.getByText('1 Pumps (rounded)')).toBeTruthy();
+  expect(view.getByText('Spray 1 pumps (0.1 mL)')).toBeTruthy();
+  expect(view.queryByText('999 Units')).toBeNull();
+});

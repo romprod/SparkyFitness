@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import {
   medicationSyringeInputSchema,
+  normalizeMedicationDevice,
   type MedicationSyringe,
   type MedicationSyringeInput,
 } from '@workspace/shared';
@@ -21,6 +22,8 @@ interface Draft {
   id?: string;
   name: string;
   graduation_type: 'units' | 'ml';
+  device_type: 'syringe' | 'pen' | 'pump';
+  is_shared?: boolean;
   units_per_ml: string;
   capacity_ml: string;
   capacity_units: string;
@@ -29,13 +32,15 @@ interface Draft {
 const emptyDraft: Draft = {
   name: '',
   graduation_type: 'units',
-  units_per_ml: '',
-  capacity_ml: '',
-  capacity_units: '',
-  increment: '',
+  device_type: 'syringe',
+  units_per_ml: '100',
+  capacity_ml: '1',
+  capacity_units: '100',
+  increment: '1',
 };
 const fromSyringe = (row: MedicationSyringe): Draft => ({
   ...row,
+  device_type: row.device_type ?? 'syringe',
   units_per_ml: String(row.units_per_ml),
   capacity_units: String(row.capacity_units),
 });
@@ -62,15 +67,17 @@ export default function SyringeSettingsScreen({
       })
     );
   const save = () => {
-    if (!draft || busy) return;
+    if (!draft || draft.is_shared || busy) return;
     const unitsPerMl = Number(draft.units_per_ml);
     const capacityUnits = Number(draft.capacity_units);
     const parsed = medicationSyringeInputSchema.safeParse({
       name: draft.name,
-      graduation_type: draft.graduation_type,
-      units_per_ml: unitsPerMl,
+      device_type: draft.device_type,
+      graduation_type:
+        draft.device_type === 'pump' ? 'ml' : draft.graduation_type,
+      units_per_ml: draft.device_type === 'pump' ? 1 : unitsPerMl,
       capacity_ml: draft.capacity_ml.trim(),
-      capacity_units: capacityUnits,
+      capacity_units: draft.device_type === 'pump' ? 0 : capacityUnits,
       increment: draft.increment.trim(),
     });
     if (!parsed.success) {
@@ -83,16 +90,16 @@ export default function SyringeSettingsScreen({
       );
       return;
     }
-    const body: MedicationSyringeInput = parsed.data;
+    const body: MedicationSyringeInput = normalizeMedicationDevice(parsed.data);
     mutations.save.mutate(
       { id: draft.id, body },
       { onSuccess: () => setDraft(null), onError: fail }
     );
   };
   const header = useScreenHeader({
-    title: t('medications.syringes.title', { defaultValue: 'Syringes' }),
+    title: t('medications.devices.title', { defaultValue: 'Devices' }),
     left: { kind: 'dismiss', onPress: () => navigation.goBack() },
-    ...(draft
+    ...(draft && !draft.is_shared
       ? {
           right: {
             kind: 'primary' as const,
@@ -104,7 +111,10 @@ export default function SyringeSettingsScreen({
       : {}),
   });
   const textField = (
-    key: Exclude<keyof Draft, 'id' | 'graduation_type'>,
+    key: Exclude<
+      keyof Draft,
+      'id' | 'graduation_type' | 'device_type' | 'is_shared'
+    >,
     label: string,
     decimal = true
   ) => (
@@ -113,6 +123,7 @@ export default function SyringeSettingsScreen({
       <FormInput
         accessibilityLabel={label}
         value={draft?.[key] ?? ''}
+        editable={!draft?.is_shared}
         keyboardType={
           key === 'name' ? 'default' : decimal ? 'decimal-pad' : 'number-pad'
         }
@@ -187,10 +198,17 @@ export default function SyringeSettingsScreen({
                 className="bg-surface rounded-xl p-4"
               >
                 <Text className="text-base text-text-primary">{row.name}</Text>
+                {row.is_shared && (
+                  <Text className="text-sm text-text-muted">
+                    {t('medications.devices.shared', {
+                      defaultValue: 'Shared device · read-only',
+                    })}
+                  </Text>
+                )}
               </TouchableOpacity>
             ))}
             <Button onPress={() => setDraft({ ...emptyDraft })}>
-              {t('medications.syringes.add', { defaultValue: 'Add syringe' })}
+              {t('medications.devices.add', { defaultValue: 'Add device' })}
             </Button>
           </>
         ) : (
@@ -199,33 +217,82 @@ export default function SyringeSettingsScreen({
               'name',
               t('medications.syringes.name', { defaultValue: 'Name' })
             )}
-            <BottomSheetPicker
-              value={draft.graduation_type}
-              onSelect={(value) =>
-                setDraft({ ...draft, graduation_type: value })
-              }
-              title={t('medications.syringes.graduation', {
-                defaultValue: 'Graduation type',
-              })}
-              options={[
-                {
-                  value: 'units' as const,
-                  label: t('medications.syringes.units', {
-                    defaultValue: 'Units',
+            {draft.is_shared ? (
+              <Text className="text-sm text-text-muted">
+                {t('medications.devices.shared', {
+                  defaultValue: 'Shared device · read-only',
+                })}
+              </Text>
+            ) : (
+              <BottomSheetPicker
+                value={draft.device_type}
+                title={t('medications.devices.type', {
+                  defaultValue: 'Device type',
+                })}
+                onSelect={(device_type) =>
+                  setDraft({
+                    ...draft,
+                    device_type,
+                    graduation_type:
+                      device_type === 'pump' ? 'ml' : draft.graduation_type,
+                  })
+                }
+                options={[
+                  {
+                    value: 'syringe' as const,
+                    label: t('medications.devices.syringe', {
+                      defaultValue: 'Syringe',
+                    }),
+                  },
+                  {
+                    value: 'pen' as const,
+                    label: t('medications.devices.pen', {
+                      defaultValue: 'Pen',
+                    }),
+                  },
+                  {
+                    value: 'pump' as const,
+                    label: t('medications.devices.pump', {
+                      defaultValue: 'Nasal pump',
+                    }),
+                  },
+                ]}
+              />
+            )}
+            {draft.device_type !== 'pump' && (
+              <>
+                <BottomSheetPicker
+                  value={draft.graduation_type}
+                  onSelect={(value) => {
+                    if (!draft.is_shared)
+                      setDraft({ ...draft, graduation_type: value });
+                  }}
+                  title={t('medications.syringes.graduation', {
+                    defaultValue: 'Graduation type',
+                  })}
+                  options={[
+                    {
+                      value: 'units' as const,
+                      label: t('medications.syringes.units', {
+                        defaultValue: 'Units',
+                      }),
+                    },
+                    {
+                      value: 'ml' as const,
+                      label: t('medications.syringes.ml', {
+                        defaultValue: 'mL',
+                      }),
+                    },
+                  ]}
+                />
+                {textField(
+                  'units_per_ml',
+                  t('medications.syringes.unitsPerMl', {
+                    defaultValue: 'Units per mL',
                   }),
-                },
-                {
-                  value: 'ml' as const,
-                  label: t('medications.syringes.ml', { defaultValue: 'mL' }),
-                },
-              ]}
-            />
-            {textField(
-              'units_per_ml',
-              t('medications.syringes.unitsPerMl', {
-                defaultValue: 'Units per mL',
-              }),
-              false
+                  false
+                )}
+              </>
             )}
             {textField(
               'capacity_ml',
@@ -233,18 +300,27 @@ export default function SyringeSettingsScreen({
                 defaultValue: 'Capacity (mL)',
               })
             )}
-            {textField(
-              'capacity_units',
-              t('medications.syringes.capacityUnits', {
-                defaultValue: 'Capacity (units)',
-              }),
-              false
+            {draft.device_type !== 'pump' && (
+              <>
+                {' '}
+                {textField(
+                  'capacity_units',
+                  t('medications.syringes.capacityUnits', {
+                    defaultValue: 'Capacity (units)',
+                  }),
+                  false
+                )}
+              </>
             )}
             {textField(
               'increment',
-              t('medications.syringes.increment', {
-                defaultValue: 'Marking increment',
-              })
+              draft.device_type === 'pump'
+                ? t('medications.devices.sprayIncrement', {
+                    defaultValue: 'mL per spray',
+                  })
+                : t('medications.syringes.increment', {
+                    defaultValue: 'Marking increment',
+                  })
             )}
             <Button
               variant="secondary"
@@ -253,7 +329,7 @@ export default function SyringeSettingsScreen({
             >
               {t('common.cancel', { defaultValue: 'Cancel' })}
             </Button>
-            {draft.id && (
+            {draft.id && !draft.is_shared && (
               <Button
                 variant="destructive"
                 disabled={busy}

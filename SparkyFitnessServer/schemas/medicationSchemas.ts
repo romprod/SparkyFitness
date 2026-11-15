@@ -186,6 +186,7 @@ export type CreateInjectionBody = z.infer<typeof CreateInjectionBodySchema>;
 // deduction can't be re-pointed after the fact; delete and re-log instead.
 export const UpdateInjectionBodySchema = z
   .object({
+    calculated_draw: calculatedDrawInputSchema.optional(),
     injected_at: z.string().nullable().optional(), // ISO timestamp
     entry_date: optionalDateString,
     site: optionalNullableString,

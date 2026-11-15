@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Glp1InventoryManager from '@/pages/Medications/Glp1InventoryManager';
 import type { Medication, MedicationPen } from '@/types/medications';
@@ -11,6 +11,20 @@ jest.mock('@/hooks/useMedications', () => ({
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),
   useUpdatePenMutation: () => ({ mutate: mockUpdate, isPending: false }),
   useDeletePenMutation: () => ({ mutate: jest.fn(), isPending: false }),
+  usePreparationReview: () => ({
+    data: undefined,
+    isFetching: false,
+    isError: false,
+  }),
+  useCorrectPreparationMutation: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+  }),
+}));
+jest.mock('@/hooks/useMedicationSyringes', () => ({
+  useMedicationSyringes: () => ({
+    data: { syringes: [], default_syringe_id: null },
+  }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({ timezone: 'Europe/London' }),
@@ -24,29 +38,29 @@ beforeEach(() => {
 async function openVial() {
   render(<Glp1InventoryManager med={med} />);
   fireEvent.click(screen.getByRole('button', { name: 'Prepare a vial' }));
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
   fireEvent.change(screen.getByLabelText('Prepared date'), {
     target: { value: '2026-11-15' },
   });
 }
 it('saves the calculated preparation using the existing vial form', async () => {
   await openVial();
-  fireEvent.change(screen.getByLabelText('Vial content'), {
+  fireEvent.change(screen.getByLabelText('Powder in the vial'), {
     target: { value: '12' },
   });
-  fireEvent.change(screen.getByLabelText('Volume (mL)'), {
+  fireEvent.change(screen.getByLabelText('Diluent added (mL)'), {
     target: { value: '3' },
   });
-  expect(
-    screen.getByText('4 mg/mL · 0.15 mL per entered dose')
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review preparation' }));
+  expect(screen.getByText('4 mg/mL')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
   expect(mockSave).toHaveBeenCalledWith(
     expect.objectContaining({
       kind: 'vial',
       preparation: expect.objectContaining({
-        mass_value: 12,
+        mass_value: '12',
         mass_unit: 'mg',
-        final_volume_ml: 3,
+        final_volume_ml: '3',
         prepared_date: '2026-11-15',
       }),
       dose_mg: 0.6,
@@ -56,10 +70,15 @@ it('saves the calculated preparation using the existing vial form', async () => 
 });
 it('prevents saving an incomplete preparation', async () => {
   await openVial();
-  fireEvent.change(screen.getByLabelText('Vial content'), {
+  fireEvent.change(screen.getByLabelText('Diluent added (mL)'), {
+    target: { value: '' },
+  });
+  fireEvent.change(screen.getByLabelText('Powder in the vial'), {
     target: { value: '12' },
   });
-  expect(screen.getByRole('button', { name: 'Add Inventory' })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: 'Review preparation' })
+  ).toBeDisabled();
 });
 it('displays actual mass remaining instead of nominal dose counts', () => {
   mockPens = [
@@ -157,7 +176,7 @@ it('reopens original preparation inputs read-only and keeps them out of metadata
 });
 it('requires an explicit interval basis and source and permits a zero-day interval', async () => {
   await openVial();
-  fireEvent.change(screen.getByLabelText('Vial content'), {
+  fireEvent.change(screen.getByLabelText('Powder in the vial'), {
     target: { value: '500' },
   });
   fireEvent.pointerDown(screen.getByLabelText('Mass unit'), {
@@ -165,10 +184,9 @@ it('requires an explicit interval basis and source and permits a zero-day interv
     ctrlKey: false,
   });
   fireEvent.click(await screen.findByRole('option', { name: 'mcg' }));
-  fireEvent.change(screen.getByLabelText('Volume (mL)'), {
+  fireEvent.change(screen.getByLabelText('Diluent added (mL)'), {
     target: { value: '1' },
   });
-  expect(screen.getByLabelText('Concentration (mg/mL)')).toHaveValue(0.5);
   fireEvent.pointerDown(screen.getByLabelText('Beyond-use date (BUD)'), {
     button: 0,
     ctrlKey: false,
@@ -176,24 +194,27 @@ it('requires an explicit interval basis and source and permits a zero-day interv
   fireEvent.click(
     await screen.findByRole('option', { name: 'Interval and source' })
   );
-  expect(screen.getByRole('button', { name: 'Add Inventory' })).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('BUD basis date'), {
+  expect(
+    screen.getByRole('button', { name: 'Review preparation' })
+  ).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('From date'), {
     target: { value: '2026-11-15' },
   });
-  fireEvent.change(screen.getByLabelText('BUD interval (days)'), {
+  fireEvent.change(screen.getByLabelText('Days'), {
     target: { value: '0' },
   });
   fireEvent.change(screen.getByLabelText('BUD source'), {
     target: { value: 'Product instructions' },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review preparation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
   expect(mockSave).toHaveBeenCalledWith(
     expect.objectContaining({
       bud_date: '2026-11-15',
       bud_interval_days: 0,
       bud_source: 'Product instructions',
       preparation: expect.objectContaining({
-        mass_value: 500,
+        mass_value: '500',
         mass_unit: 'mcg',
       }),
     }),
@@ -202,13 +223,15 @@ it('requires an explicit interval basis and source and permits a zero-day interv
 });
 it.each(['0', '-1'])('rejects invalid preparation mass %s', async (value) => {
   await openVial();
-  fireEvent.change(screen.getByLabelText('Vial content'), {
+  fireEvent.change(screen.getByLabelText('Powder in the vial'), {
     target: { value },
   });
-  fireEvent.change(screen.getByLabelText('Volume (mL)'), {
+  fireEvent.change(screen.getByLabelText('Diluent added (mL)'), {
     target: { value: '1' },
   });
-  expect(screen.getByRole('button', { name: 'Add Inventory' })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: 'Review preparation' })
+  ).toBeDisabled();
 });
 
 it('can attach preparation to an unused legacy vial without inventing original content', () => {
@@ -222,14 +245,14 @@ it('can attach preparation to an unused legacy vial without inventing original c
     },
   ];
   render(<Glp1InventoryManager med={med} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
   fireEvent.click(
-    within(screen.getByRole('dialog')).getByRole('button', {
-      name: 'Prepare a vial',
-    })
+    screen.getAllByRole('button', { name: 'Prepare a vial' })[1]!
   );
-  expect(screen.getByLabelText('Vial content')).toHaveValue(null);
-  expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  expect(screen.getByLabelText('Powder in the vial')).toHaveValue('');
+  expect(
+    screen.getByRole('button', { name: 'Review preparation' })
+  ).toBeDisabled();
 });
 
 it('does not send lifecycle intent or status for an unrelated edit', () => {

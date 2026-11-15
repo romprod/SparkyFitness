@@ -1,14 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
-import {
-  todayInZone,
-  addDays,
-  calculatePreparation,
-  calculatePreparationValues,
-  medicationDoseInMg,
-  medicationPreparationInputSchema,
-} from '@workspace/shared';
+import { todayInZone, addDays, medicationDoseInMg } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +31,8 @@ import {
 } from '@/hooks/useMedications';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import SavedPreparation from './SavedPreparation';
+import MedicationBudWarning from './MedicationBudWarning';
+import MedicationPreparationWizard from './MedicationPreparationWizard';
 import type {
   Medication,
   MedicationPen,
@@ -61,6 +56,14 @@ export default function Glp1InventoryManager({
 
   // Add/Edit Inventory Form States
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [preparationOpen, setPreparationOpen] = useState(false);
+  const [preparationPen, setPreparationPen] = useState<
+    MedicationPen | undefined
+  >();
+  const openPreparation = (pen?: MedicationPen) => {
+    setPreparationPen(pen);
+    setPreparationOpen(true);
+  };
   const [editingPen, setEditingPen] = useState<MedicationPen | null>(null);
   const [status, setStatus] = useState<MedicationPen['status']>('sealed');
   const [kind, setKind] = useState<'pen' | 'vial'>('pen');
@@ -70,14 +73,6 @@ export default function Glp1InventoryManager({
   );
   const [concentration, setConcentration] = useState('');
   const [volume, setVolume] = useState('');
-  const [preparationMass, setPreparationMass] = useState('');
-  const [massUnit, setMassUnit] = useState<'mg' | 'mcg'>('mg');
-  const [preparationMode, setPreparationMode] = useState<
-    'reconstituted' | 'premixed'
-  >('reconstituted');
-  const [preparedDate, setPreparedDate] = useState('');
-  const [diluent, setDiluent] = useState('');
-  const [preparing, setPreparing] = useState(false);
   const [lotNumber, setLotNumber] = useState('');
   const [storageLocation, setStorageLocation] = useState('');
   const [budMode, setBudMode] = useState<'none' | 'date' | 'interval'>('none');
@@ -85,14 +80,6 @@ export default function Glp1InventoryManager({
   const [budInterval, setBudInterval] = useState('');
   const [budBaseDate, setBudBaseDate] = useState('');
   const [budSource, setBudSource] = useState('');
-  const preparation = calculatePreparation(
-    medicationDoseInMg({
-      dose_amount: Number(preparationMass),
-      dose_unit: massUnit,
-    }) ?? 0,
-    Number(volume),
-    Number(inventoryDoseMg)
-  );
   const [dosesTotal, setDosesTotal] = useState('4');
   const [openedAt, setOpenedAt] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
@@ -120,18 +107,6 @@ export default function Glp1InventoryManager({
       calculatedBudDate = '';
     }
   }
-  const preparationInput = {
-    mode: preparationMode,
-    mass_value: Number(preparationMass),
-    mass_unit: massUnit,
-    final_volume_ml: Number(volume),
-    prepared_date: preparedDate,
-    diluent: diluent.trim() || null,
-  };
-  const preparationValues = calculatePreparationValues(preparationInput);
-  const preparationValid =
-    medicationPreparationInputSchema.safeParse(preparationInput).success &&
-    preparationValues !== null;
   const budValid =
     budMode === 'none' ||
     (budMode === 'date'
@@ -166,12 +141,6 @@ export default function Glp1InventoryManager({
     );
     setConcentration('');
     setVolume('');
-    setPreparationMass('');
-    setMassUnit('mg');
-    setPreparationMode('reconstituted');
-    setPreparedDate('');
-    setDiluent('');
-    setPreparing(false);
     setLotNumber('');
     setStorageLocation('');
     setBudMode('none');
@@ -187,12 +156,8 @@ export default function Glp1InventoryManager({
     setNotes('');
   };
 
-  const openAddDialog = (vial = false) => {
+  const openAddDialog = () => {
     resetForm();
-    if (vial) {
-      setKind('vial');
-      setPreparing(true);
-    }
     setInventoryOpen(true);
   };
 
@@ -216,7 +181,6 @@ export default function Glp1InventoryManager({
       pen.concentration_mg_ml != null ? String(pen.concentration_mg_ml) : ''
     );
     setVolume(pen.volume_ml != null ? String(pen.volume_ml) : '');
-    setPreparationMass('');
     setDosesTotal(pen.doses_total != null ? String(pen.doses_total) : '');
     setOpenedAt(pen.opened_at ?? '');
     setExpiryDate(pen.expiry_date ?? '');
@@ -229,17 +193,13 @@ export default function Glp1InventoryManager({
   };
 
   const handleSaveInventory = () => {
-    if ((kind === 'vial' && preparing && !preparationValid) || !budValid)
-      return;
+    if (!budValid) return;
     const body: MedicationPenWriteInput = {
       kind,
       label: label.trim() || null,
       dose_mg: inventoryDoseMg ? Number(inventoryDoseMg) : null,
       concentration_mg_ml:
-        kind === 'vial'
-          ? ((preparing ? preparation?.concentrationMgMl : null) ??
-            (concentration ? Number(concentration) : null))
-          : null,
+        kind === 'vial' ? (concentration ? Number(concentration) : null) : null,
       volume_ml: kind === 'vial' && volume ? Number(volume) : null,
       doses_total: dosesTotal ? Number(dosesTotal) : null,
       opened_at: openedAt || null,
@@ -273,11 +233,6 @@ export default function Glp1InventoryManager({
       delete body.bud_interval_days;
       delete body.bud_base_date;
       delete body.bud_source;
-    }
-    if (kind === 'vial' && preparing) {
-      body.preparation = preparationInput;
-      delete body.concentration_mg_ml;
-      delete body.volume_ml;
     }
     if (editingPen?.preparation) {
       delete body.concentration_mg_ml;
@@ -323,7 +278,6 @@ export default function Glp1InventoryManager({
     const low =
       ((p.stock !== null && p.stock !== undefined) || total > 0) && pct <= 25;
     const expStatus = getExpiryStatus(p.expiry_date, today);
-    const budStatus = getExpiryStatus(p.bud_date, today);
 
     return (
       <div key={p.id} className="rounded-lg border p-3 text-sm">
@@ -461,30 +415,24 @@ export default function Glp1InventoryManager({
                 {t('medications.glp1InventoryManager.bud', 'BUD {{bud_date}}', {
                   bud_date: p.bud_date,
                 })}
-                {budStatus === 'expired' && (
-                  <Badge
-                    variant="destructive"
-                    className="text-[9px] px-1 py-0 h-4"
-                  >
-                    {t(
-                      'medications.glp1InventoryManager.expiredBUD',
-                      'Expired (BUD)'
-                    )}
-                  </Badge>
-                )}
-                {budStatus === 'near' && (
-                  <Badge className="text-[9px] px-1 py-0 h-4 bg-amber-500 text-white hover:bg-amber-600 font-semibold">
-                    {t(
-                      'medications.glp1InventoryManager.budWarning',
-                      'BUD Warning'
-                    )}
-                  </Badge>
-                )}
+                <MedicationBudWarning date={p.bud_date} />
               </span>
             )}
           </div>
         )}
         {p.preparation && <SavedPreparation preparation={p.preparation} />}
+        {p.kind === 'vial' && (p.preparation || p.doses_used === 0) && (
+          <Button
+            className="mt-2"
+            size="sm"
+            variant="outline"
+            onClick={() => openPreparation(p)}
+          >
+            {p.preparation
+              ? t('medications.preparationFlow.edit', 'Edit preparation')
+              : t('medications.stock.prepare', 'Prepare a vial')}
+          </Button>
+        )}
         {(p.lot_number || p.storage_location || p.bud_source) && (
           <p className="mt-2 text-xs text-muted-foreground">
             {[
@@ -522,7 +470,7 @@ export default function Glp1InventoryManager({
           <CardTitle className="flex flex-col items-start gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
             <span>{t('medications.stock.title', 'Preparation & stock')}</span>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => openAddDialog(true)}>
+              <Button size="sm" onClick={() => openPreparation()}>
                 {t('medications.stock.prepare', 'Prepare a vial')}
               </Button>
               <Button
@@ -557,6 +505,14 @@ export default function Glp1InventoryManager({
         </CardContent>
       </Card>
 
+      {preparationOpen && (
+        <MedicationPreparationWizard
+          key={preparationPen?.id ?? 'new'}
+          med={med}
+          pen={preparationPen}
+          onClose={() => setPreparationOpen(false)}
+        />
+      )}
       {/* Add/Edit Inventory Dialog */}
       <Dialog open={inventoryOpen} onOpenChange={setInventoryOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
@@ -694,124 +650,6 @@ export default function Glp1InventoryManager({
             {editingPen?.preparation && (
               <SavedPreparation preparation={editingPen.preparation} expanded />
             )}
-            {kind === 'vial' &&
-              !editingPen?.preparation &&
-              (!editingPen || editingPen.doses_used === 0) &&
-              !preparing && (
-                <Button variant="outline" onClick={() => setPreparing(true)}>
-                  {t('medications.stock.prepare', 'Prepare a vial')}
-                </Button>
-              )}
-            {kind === 'vial' && preparing && (
-              <div className="space-y-2 rounded-md border p-3">
-                <p className="text-sm font-medium">
-                  {t('medications.stock.calculator', 'Preparation calculator')}
-                </p>
-                <Label htmlFor="prep-mass">
-                  {t('medications.preparation.massValue', 'Vial content')}
-                </Label>
-                <Input
-                  id="prep-mass"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={preparationMass}
-                  onChange={(e) => setPreparationMass(e.target.value)}
-                />
-                <Label htmlFor="prep-unit">
-                  {t('medications.preparation.massUnit', 'Mass unit')}
-                </Label>
-                <Select
-                  value={massUnit}
-                  onValueChange={(value) => setMassUnit(value as 'mg' | 'mcg')}
-                >
-                  <SelectTrigger id="prep-unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mg">mg</SelectItem>
-                    <SelectItem value="mcg">mcg</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Label htmlFor="prep-mode">
-                  {t('medications.preparation.mode', 'Preparation type')}
-                </Label>
-                <Select
-                  value={preparationMode}
-                  onValueChange={(value) =>
-                    setPreparationMode(value as 'reconstituted' | 'premixed')
-                  }
-                >
-                  <SelectTrigger id="prep-mode">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="reconstituted">
-                      {t(
-                        'medications.preparation.reconstituted',
-                        'Reconstituted'
-                      )}
-                    </SelectItem>
-                    <SelectItem value="premixed">
-                      {t('medications.preparation.premixed', 'Premixed')}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Label htmlFor="prep-date">
-                  {t('medications.preparation.preparedDate', 'Prepared date')}
-                </Label>
-                <Input
-                  id="prep-date"
-                  type="date"
-                  value={preparedDate}
-                  onChange={(event) => setPreparedDate(event.target.value)}
-                />
-                <Label htmlFor="prep-diluent">
-                  {t('medications.preparation.diluent', 'Diluent (optional)')}
-                </Label>
-                <Input
-                  id="prep-diluent"
-                  value={diluent}
-                  onChange={(event) => setDiluent(event.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t(
-                    'medications.preparation.help',
-                    'Enter the labelled vial content and final prepared volume below. This calculates concentration and draw volume for the entered dose.'
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t(
-                    'medications.preparation.required',
-                    'Vial content, final volume and prepared date are required. Original preparation details cannot be changed after saving.'
-                  )}
-                </p>
-                {preparation && (
-                  <p className="text-sm">
-                    {t(
-                      'medications.preparation.result',
-                      '{{concentration}} mg/mL · {{draw}} mL per entered dose',
-                      {
-                        concentration: Number(
-                          preparation.concentrationMgMl.toPrecision(6)
-                        ).toString(),
-                        draw: Number(
-                          preparation.drawMl.toPrecision(6)
-                        ).toString(),
-                      }
-                    )}
-                  </p>
-                )}
-                {preparation?.exceedsVial && (
-                  <p className="text-sm text-destructive">
-                    {t(
-                      'medications.preparation.exceeds',
-                      'The entered dose exceeds the vial content.'
-                    )}
-                  </p>
-                )}
-              </div>
-            )}
             {kind === 'vial' && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -826,13 +664,8 @@ export default function Glp1InventoryManager({
                     type="number"
                     step="0.1"
                     placeholder="e.g. 5"
-                    value={
-                      preparing
-                        ? (preparationValues?.concentration_mg_ml ?? '')
-                        : concentration
-                    }
+                    value={concentration}
                     readOnly={
-                      preparing ||
                       !!editingPen?.preparation ||
                       (editingPen?.doses_used ?? 0) > 0
                     }
@@ -1078,11 +911,7 @@ export default function Glp1InventoryManager({
             </Button>
             <Button
               onClick={handleSaveInventory}
-              disabled={
-                savePending ||
-                !budValid ||
-                (kind === 'vial' && preparing && !preparationValid)
-              }
+              disabled={savePending || !budValid}
             >
               {savePending
                 ? t('common.saving', 'Saving...')

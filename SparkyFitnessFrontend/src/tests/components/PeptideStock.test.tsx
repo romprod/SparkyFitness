@@ -10,6 +10,33 @@ jest.mock('@/hooks/useMedications', () => ({
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),
   useUpdatePenMutation: () => ({ mutate: jest.fn(), isPending: false }),
   useDeletePenMutation: () => ({ mutate: jest.fn(), isPending: false }),
+  usePreparationReview: () => ({
+    data: undefined,
+    isFetching: false,
+    isError: false,
+  }),
+  useCorrectPreparationMutation: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+  }),
+}));
+jest.mock('@/hooks/useMedicationSyringes', () => ({
+  useMedicationSyringes: () => ({
+    data: {
+      syringes: [
+        {
+          id: 'device',
+          name: 'Synthetic U100',
+          graduation_type: 'units',
+          units_per_ml: 100,
+          capacity_ml: '1',
+          capacity_units: 100,
+          increment: '1',
+        },
+      ],
+      default_syringe_id: null,
+    },
+  }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({ timezone: 'Europe/London' }),
@@ -57,29 +84,27 @@ it('shows preparation tools without injection logging or history for a non-GLP-1
   expect(screen.queryByText('Log injection: peptide')).not.toBeInTheDocument();
   expect(screen.queryByText('Injection history')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Prepare a vial' }));
-  expect(screen.getByText('Preparation calculator')).toBeInTheDocument();
-  expect(screen.getByLabelText('Kind')).toHaveTextContent('Vial');
-  expect(screen.getByLabelText('Dose Strength (mg)')).toHaveValue(0.5);
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
   fireEvent.change(screen.getByLabelText('Prepared date'), {
     target: { value: '2026-11-15' },
   });
-  fireEvent.change(screen.getByLabelText('Vial content'), {
+  fireEvent.change(screen.getByLabelText('Powder in the vial'), {
     target: { value: '12' },
   });
-  fireEvent.change(screen.getByLabelText('Volume (mL)'), {
+  fireEvent.change(screen.getByLabelText('Diluent added (mL)'), {
     target: { value: '3' },
   });
-  expect(
-    screen.getByText('4 mg/mL · 0.125 mL per entered dose')
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Review preparation' }));
+  expect(screen.getByText('4 mg/mL')).toBeInTheDocument();
+  expect(screen.getByText('500 mcg · 0.125 mL')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
   expect(mockSave).toHaveBeenCalledWith(
     expect.objectContaining({
       kind: 'vial',
       dose_mg: 0.5,
       preparation: expect.objectContaining({
-        mass_value: 12,
-        final_volume_ml: 3,
+        mass_value: '12',
+        final_volume_ml: '3',
       }),
     }),
     expect.anything()

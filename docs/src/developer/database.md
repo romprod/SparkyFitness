@@ -1,10 +1,11 @@
 # Database Schema & Migrations
 
-*Last updated: 2026-10-20*
+_Last updated: 2026-10-20_
 
 This document covers the database structure, schema design, and migration process for SparkyFitness.
 
-**Note:** 
+**Note:**
+
 - For **authoritative table definitions**, see `db_schema_backup.sql` (SQL source) or `shared/src/schemas/database/` (TypeScript Zod schemas).
 - For **security tier classifications and permission mappings**, see [Database Security Tiers](./database-security-tiers).
 
@@ -19,13 +20,16 @@ SparkyFitness uses PostgreSQL 15+ with Row Level Security (RLS) to ensure data i
 ## Schema Design Principles
 
 ### Naming Conventions
+
 - **Tables**: Snake case, plural (e.g., `food_entries`, `user_preferences`)
 - **Columns**: Snake case (e.g., `created_at`, `user_id`, `total_calories`)
 - **Foreign Keys**: `{table_name}_id` format (e.g., `user_id`, `food_item_id`)
 - **Indexes**: Descriptive names (e.g., `idx_food_entries_user_date`, `idx_measurements_user_type`)
 
 ### Standard Fields
+
 All tables include these audit fields:
+
 - `id` - UUID primary key using `gen_random_uuid()`
 - `created_at` - Timestamp with timezone, defaults to `NOW()`
 - `updated_at` - Timestamp with timezone, updated via triggers
@@ -49,6 +53,7 @@ CREATE POLICY modify_policy ON public.food_entries FOR ALL TO PUBLIC
 ```
 
 **Key functions:**
+
 - `current_user_id()` — active profile context (may differ during family delegation; from `app.user_id`)
 - `authenticated_user_id()` — the true logged-in actor (never changes; from `app.authenticated_user_id`)
 - `can_access_user_data(target_user_id, permission_type, authenticated_user_id())` — resolves a logical permission (`diary`, `checkin`, `medications`, `reports`, plus `*_read` variants) against the `family_access` grant. Domain shortcuts wrap it: `has_diary_read_access`, `has_diary_access`, `has_checkin_read_access`, `has_medication_access`, `has_family_access`.
@@ -62,190 +67,204 @@ Cycle and pregnancy tables are owner-only (no delegation). See `SparkyFitnessSer
 Quick reference of all tables by domain and purpose. For detailed security tier, permission type, and access rules, see [Database Security Tiers](./database-security-tiers).
 
 ### Authentication & Identity (Tier 1: Owner-Only)
-| Table | Purpose |
-|-------|---------|
-| `user` | Account identity, password hash, email |
-| `session` | Active authentication sessions |
-| `api_key` | User-generated API keys for external access |
-| `passkey` | Passwordless login credentials |
-| `two_factor` | 2FA recovery codes and secrets |
-| `verification` | Email verification tokens |
-| `account` | Auth credentials and email accounts |
+
+| Table          | Purpose                                     |
+| -------------- | ------------------------------------------- |
+| `user`         | Account identity, password hash, email      |
+| `session`      | Active authentication sessions              |
+| `api_key`      | User-generated API keys for external access |
+| `passkey`      | Passwordless login credentials              |
+| `two_factor`   | 2FA recovery codes and secrets              |
+| `verification` | Email verification tokens                   |
+| `account`      | Auth credentials and email accounts         |
 
 ### MCP OAuth (System-Only)
-| Table | Purpose |
-|-------|---------|
-| `jwks` | OAuth signing key pairs |
-| `oauth_client` | Registered OAuth clients and redirect/authentication metadata |
-| `oauth_resource` | Protected resources, scopes, token lifetimes, and signing policy |
-| `oauth_client_resource` | Client-to-resource associations |
-| `oauth_refresh_token` | Refresh tokens, rotation state, scopes, and session/user links |
-| `oauth_access_token` | Access tokens, scopes, resource grants, and revocation state |
-| `oauth_consent` | User consent grants |
-| `oauth_authorization_revocation` | Per-user/client OAuth JWT revocation watermarks |
-| `oauth_client_assertion` | Client assertion replay-protection records |
+
+| Table                            | Purpose                                                          |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `jwks`                           | OAuth signing key pairs                                          |
+| `oauth_client`                   | Registered OAuth clients and redirect/authentication metadata    |
+| `oauth_resource`                 | Protected resources, scopes, token lifetimes, and signing policy |
+| `oauth_client_resource`          | Client-to-resource associations                                  |
+| `oauth_refresh_token`            | Refresh tokens, rotation state, scopes, and session/user links   |
+| `oauth_access_token`             | Access tokens, scopes, resource grants, and revocation state     |
+| `oauth_consent`                  | User consent grants                                              |
+| `oauth_authorization_revocation` | Per-user/client OAuth JWT revocation watermarks                  |
+| `oauth_client_assertion`         | Client assertion replay-protection records                       |
 
 These tables are managed by Better Auth and are not exposed through family sharing or profile delegation. Better Auth's Kysely adapter serializes its `string[]` fields as JSON text, so OAuth list columns are PostgreSQL `text` values containing JSON arrays rather than native `text[]` columns.
 
 ### Food & Nutrition (Tier 2/3: Owner-Write, Delegate-Read/Write)
-| Table | Purpose |
-|-------|---------|
-| `foods` | Custom food items created by user |
-| `food_variants` | Serving size options for foods |
-| `food_entries` | Logged meals/calories for the day |
-| `food_entry_meals` | Meal details associated with logged entries |
-| `meals` | Custom meal templates |
-| `meal_foods` | Ingredients assigned to meals |
-| `meal_types` | Custom meal type definitions (breakfast, lunch, etc.) |
-| `meal_plans` | Weekly meal planning schedules |
-| `meal_plan_templates` | Reusable meal plan templates (supports multiple active plans per user) |
-| `meal_plan_template_assignments` | Scheduled meal templates to calendar |
-| `meal_plan_assignment_sets` | Sets within assigned meal plans |
+
+| Table                            | Purpose                                                                |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `foods`                          | Custom food items created by user                                      |
+| `food_variants`                  | Serving size options for foods                                         |
+| `food_entries`                   | Logged meals/calories for the day                                      |
+| `food_entry_meals`               | Meal details associated with logged entries                            |
+| `meals`                          | Custom meal templates                                                  |
+| `meal_foods`                     | Ingredients assigned to meals                                          |
+| `meal_types`                     | Custom meal type definitions (breakfast, lunch, etc.)                  |
+| `meal_plans`                     | Weekly meal planning schedules                                         |
+| `meal_plan_templates`            | Reusable meal plan templates (supports multiple active plans per user) |
+| `meal_plan_template_assignments` | Scheduled meal templates to calendar                                   |
+| `meal_plan_assignment_sets`      | Sets within assigned meal plans                                        |
 
 ### Exercise & Workouts (Tier 1/2/3: Owner-Only, Owner-Write, or Delegate-Read/Write)
-| Table | Purpose |
-|-------|---------|
-| `exercises` | Custom exercises created by user |
-| `exercise_entries` | Logged exercises for the day |
-| `exercise_preset_entries` | Logged workout presets for the day |
-| `exercise_entry_sets` | Reps, weights, and sets completed |
-| `exercise_entry_activity_details` | Heart rate, distance, activity data |
-| `shoes` | Running-shoe inventory with retirement mileage; linked from `exercise_entries.shoe_id` |
-| `plate_inventories` | Bars and plates a person owns, for the plate calculator (one row per user) |
-| `action_tags` | NFC tags: a random tag code plus the saved action a tap runs (owner-only) |
-| `exercise_entry_laps` | Lap split intervals for workouts |
-| `exercise_entry_hr_zones` | Heart-rate time-in-zone splits per workout |
-| `exercise_entry_distance_series` | Distance-against-time rows for an indoor entry with no route, behind its pace chart. One row per workout (`points` is JSONB) |
-| `exercise_entry_gps_points` | GPS trackpoints & second-by-second telemetry. One row per workout (the `points` column holds the whole track as JSONB), not one row per trackpoint |
-| `workout_presets` | Custom workout/preset templates |
-| `workout_preset_exercises` | Exercises assigned to presets |
-| `workout_preset_exercise_sets` | Reps/sets configured in presets |
-| `workout_plan_templates` | Templates for weekly and sequential workout schedules |
-| `workout_plan_template_assignments` | Scheduled workout templates (weekday or ordered sequence) |
-| `workout_plan_assignment_sets` | Sets within assigned workout plans |
-| `workout_feedback` | Session / per-exercise workout feedback (difficulty, pain flag and note) behind adaptive suggestions |
+
+| Table                               | Purpose                                                                                                                                            |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exercises`                         | Custom exercises created by user                                                                                                                   |
+| `exercise_entries`                  | Logged exercises for the day                                                                                                                       |
+| `exercise_preset_entries`           | Logged workout presets for the day                                                                                                                 |
+| `exercise_entry_sets`               | Reps, weights, and sets completed                                                                                                                  |
+| `exercise_entry_activity_details`   | Heart rate, distance, activity data                                                                                                                |
+| `shoes`                             | Running-shoe inventory with retirement mileage; linked from `exercise_entries.shoe_id`                                                             |
+| `plate_inventories`                 | Bars and plates a person owns, for the plate calculator (one row per user)                                                                         |
+| `action_tags`                       | NFC tags: a random tag code plus the saved action a tap runs (owner-only)                                                                          |
+| `exercise_entry_laps`               | Lap split intervals for workouts                                                                                                                   |
+| `exercise_entry_hr_zones`           | Heart-rate time-in-zone splits per workout                                                                                                         |
+| `exercise_entry_distance_series`    | Distance-against-time rows for an indoor entry with no route, behind its pace chart. One row per workout (`points` is JSONB)                       |
+| `exercise_entry_gps_points`         | GPS trackpoints & second-by-second telemetry. One row per workout (the `points` column holds the whole track as JSONB), not one row per trackpoint |
+| `workout_presets`                   | Custom workout/preset templates                                                                                                                    |
+| `workout_preset_exercises`          | Exercises assigned to presets                                                                                                                      |
+| `workout_preset_exercise_sets`      | Reps/sets configured in presets                                                                                                                    |
+| `workout_plan_templates`            | Templates for weekly and sequential workout schedules                                                                                              |
+| `workout_plan_template_assignments` | Scheduled workout templates (weekday or ordered sequence)                                                                                          |
+| `workout_plan_assignment_sets`      | Sets within assigned workout plans                                                                                                                 |
+| `workout_feedback`                  | Session / per-exercise workout feedback (difficulty, pain flag and note) behind adaptive suggestions                                               |
 
 ### Measurements & Health (Tier 1/3: Owner-Only or Delegate-Write)
-| Table | Purpose |
-|-------|---------|
-| `check_in_measurements` | Weight, body composition, BMR, circumference measurements, and resting heart rate |
-| `check_in_photos` | Progress photos |
-| `custom_measurements` | User-defined custom measurement types |
-| `custom_categories` | User-defined measurement categories |
-| `water_intake` | Total water logged for the day |
-| `water_intake_entries` | Individual logged water cups |
-| `water_containers` | Configured container sizes |
-| `sleep_entries` | Sleep logs (bedtime, wake time) |
-| `sleep_entry_stages` | Sleep stage breakdowns (REM, Deep, Light) |
-| `sleep_need_calculations` | AI sleep need calculations |
-| `daily_sleep_need` | Sleep goals calculated for the day |
-| `health_metric_samples` | Intraday wearable telemetry — heart rate, HRV, respiration, SpO2, stress, body battery, skin temperature. One JSONB-bucketed row per user/metric/day/provider (not one row per sample) |
-| `vitals_entries` | Blood pressure, blood glucose, temperature, and pulse logs |
-| `daily_health_metrics` | Daily automated wearable summary, scores, and source-timed total calories |
+
+| Table                     | Purpose                                                                                                                                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check_in_measurements`   | Weight, body composition, BMR, circumference measurements, and resting heart rate                                                                                                      |
+| `check_in_photos`         | Progress photos                                                                                                                                                                        |
+| `custom_measurements`     | User-defined custom measurement types                                                                                                                                                  |
+| `custom_categories`       | User-defined measurement categories                                                                                                                                                    |
+| `water_intake`            | Total water logged for the day                                                                                                                                                         |
+| `water_intake_entries`    | Individual logged water cups                                                                                                                                                           |
+| `water_containers`        | Configured container sizes                                                                                                                                                             |
+| `sleep_entries`           | Sleep logs (bedtime, wake time)                                                                                                                                                        |
+| `sleep_entry_stages`      | Sleep stage breakdowns (REM, Deep, Light)                                                                                                                                              |
+| `sleep_need_calculations` | AI sleep need calculations                                                                                                                                                             |
+| `daily_sleep_need`        | Sleep goals calculated for the day                                                                                                                                                     |
+| `health_metric_samples`   | Intraday wearable telemetry — heart rate, HRV, respiration, SpO2, stress, body battery, skin temperature. One JSONB-bucketed row per user/metric/day/provider (not one row per sample) |
+| `vitals_entries`          | Blood pressure, blood glucose, temperature, and pulse logs                                                                                                                             |
+| `daily_health_metrics`    | Daily automated wearable summary, scores, and source-timed total calories                                                                                                              |
 
 ### Fasting, Mood, Medications, & Symptoms (Tier 1/3: Owner-Only or Delegate-Write)
-| Table | Purpose |
-|-------|---------|
-| `fasting_logs` | Fasting timeline logs (start/end fast) |
-| `user_fasting_preferences` | Intermittent fasting targets, auto-calculation config, and alert timing |
-| `mood_entries` | Logged mood check-ins, several per day: optional mood, energy and focus ratings, tags and journal notes, with a timestamp and a `source` (`manual`, `garmin` or `import`) |
-| `mindfulness_sessions` | Logged mindfulness, meditation, and breathwork sessions |
-| `oral_care_sessions` | Brushing, flossing, mouthwash, tongue cleaning and custom ("other") oral care sessions, logged in Sparky (`manual`, `timer`) or synced from Apple Health; a synced sample upserts on `(user_id, provider, external_id)`. The daily brushing goal is `user_preferences.oral_care_daily_target` / `oral_care_target_seconds` |
-| `lab_markers` | A user's own lab markers with optional default reference range (built-in markers are defined in `@workspace/shared`) |
-| `lab_results` | Lab results with their own unit and reference range, for built-in or custom markers |
-| `lab_reports` | One imported lab report (a PDF or photo read into results); results link to it with `report_id`, and the report itself is not stored. `client_request_id` makes a retried import save once |
-| `user_custom_moods` | User-defined mood tags (icon/color) |
-| `medications` | Custom medication inventory lists |
-| `medication_schedules` | Reminders and schedules for medications |
-| `medication_entries` | Logs of medications taken |
-| `medication_pens` | Vial/pen inventory with lot, storage and explicit beyond-use metadata |
-| `medication_syringes` | Reusable syringe capacity/graduation settings and preferred-device choice |
-| `medication_stock_status_audit` | Existing vial lifecycle status transitions without quantity adjustments |
-| `medication_preparations` | One immutable labelled-input preparation snapshot per vial; new injections link to it |
-| `medication_titration_steps` | Automated titration dosage plans |
-| `injection_entries` | Injection logs (site, time, etc.) |
-| `user_custom_symptoms` | Symptom definitions (template, sections, custom fields) |
-| `symptom_entries` | Symptom quick logs and episodes (also holds cycle-hub symptoms, `source = 'cycle'`) |
-| `user_symptom_options` | Pick-list library: locations, qualities, associated symptoms, triggers, relief methods |
-| `symptom_entry_treatments` | Medications and relief methods used for a symptom entry, with effectiveness |
-| `symptom_entry_photos` | Photos attached to a symptom entry |
-| `symptom_free_days` | Explicit "no symptoms today" markers |
+
+| Table                                     | Purpose                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fasting_logs`                            | Fasting timeline logs (start/end fast)                                                                                                                                                                                                                                                                                     |
+| `user_fasting_preferences`                | Intermittent fasting targets, auto-calculation config, and alert timing                                                                                                                                                                                                                                                    |
+| `mood_entries`                            | Logged mood check-ins, several per day: optional mood, energy and focus ratings, tags and journal notes, with a timestamp and a `source` (`manual`, `garmin` or `import`)                                                                                                                                                  |
+| `mindfulness_sessions`                    | Logged mindfulness, meditation, and breathwork sessions                                                                                                                                                                                                                                                                    |
+| `oral_care_sessions`                      | Brushing, flossing, mouthwash, tongue cleaning and custom ("other") oral care sessions, logged in Sparky (`manual`, `timer`) or synced from Apple Health; a synced sample upserts on `(user_id, provider, external_id)`. The daily brushing goal is `user_preferences.oral_care_daily_target` / `oral_care_target_seconds` |
+| `lab_markers`                             | A user's own lab markers with optional default reference range (built-in markers are defined in `@workspace/shared`)                                                                                                                                                                                                       |
+| `lab_results`                             | Lab results with their own unit and reference range, for built-in or custom markers                                                                                                                                                                                                                                        |
+| `lab_reports`                             | One explicit imported or manually entered panel with origin, collection date, lab name and notes; results link by `report_id`. Report files are not stored; `client_request_id` makes retried saves idempotent                                                                                                             |
+| `user_custom_moods`                       | User-defined mood tags (icon/color)                                                                                                                                                                                                                                                                                        |
+| `medications`                             | Custom medication inventory lists                                                                                                                                                                                                                                                                                          |
+| `medication_schedules`                    | Reminders and schedules for medications                                                                                                                                                                                                                                                                                    |
+| `medication_entries`                      | Logs of medications taken                                                                                                                                                                                                                                                                                                  |
+| `medication_pens`                         | Vial/pen inventory with lot, storage and explicit beyond-use metadata                                                                                                                                                                                                                                                      |
+| `medication_syringes`                     | Reusable syringe, pen and pump settings; nullable owner identifies read-only global devices                                                                                                                                                                                                                                |
+| `medication_device_preferences`           | Owner-scoped preferred available device; clearing a preference remains recorded across migration reapplication                                                                                                                                                                                                             |
+| `medication_stock_status_audit`           | Existing vial lifecycle status transitions without quantity adjustments                                                                                                                                                                                                                                                    |
+| `medication_preparations`                 | Stable-ID current preparation projection with labelled inputs, revision and reviewed correction pointer; new injections link to it                                                                                                                                                                                         |
+| `medication_preparation_corrections`      | Immutable before/after preparation and BUD snapshots, review result and operation ID; opaque parent IDs survive entity deletion                                                                                                                                                                                            |
+| `medication_preparation_dose_corrections` | Immutable before/after delivered-mass changes for known physical draw volumes; original injection ID survives dose deletion                                                                                                                                                                                                |
+| `medication_titration_steps`              | Automated titration dosage plans                                                                                                                                                                                                                                                                                           |
+| `injection_entries`                       | Injection logs (site, time, etc.)                                                                                                                                                                                                                                                                                          |
+| `user_custom_symptoms`                    | Symptom definitions (template, sections, custom fields)                                                                                                                                                                                                                                                                    |
+| `symptom_entries`                         | Symptom quick logs and episodes (also holds cycle-hub symptoms, `source = 'cycle'`)                                                                                                                                                                                                                                        |
+| `user_symptom_options`                    | Pick-list library: locations, qualities, associated symptoms, triggers, relief methods                                                                                                                                                                                                                                     |
+| `symptom_entry_treatments`                | Medications and relief methods used for a symptom entry, with effectiveness                                                                                                                                                                                                                                                |
+| `symptom_entry_photos`                    | Photos attached to a symptom entry                                                                                                                                                                                                                                                                                         |
+| `symptom_free_days`                       | Explicit "no symptoms today" markers                                                                                                                                                                                                                                                                                       |
 
 ### Cycle & Pregnancy (Tier 1: Owner-Only)
-| Table | Purpose |
-|-------|---------|
-| `cycles` | Menstrual cycle history records |
-| `cycle_settings` | Cycle hub settings (mode, parameters) |
-| `cycle_daily_entries` | Per-day cycle logs (flow, BBT, mood, etc.) |
-| `cycle_test_entries` | Ovulation and pregnancy test logs |
-| `pregnancies` | Pregnancy records (due date, status) |
-| `run_programs` | A person's run program, their place in it, its Diary schedule, goal date, adjustments to it and which diary entries its workouts were done as |
-| `run_goals` | A person's weekly running distance target and the race they are counting down to |
-| `custom_run_programs` | A person's own run or walk plans: a name, the activity and an ordered list of workouts, each a list of timed steps. Starting one copies it into `run_programs` |
-| `fitness_tests` | A person's running fitness tests (5K time trial, 30-minute run, Cooper test): measurements, whether it was run outdoors or on a treadmill (and the incline), result, the training paces derived from them and the recorded activity it was run as |
-| `routes` | A person's saved routes: name, activity, source (drawn, GPX, activity), distance, elevation gain, a simplified track of points and optional turn cues |
-| `pregnancy_kick_sessions` | Fetal kick-counter sessions |
-| `pregnancy_contractions` | Contraction timer logs |
-| `pregnancy_photos` | Bump photo journal |
-| `pregnancy_checklist_state` | Weekly pregnancy checklist completion |
-| `health_appointments` | Prenatal and other health appointments |
+
+| Table                       | Purpose                                                                                                                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cycles`                    | Menstrual cycle history records                                                                                                                                                                                                                   |
+| `cycle_settings`            | Cycle hub settings (mode, parameters)                                                                                                                                                                                                             |
+| `cycle_daily_entries`       | Per-day cycle logs (flow, BBT, mood, etc.)                                                                                                                                                                                                        |
+| `cycle_test_entries`        | Ovulation and pregnancy test logs                                                                                                                                                                                                                 |
+| `pregnancies`               | Pregnancy records (due date, status)                                                                                                                                                                                                              |
+| `run_programs`              | A person's run program, their place in it, its Diary schedule, goal date, adjustments to it and which diary entries its workouts were done as                                                                                                     |
+| `run_goals`                 | A person's weekly running distance target and the race they are counting down to                                                                                                                                                                  |
+| `custom_run_programs`       | A person's own run or walk plans: a name, the activity and an ordered list of workouts, each a list of timed steps. Starting one copies it into `run_programs`                                                                                    |
+| `fitness_tests`             | A person's running fitness tests (5K time trial, 30-minute run, Cooper test): measurements, whether it was run outdoors or on a treadmill (and the incline), result, the training paces derived from them and the recorded activity it was run as |
+| `routes`                    | A person's saved routes: name, activity, source (drawn, GPX, activity), distance, elevation gain, a simplified track of points and optional turn cues                                                                                             |
+| `pregnancy_kick_sessions`   | Fetal kick-counter sessions                                                                                                                                                                                                                       |
+| `pregnancy_contractions`    | Contraction timer logs                                                                                                                                                                                                                            |
+| `pregnancy_photos`          | Bump photo journal                                                                                                                                                                                                                                |
+| `pregnancy_checklist_state` | Weekly pregnancy checklist completion                                                                                                                                                                                                             |
+| `health_appointments`       | Prenatal and other health appointments                                                                                                                                                                                                            |
 
 ### User Preferences & Settings (Tier 2: Owner-Only Write, Delegate-Read)
-| Table | Purpose |
-|-------|---------|
-| `profiles` | User full name, height, display metrics |
-| `user_preferences` | Unit, formatting, chart display, and heart rate zone preferences |
-| `user_nutrient_display_preferences` | Nutrient column display preferences |
-| `user_meal_visibilities` | Visibility settings for meals |
-| `user_goals` | Active daily calorie/macro goals |
-| `user_custom_nutrients` | Custom nutrient definitions |
-| `user_nutrient_goal_preferences` | Per-user minimum/maximum/target goal direction override per nutrient (predefined or custom) |
-| `user_water_containers` | Configured container sizes |
-| `user_calorie_rule_history` | Calorie settings in force from each change on, so past days keep their target |
-| `user_dashboard_layouts` | Rearranged dashboard widget positions |
-| `user_medication_display_preferences` | GLP-1/Medication display preferences |
-| `user_mood_display_preferences` | Mood picker visibility settings |
-| `user_cycle_display_preferences` | Cycle dashboard tile visibility |
-| `user_allergen_preferences` | Allergen preferences |
-| `user_ignored_updates` | Records of skipped release updates |
+
+| Table                                 | Purpose                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `profiles`                            | User full name, height, display metrics                                                     |
+| `user_preferences`                    | Unit, formatting, chart display, and heart rate zone preferences                            |
+| `user_nutrient_display_preferences`   | Nutrient column display preferences                                                         |
+| `user_meal_visibilities`              | Visibility settings for meals                                                               |
+| `user_goals`                          | Active daily calorie/macro goals                                                            |
+| `user_custom_nutrients`               | Custom nutrient definitions                                                                 |
+| `user_nutrient_goal_preferences`      | Per-user minimum/maximum/target goal direction override per nutrient (predefined or custom) |
+| `user_water_containers`               | Configured container sizes                                                                  |
+| `user_calorie_rule_history`           | Calorie settings in force from each change on, so past days keep their target               |
+| `user_dashboard_layouts`              | Rearranged dashboard widget positions                                                       |
+| `user_medication_display_preferences` | GLP-1/Medication display preferences                                                        |
+| `user_mood_display_preferences`       | Mood picker visibility settings                                                             |
+| `user_cycle_display_preferences`      | Cycle dashboard tile visibility                                                             |
+| `user_allergen_preferences`           | Allergen preferences                                                                        |
+| `user_ignored_updates`                | Records of skipped release updates                                                          |
 
 ### AI & Chat (Tier 1: Owner-Only)
-| Table | Purpose |
-|-------|---------|
-| `sparky_chat_history` | AI Assistant chat messages and history |
+
+| Table                        | Purpose                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `sparky_chat_history`        | AI Assistant chat messages and history                                    |
 | `food_assistant_preferences` | Explicit lasting food preferences, independently editable and forgettable |
-| `food_assistant_tasks` | Versioned food tasks, recoverable recipe ingredients and source evidence |
-| `food_assistant_operations` | Idempotent task operations and before/after checkpoints |
-| `ai_service_settings` | User-defined custom assistant configurations |
+| `food_assistant_tasks`       | Versioned food tasks, recoverable recipe ingredients and source evidence  |
+| `food_assistant_operations`  | Idempotent task operations and before/after checkpoints                   |
+| `ai_service_settings`        | User-defined custom assistant configurations                              |
 
 ### Admin & System (Tier 1: Admin-Only or Public)
-| Table | Purpose |
-|-------|---------|
-| `global_settings` | Application feature flags and config |
-| `sso_provider` | Active Single Sign-On providers |
-| `oidc_providers` | OpenID Connect integration settings |
-| `external_provider_types` | Search provider configurations (FatSecret, USDA, Canadian Nutrient File, Livsmedelsverket) |
-| `external_data_providers` | Configured API integration credentials, including personal or global Open Food Facts accounts |
-| `openfoodfacts_product_read_rate_limit` | Singleton lease and cooldown coordinating Open Food Facts product reads across server instances |
-| `openfoodfacts_sync_queue` | Dormant revision-aware automatic upload state and retained history; unused by manual contributions |
-| `rate_limit` | Sign-in rate limit counters shared across server instances |
-| `system.rate_limit_windows` | Per-address limits of the server's own routes (`middleware/ipRateLimit.ts`) shared across server instances |
-| `system.scheduled_jobs` | The latest tick of each scheduled job and the server instance that ran it (`services/scheduledJobs.ts`), so each tick runs on one instance |
-| `system.bulk_imports` | Progress of the latest Canadian Nutrient File and Livsmedelsverket import per user (`services/bulkImports.ts`), so any server instance reports it |
-| `system.rls_policy_state` | The last `rls_policies.sql` apply (`utils/applyRlsPolicies.ts`), so startup skips an unchanged one |
-| `medication_types` | Medication categories lookup |
-| `medication_route_types` | Medication administration routes lookup |
-| `medication_schedule_types` | Medication scheduling frequencies lookup |
-| `admin_activity_logs` | Admin action audits |
-| `day_classification_cache` | Daily summary caching logs |
+
+| Table                                   | Purpose                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `global_settings`                       | Application feature flags and config                                                                                                              |
+| `sso_provider`                          | Active Single Sign-On providers                                                                                                                   |
+| `oidc_providers`                        | OpenID Connect integration settings                                                                                                               |
+| `external_provider_types`               | Search provider configurations (FatSecret, USDA, Canadian Nutrient File, Livsmedelsverket)                                                        |
+| `external_data_providers`               | Configured API integration credentials, including personal or global Open Food Facts accounts                                                     |
+| `openfoodfacts_product_read_rate_limit` | Singleton lease and cooldown coordinating Open Food Facts product reads across server instances                                                   |
+| `openfoodfacts_sync_queue`              | Dormant revision-aware automatic upload state and retained history; unused by manual contributions                                                |
+| `rate_limit`                            | Sign-in rate limit counters shared across server instances                                                                                        |
+| `system.rate_limit_windows`             | Per-address limits of the server's own routes (`middleware/ipRateLimit.ts`) shared across server instances                                        |
+| `system.scheduled_jobs`                 | The latest tick of each scheduled job and the server instance that ran it (`services/scheduledJobs.ts`), so each tick runs on one instance        |
+| `system.bulk_imports`                   | Progress of the latest Canadian Nutrient File and Livsmedelsverket import per user (`services/bulkImports.ts`), so any server instance reports it |
+| `system.rls_policy_state`               | The last `rls_policies.sql` apply (`utils/applyRlsPolicies.ts`), so startup skips an unchanged one                                                |
+| `medication_types`                      | Medication categories lookup                                                                                                                      |
+| `medication_route_types`                | Medication administration routes lookup                                                                                                           |
+| `medication_schedule_types`             | Medication scheduling frequencies lookup                                                                                                          |
+| `admin_activity_logs`                   | Admin action audits                                                                                                                               |
+| `day_classification_cache`              | Daily summary caching logs                                                                                                                        |
 
 ### Internal & Shared (Tier 2: Owner-Only or System)
-| Table | Purpose |
-|-------|---------|
-| `onboarding_data` | Initial user onboarding metrics |
-| `onboarding_status` | User onboarding status |
-| `family_access` | Sharing rules and delegation credentials |
-| `backup_settings` | Automated database backup settings |
+
+| Table               | Purpose                                  |
+| ------------------- | ---------------------------------------- |
+| `onboarding_data`   | Initial user onboarding metrics          |
+| `onboarding_status` | User onboarding status                   |
+| `family_access`     | Sharing rules and delegation credentials |
+| `backup_settings`   | Automated database backup settings       |
 
 ---
 
@@ -302,7 +321,7 @@ Two supported paths, depending on what you need:
 - **A user's providers, for the UI or a service.** Use
   `externalProviderRepository.getExternalDataProviders(userId)`. It decrypts on the
   way out and returns the plaintext on the `app_id` / `app_key` properties of the
-  returned object — so those *field names* are populated even though the *columns*
+  returned object — so those _field names_ are populated even though the _columns_
   of the same name are `NULL`. Failed decryption is logged and yields `null` rather
   than throwing, so treat a `null` credential as "unusable", not "absent".
 
@@ -331,6 +350,7 @@ SparkyFitness uses a custom migration system that runs automatically on server s
 ### Migration Process
 
 The migration system:
+
 1. **Checks which migrations are applied** on startup
 2. **Applies pending migrations** in order, each file in one transaction together with its record in `system.schema_migrations`
 3. **Logs migration results** for debugging
@@ -338,6 +358,7 @@ The migration system:
 ### Migration Structure
 
 Migrations are stored in `SparkyFitnessServer/db/migrations/` with the naming pattern:
+
 ```
 YYYYMMDDHHMMSS_description.sql
 ```
@@ -347,6 +368,7 @@ Example: `20240315103000_add_exercise_tracking.sql`
 ### Creating a New Migration
 
 1. **Create the migration file** in the migrations directory:
+
    ```bash
    cd SparkyFitnessServer/db/migrations/
    touch 20240315142000_add_meal_planning.sql
@@ -361,22 +383,27 @@ Example: `20240315103000_add_exercise_tracking.sql`
 ### Migration Best Practices
 
 #### Backwards Compatibility
+
 - **Add columns** with default values to avoid breaking existing code
 - **Create new tables** rather than modifying existing ones when possible
 - **Test migrations** on development data first
 
 #### Transaction Management
+
 Each migration file runs in one transaction with its `system.schema_migrations` record, so if any statement fails, nothing in the file is applied or recorded. A file therefore contains no `BEGIN;`/`COMMIT;` of its own; a test fails if it does. To commit steps separately, such as adding a constraint `NOT VALID` and validating it afterwards, write two migration files.
 
 #### Index Creation
+
 ```sql
 -- Plain CREATE INDEX: CONCURRENTLY cannot run inside a transaction
 CREATE INDEX IF NOT EXISTS idx_food_entries_user_date
 ON food_entries(user_id, created_at);
 ```
+
 Statements that cannot run inside a transaction block, such as `CREATE INDEX CONCURRENTLY` or `VACUUM`, are not supported in migrations; startup stops with an error naming the file.
 
 #### Data Migration
+
 ```sql
 -- Create new table
 CREATE TABLE new_table (id UUID PRIMARY KEY, ...);
@@ -401,12 +428,14 @@ While not automated, rollback migrations can be created:
 ### Troubleshooting Migrations
 
 #### Migration Fails
+
 1. **Check migration logs** in application startup
 2. **Verify database connection** and permissions
 3. **Check for syntax errors** in migration SQL
 4. **Ensure migration dependencies** are met
 
 #### Migration Tracking Issues
+
 ```sql
 -- Check applied migrations
 SELECT * FROM system.schema_migrations ORDER BY applied_at;
@@ -418,6 +447,7 @@ VALUES ('20240315142000_add_meal_planning.sql');
 ```
 
 #### Database State Issues
+
 ```sql
 -- Check table structure
 \d table_name
@@ -426,7 +456,7 @@ VALUES ('20240315142000_add_meal_planning.sql');
 SELECT * FROM pg_policies WHERE tablename = 'table_name';
 
 -- Check indexes
-SELECT indexname, indexdef FROM pg_indexes 
+SELECT indexname, indexdef FROM pg_indexes
 WHERE tablename = 'table_name';
 ```
 
@@ -435,11 +465,13 @@ WHERE tablename = 'table_name';
 ## Database Maintenance
 
 ### Performance Monitoring
+
 - **Query performance**: Use `EXPLAIN ANALYZE` for slow queries
 - **Index usage**: Monitor index usage with `pg_stat_user_indexes`
 - **Connection monitoring**: Track connection pool usage
 
 ### Regular Maintenance
+
 - **VACUUM**: Regular vacuuming for performance
 - **ANALYZE**: Update table statistics
 - **Index maintenance**: Rebuild indexes if needed

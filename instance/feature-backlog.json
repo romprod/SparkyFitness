@@ -53,8 +53,8 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/dosing/engine.ts",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
-      "implementation_scope": "Preparation-records tranche: persist original mass in mg/mcg, final volume, mode, date and diluent; derive mass and concentration on server/shared logic. Device-unit conversion and graduation rounding are now covered by the syringe-only D04/D05 tranche; source concentration-input premixed and repeat/edit preparation workflows remain partial.",
-      "verification": "Local focused checks; isolated PostgreSQL fresh migrations, rerunnable additive migration, preparation scope/immutability/concurrency tests and medication RLS matrix. Deployment is verified separately."
+      "implementation_scope": "Selected flow completion: source-style three-step dry/premixed creation, explicit labelled mg/mL premix inputs and shared Decimal preparation arithmetic; reviewed active-preparation corrections extend the current projection.  API-only re-preparation remains deferred.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "D04",
@@ -70,8 +70,8 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/dosing/engine.ts",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
-      "implementation_scope": "Syringe-only parity: reusable settings/default, mg/mcg/mL/units inputs, 40-digit decimal nearest-increment half-up preview and server-calculated delivered mass/volume. Syringe visual rendering is now covered by D06; pen/pump presentation remains deferred. Account-owned devices only; source shared/global devices remain deferred.",
-      "verification": "Shared source-parity arithmetic and focused client/server checks; isolated PostgreSQL fresh/repeated migration, device/lifecycle/edit/concurrency/audit retention tests and medication RLS. Production deployment verified separately."
+      "implementation_scope": "Selected flow completion extends existing canonical half-up calculation to syringe/pen/pump settings, read-only global availability/defaults and original-unit dose-edit review. Arithmetic remains shared/server authoritative; no source catalog seeding or new administration rules.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "D05",
@@ -104,8 +104,8 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/components/VisualSyringe.tsx",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
-      "implementation_scope": "Syringe-only visual in existing Cabinet logging/editing previews, with target-volume/capacity fill, quarter ticks, existing rounded marking and optional four target-unit values. Existing default/device settings reused; pen/pump visuals remain deferred. Preview-flow follow-up: selected-device empty/pending/error figure with neutral em-dash caption, current-response numbers only, preferred-else-first untouched selection and preserved explicit manual mode. This tracks source ad-hoc behavior; scheduled source form differs. No numbered scale or design-only dashed marker is claimed. User-clarified flow: choose an available saved device automatically without a selection step; never fabricate a device when none exist. Existing dose/device/preview controls precede the body map in the same card, following source order.",
-      "verification": "Visual base plus preview-flow follow-up verified by 75 web tests, full web static/build checks, final affected mobile calibration tests and earlier full mobile checks. Synthetic actual-App desktop/narrow/light/dark neutral/ready/rounded-zero/correction states and independent source-flow review passed. Backend/shared/schema/dependencies remain unchanged; deployment is verified separately."
+      "implementation_scope": "Selected flow completion adds matching pen dose window and pump-count presentation alongside the syringe target-fill figure. Uses device metadata from the same response, source current-design semantics and existing Cabinet placement. Optional original design embellishments are not assumed.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "D07",
@@ -118,9 +118,11 @@
       "priority": "Later",
       "relative_effort": "M",
       "dependencies_and_limits": "Depends on preparation/device records. No assumptions about absorption equivalence.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/dosing/nasal.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/shared/src/medications/contracts.ts"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/shared/src/medications/contracts.ts",
+      "implementation_scope": "Prepared nasal logging uses stored medication type/route, compatible pump settings, pump-count/mass entry and source-normalized mL delivered quantities; no injection site or route choice inferred from device. Existing ordinary nasal adherence and GLP-1 model classification are preserved. Existing global devices are read-only; no catalog seed/admin workflow added.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "D08",
@@ -151,8 +153,8 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/actions/doses.ts",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessServer/models/injectionRepository.ts",
-      "implementation_scope": "Existing transactional calibrated corrections credit original use and recalculate delivered quantities; edits and deletion reconcile stock, including concurrency regression coverage. Separate dose-revision audit remains unimplemented; lifecycle status audit is not a dose audit.",
-      "verification": "Reconciled against existing edb6c85ec repository behavior and focused real PostgreSQL correction/deletion/concurrency checks; no new accounting feature added in this slice."
+      "implementation_scope": "Transactional mass/physical-volume reconciliation with original-input-unit correction and Review → Confirm stock impact; exact string readback avoids accepted-precision loss. Removed original devices leave calibrated quantity read-only; legacy manual-mass compatibility remains. Preparation-specific correction audit is durable, but a universal ordinary-dose create/edit/delete revision ledger and offline idempotency remain deferred.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "D10",
@@ -395,8 +397,8 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/prisma/schema.prisma",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
-      "implementation_scope": "Preparation-records tranche: one immutable snapshot per vial; new injections link its ID. Optional attachment to unused legacy vials only; no invented legacy inputs. Re-preparation and revision audit remain deferred.",
-      "verification": "Local focused checks; isolated PostgreSQL fresh migrations, rerunnable additive migration, preparation scope/immutability/concurrency tests and medication RLS matrix. Deployment is verified separately."
+      "implementation_scope": "Selected flow completion stores labelled creation inputs in a stable current projection and supports reviewed active correction with immutable owner-scoped before/after and per-dose mass audit retained through parent deletion. Physical-volume history is preserved; incomplete history is not backfilled. No new re-preparation/generation UI.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "I03",
@@ -429,7 +431,7 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/bud.ts",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
-      "implementation_scope": "Preparation-records tranche: explicit date or entered interval/base date/source, with no automatic 28-day fallback. Current vial metadata only; product/global defaults and BUD revision audit remain deferred.",
+      "implementation_scope": "Explicit date or interval/base/source handling metadata, preserved when omitted during preparation correction. Source three-day/past-date nonblocking logging notice is supported; no automatic 28-day fallback or invented legacy provenance. Full source product/global default hierarchy remains deferred; existing stock near-date behavior is separate.",
       "verification": "Local focused checks; isolated PostgreSQL fresh migrations, rerunnable additive migration, preparation scope/immutability/concurrency tests and medication RLS matrix. Deployment is verified separately."
     },
     {
@@ -778,8 +780,8 @@
       "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/components/BloodworkMatrix.tsx",
       "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Labs/Labs.tsx",
-      "implementation_scope": "Read-only latest-three existing imported lab-report comparison in existing Labs, newest first; no invented manual-date panels. Stable marker/assay identity, stored units/ranges/qualifiers and only valid comparable exact-result trends are retained. Source unsafe qualifier stripping, cross-unit arrows and CRP merging are not copied. No arbitrary filters or date pickers.",
-      "verification": "Focused web/mobile and shared/server checks, actual App desktop/narrow/light/dark visual checks, and independent pinned-source review passed. Latest-report SQL/route/middleware integration passed 3 cases on isolated PostgreSQL; existing RLS matrix passed 367. Deployment is verified separately."
+      "implementation_scope": "Selected flow completion compares the latest three explicit imported/manual panels, with stable marker rows, qualified/unit/range-safe display, manual multi-marker entry and full explicit panel history/deletion. Standalone old rows are not fabricated into panels. Original matrix is optional-design source capability; summary/optimal-range dashboard remains outside this slice.",
+      "verification": "Selected flow integration: immutable backend/shared artifact, fresh and repeated three-forward migrations, 440 unique integration/permission cases including affected owner-assertion replay, old-server baseline compatibility, combined web static/build and 225 focused cases plus 38 copy cases, and bounded native source checks. Final visual and live deployment readback are separate; no owner records or owner browser used for tests."
     },
     {
       "id": "L03",

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Settings2, Trash2 } from 'lucide-react';
 import {
   medicationSyringeInputSchema,
+  normalizeMedicationDevice,
+  type MedicationDeviceType,
   type MedicationSyringe,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
@@ -32,6 +34,7 @@ import {
 
 const blankForm = {
   name: '',
+  device_type: 'syringe' as MedicationDeviceType,
   graduation_type: 'units' as 'units' | 'ml',
   units_per_ml: '100',
   capacity_ml: '1',
@@ -59,6 +62,7 @@ export default function MedicationSyringeSettings() {
     setForm({
       id: s.id,
       name: s.name,
+      device_type: s.device_type ?? 'syringe',
       graduation_type: s.graduation_type,
       units_per_ml: String(s.units_per_ml),
       capacity_ml: s.capacity_ml,
@@ -67,6 +71,26 @@ export default function MedicationSyringeSettings() {
     });
   const set = (key: keyof typeof blankForm, value: string) =>
     setForm((current) => (current ? { ...current, [key]: value } : current));
+  const setDeviceType = (value: MedicationDeviceType) =>
+    setForm((current) => {
+      if (!current) return current;
+      const crossesPump =
+        (current.device_type === 'pump') !== (value === 'pump');
+      return {
+        ...current,
+        ...(crossesPump
+          ? {
+              graduation_type:
+                value === 'pump' ? ('ml' as const) : ('units' as const),
+              units_per_ml: '100',
+              capacity_ml: '1',
+              capacity_units: '100',
+              increment: '1',
+            }
+          : {}),
+        device_type: value,
+      };
+    });
   return (
     <Dialog
       open={open}
@@ -78,14 +102,12 @@ export default function MedicationSyringeSettings() {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Settings2 className="mr-1 h-3.5 w-3.5" />
-          {t('medications.syringes.manage', 'Manage syringes')}
+          {t('medications.devices.manage', 'Manage devices')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {t('medications.syringes.title', 'Syringes')}
-          </DialogTitle>
+          <DialogTitle>{t('medications.devices.title', 'Devices')}</DialogTitle>
         </DialogHeader>
         {syringes.isError && (
           <p className="text-sm text-destructive">
@@ -96,27 +118,44 @@ export default function MedicationSyringeSettings() {
           {(syringes.data?.syringes ?? []).map((s) => (
             <div key={s.id} className="space-y-2 rounded-md border p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{s.name}</span>
+                <span className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                  {s.name}
+                </span>
+                {s.is_shared && (
+                  <Badge variant="outline">
+                    {t('medications.devices.shared', 'Shared · read only')}
+                  </Badge>
+                )}
                 {s.id === syringes.data?.default_syringe_id && (
                   <Badge variant="secondary">
                     {t('medications.syringes.default', 'Default')}
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  'medications.syringes.summary',
-                  '{{capacity}} mL / {{units}} units · {{increment}} {{scale}} per mark',
-                  {
-                    capacity: s.capacity_ml,
-                    units: s.capacity_units,
-                    increment: s.increment,
-                    scale:
-                      s.graduation_type === 'ml'
-                        ? 'mL'
-                        : t('medications.syringes.units', 'units'),
-                  }
-                )}
+              <p className="break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                {s.device_type === 'pump'
+                  ? t(
+                      'medications.devices.pumpSummary',
+                      '{{capacity}} mL bottle · {{increment}} mL per pump ({{count}} pumps per fill)',
+                      {
+                        capacity: s.capacity_ml,
+                        increment: s.increment,
+                        count: s.capacity_units,
+                      }
+                    )
+                  : t(
+                      'medications.syringes.summary',
+                      '{{capacity}} mL / {{units}} units · {{increment}} {{scale}} per mark',
+                      {
+                        capacity: s.capacity_ml,
+                        units: s.capacity_units,
+                        increment: s.increment,
+                        scale:
+                          s.graduation_type === 'ml'
+                            ? 'mL'
+                            : t('medications.syringes.units', 'units'),
+                      }
+                    )}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -133,24 +172,28 @@ export default function MedicationSyringeSettings() {
                     ? t('medications.syringes.clearDefault', 'Clear default')
                     : t('medications.syringes.setDefault', 'Set default')}
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => edit(s)}
-                >
-                  <Pencil className="mr-1 h-3 w-3" />
-                  {t('common.edit', 'Edit')}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => remove.mutate(s.id)}
-                >
-                  <Trash2 className="mr-1 h-3 w-3" />
-                  {t('common.delete', 'Delete')}
-                </Button>
+                {!s.is_shared && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => edit(s)}
+                    >
+                      <Pencil className="mr-1 h-3 w-3" />
+                      {t('common.edit', 'Edit')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => remove.mutate(s.id)}
+                    >
+                      <Trash2 className="mr-1 h-3 w-3" />
+                      {t('common.delete', 'Delete')}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -159,8 +202,8 @@ export default function MedicationSyringeSettings() {
           <div className="space-y-3 rounded-md border p-3">
             <p className="text-sm font-medium">
               {form.id
-                ? t('medications.syringes.edit', 'Edit syringe')
-                : t('medications.syringes.add', 'Add syringe')}
+                ? t('medications.devices.edit', 'Edit device')
+                : t('medications.devices.add', 'Add device')}
             </p>
             <div className="space-y-1">
               <Label htmlFor="syringe-name">
@@ -173,44 +216,94 @@ export default function MedicationSyringeSettings() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="syringe-scale">
-                {t('medications.syringes.graduation', 'Graduation scale')}
+              <Label htmlFor="device-type">
+                {t('medications.devices.type', 'Device type')}
               </Label>
               <Select
-                value={form.graduation_type}
-                onValueChange={(value) => set('graduation_type', value)}
+                value={form.device_type}
+                onValueChange={(value) =>
+                  setDeviceType(value as MedicationDeviceType)
+                }
               >
-                <SelectTrigger id="syringe-scale">
+                <SelectTrigger id="device-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="units">
-                    {t('medications.syringes.unitGraduated', 'Units')}
+                  <SelectItem value="syringe">
+                    {t(
+                      'medications.devices.syringe',
+                      'Syringe (draw to a mark)'
+                    )}
                   </SelectItem>
-                  <SelectItem value="ml">mL</SelectItem>
+                  <SelectItem value="pen">
+                    {t('medications.devices.pen', 'Pen (dial a dose)')}
+                  </SelectItem>
+                  <SelectItem value="pump">
+                    {t(
+                      'medications.devices.pumpType',
+                      'Nasal pump (fixed spray volume)'
+                    )}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {form.device_type !== 'pump' && (
+              <div className="space-y-1">
+                <Label htmlFor="syringe-scale">
+                  {t('medications.syringes.graduation', 'Graduation scale')}
+                </Label>
+                <Select
+                  value={form.graduation_type}
+                  onValueChange={(value) => set('graduation_type', value)}
+                >
+                  <SelectTrigger id="syringe-scale">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="units">
+                      {t('medications.syringes.unitGraduated', 'Units')}
+                    </SelectItem>
+                    <SelectItem value="ml">mL</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(
-                [
-                  'units_per_ml',
-                  'capacity_ml',
-                  'capacity_units',
-                  'increment',
-                ] as const
+                (form.device_type === 'pump'
+                  ? ['capacity_ml', 'increment']
+                  : [
+                      'units_per_ml',
+                      'capacity_ml',
+                      'capacity_units',
+                      'increment',
+                    ]) as Array<
+                  | 'units_per_ml'
+                  | 'capacity_ml'
+                  | 'capacity_units'
+                  | 'increment'
+                >
               ).map((key) => (
                 <div key={key} className="space-y-1">
                   <Label htmlFor={`syringe-${key}`}>
-                    {t(
-                      `medications.syringes.${key}`,
-                      {
-                        units_per_ml: 'Units per mL',
-                        capacity_ml: 'Capacity (mL)',
-                        capacity_units: 'Capacity (units)',
-                        increment: 'Smallest mark',
-                      }[key]
-                    )}
+                    {form.device_type === 'pump'
+                      ? t(
+                          key === 'capacity_ml'
+                            ? 'medications.devices.bottleFill'
+                            : 'medications.devices.sprayVolume',
+                          key === 'capacity_ml'
+                            ? 'Bottle fill (mL)'
+                            : 'Spray volume (mL per pump)'
+                        )
+                      : t(
+                          `medications.syringes.${key}`,
+                          {
+                            units_per_ml: 'Units per mL',
+                            capacity_ml: 'Capacity (mL)',
+                            capacity_units: 'Capacity (units)',
+                            increment: 'Smallest mark',
+                          }[key]
+                        )}
                   </Label>
                   <Input
                     id={`syringe-${key}`}
@@ -228,7 +321,10 @@ export default function MedicationSyringeSettings() {
                 onClick={() => {
                   if (input?.success)
                     save.mutate(
-                      { id: form.id, body: input.data },
+                      {
+                        id: form.id,
+                        body: normalizeMedicationDevice(input.data),
+                      },
                       { onSuccess: () => setForm(null) }
                     );
                 }}
@@ -247,7 +343,7 @@ export default function MedicationSyringeSettings() {
         ) : (
           <Button variant="outline" onClick={() => setForm({ ...blankForm })}>
             <Plus className="mr-1 h-4 w-4" />
-            {t('medications.syringes.add', 'Add syringe')}
+            {t('medications.devices.add', 'Add device')}
           </Button>
         )}
         {(save.isError || remove.isError || makeDefault.isError) && (

@@ -26,19 +26,30 @@ const positiveDecimal = decimalString.refine(
   (value) => decimalMeets(value, true),
   'Must be positive'
 );
-export const medicationSyringeInputSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  graduation_type: z.enum(['units', 'ml']),
-  units_per_ml: z.number().int().positive(),
-  capacity_ml: positiveDecimal,
-  capacity_units: z.number().int().positive(),
-  increment: positiveDecimal,
-});
-export type MedicationSyringeInput = z.infer<
+export const medicationDeviceTypeSchema = z.enum(['syringe', 'pen', 'pump']);
+export type MedicationDeviceType = z.infer<typeof medicationDeviceTypeSchema>;
+export const medicationSyringeInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    device_type: medicationDeviceTypeSchema.optional(),
+    graduation_type: z.enum(['units', 'ml']),
+    units_per_ml: z.number().int().positive(),
+    capacity_ml: positiveDecimal,
+    capacity_units: z.number().int().nonnegative(),
+    increment: positiveDecimal,
+  })
+  .refine(
+    (device) => device.device_type === 'pump' || device.capacity_units > 0,
+    {
+      path: ['capacity_units'],
+    }
+  );
+export type MedicationSyringeInput = z.input<
   typeof medicationSyringeInputSchema
 >;
 export interface MedicationSyringe extends MedicationSyringeInput {
   id: string;
+  is_shared?: boolean;
   is_default: boolean;
   created_at: string;
   updated_at: string;
@@ -55,9 +66,108 @@ export const drawDoseSchema = z.object({
   unit: z.enum(['mcg', 'mg', 'ml', 'units']),
 });
 export type DrawDoseUnit = z.infer<typeof drawDoseSchema>['unit'];
+export const deviceDoseSchema = drawDoseSchema.extend({
+  unit: z.enum(['mcg', 'mg', 'ml', 'units', 'pumps']),
+});
+export const positiveDeviceDoseSchema = deviceDoseSchema.refine(
+  (dose) => decimalMeets(dose.value, true),
+  'Enter a positive dose'
+);
+export type DeviceDose = z.infer<typeof deviceDoseSchema>;
+
+export function pumpsToMl(value: string, increment: string): string {
+  const count = new D(value);
+  const step = new D(increment);
+  if (!count.isFinite() || count.lt(0) || !step.isFinite() || step.lte(0))
+    throw new Error('Invalid pump count or spray volume');
+  return count.times(step).toString();
+}
+
+export function mlToPumps(value: string, increment: string): string {
+  const volume = new D(value);
+  const step = new D(increment);
+  if (!volume.isFinite() || volume.lt(0) || !step.isFinite() || step.lte(0))
+    throw new Error('Invalid pump volume or spray volume');
+  return volume.div(step).toString();
+}
+
+/** Reconstruct only delivered quantities; never invent an original requested target. */
+export function recordedDoseForEdit(
+  entry: {
+    dose_mg: string | number | null;
+    dose_mg_exact?: string | null;
+    volume_ml?: string | null;
+    syringe_units?: string | null;
+    dose_input_unit?: string | null;
+  },
+  device?: Pick<
+    MedicationSyringeInput,
+    'device_type' | 'increment' | 'units_per_ml'
+  > | null
+): DeviceDose | null {
+  try {
+    const unit = drawDoseSchema.shape.unit.parse(entry.dose_input_unit ?? 'mg');
+    let value: string;
+    if (unit === 'ml') {
+      if (entry.volume_ml == null) return null;
+      if (device?.device_type === 'pump')
+        return {
+          value: mlToPumps(entry.volume_ml, device.increment),
+          unit: 'pumps',
+        };
+      value = entry.volume_ml;
+    } else if (unit === 'units') {
+      if (entry.syringe_units != null) value = entry.syringe_units;
+      else return null;
+    } else {
+      const mass = entry.dose_mg_exact ?? entry.dose_mg;
+      if (mass == null) return null;
+      value = new D(mass).times(unit === 'mcg' ? 1000 : 1).toString();
+    }
+    return deviceDoseSchema.parse({ value, unit });
+  } catch {
+    return null;
+  }
+}
+
+/** Pumps are a request/display unit; the canonical engine and history use mL. */
+export function normalizeDeviceDose(
+  input: DeviceDose,
+  device: Pick<MedicationSyringeInput, 'device_type' | 'increment'>
+): z.infer<typeof drawDoseSchema> {
+  const dose = deviceDoseSchema.parse(input);
+  if (dose.unit === 'pumps') {
+    if (device.device_type !== 'pump')
+      throw new Error('Pump counts require a nasal pump');
+    return { value: pumpsToMl(dose.value, device.increment), unit: 'ml' };
+  }
+  if (device.device_type === 'pump' && dose.unit === 'units')
+    throw new Error('Insulin units cannot be used with a nasal pump');
+  return drawDoseSchema.parse(dose);
+}
+
+/** Normalize hidden legacy fields of a fixed-volume pump on every save. */
+export function normalizeMedicationDevice(input: MedicationSyringeInput) {
+  const parsed = medicationSyringeInputSchema.parse(input);
+  const device = {
+    ...parsed,
+    device_type: parsed.device_type ?? ('syringe' as const),
+  };
+  if (device.device_type !== 'pump') return device;
+  return {
+    ...device,
+    graduation_type: 'ml' as const,
+    capacity_units: new D(device.capacity_ml)
+      .div(device.increment)
+      .toDecimalPlaces(0, D.ROUND_HALF_UP)
+      .toNumber(),
+  };
+}
 export const calculatedDrawInputSchema = z.object({
   syringe_id: z.string().uuid(),
-  dose: drawDoseSchema,
+  dose: deviceDoseSchema,
+  expected_preview_state: z.string().optional(),
+  review_intent: z.boolean().optional(),
 });
 export type CalculatedDrawInput = z.infer<typeof calculatedDrawInputSchema>;
 export const drawPreviewInputSchema = calculatedDrawInputSchema.extend({
@@ -77,6 +187,22 @@ export interface DrawWarning {
 export interface DrawResult {
   /** Ephemeral preview metadata from the same saved syringe used for this draw. */
   syringeCapacityMl?: string;
+  administrationRoute?: 'injection' | 'nasal';
+  doseInputUnit?: DrawDoseUnit;
+  review?: {
+    state: string;
+    previous?: { doseMg: string; volumeMl: string };
+    remainingBeforeMl: string | null;
+    remainingAfterMl: string | null;
+  };
+  device?: {
+    id: string;
+    device_type: MedicationDeviceType;
+    increment: string;
+    capacity_ml: string;
+    graduation_type: 'units' | 'ml';
+    units_per_ml: number;
+  };
   targetMassMcg: string;
   targetVolumeMl: string;
   rawUnits: string;
@@ -89,7 +215,7 @@ export interface DrawResult {
 }
 /** Exact reference arithmetic. Guardrails compare target volume, not rounded volume. */
 export function computeDraw(args: {
-  dose: CalculatedDrawInput['dose'];
+  dose: z.infer<typeof drawDoseSchema>;
   concentrationMcgPerMl: string;
   syringe: MedicationSyringeInput;
   remainingMl?: string;
@@ -200,13 +326,15 @@ export function remainingDrawVolume(
   concentrationMcgPerMl: string,
   totalVolumeMl: string,
   usedMassMg: string,
-  creditedMassMg: string = '0'
+  creditedMassMg: string = '0',
+  addedMassMg: string = '0'
 ) {
   return D.max(
     0,
     new D(totalVolumeMl).minus(
       new D(usedMassMg)
         .minus(creditedMassMg)
+        .plus(addedMassMg)
         .times(1000)
         .div(concentrationMcgPerMl)
     )

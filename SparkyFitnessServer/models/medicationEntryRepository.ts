@@ -157,7 +157,7 @@ async function listEntriesWithInjections(
     const injectionWhere = where.map((w) => `i.${w}`).join(' AND ');
 
     const result = await client.query(
-      `SELECT ${ENTRY_COLS}, NULL::varchar AS site, 'entry'::text AS entry_type, NULL::uuid AS pen_id,NULL::uuid AS syringe_id,NULL::text AS volume_ml,NULL::text AS syringe_units,NULL::text AS dose_input_unit
+      `SELECT ${ENTRY_COLS}, NULL::varchar AS site, 'entry'::text AS entry_type, NULL::uuid AS pen_id,NULL::uuid AS syringe_id,NULL::text AS volume_ml,NULL::text AS syringe_units,NULL::text AS dose_input_unit,NULL::text AS dose_mg_exact,NULL::uuid AS preparation_id,NULL::text AS administration_route
          FROM medication_entries
         WHERE ${entryWhere}
        UNION ALL
@@ -168,7 +168,7 @@ async function listEntriesWithInjections(
               i.dose_mg AS dose_amount_snapshot, 'mg'::text AS dose_unit_snapshot,
               i.notes, i.source, i.custom_fields, i.created_at, i.updated_at,
               NULL::jsonb AS nutrients_snapshot,
-              i.site, 'injection'::text AS entry_type,i.pen_id,i.syringe_id,i.volume_ml::text,i.syringe_units::text,i.dose_input_unit
+              i.site, 'injection'::text AS entry_type,i.pen_id,i.syringe_id,i.volume_ml::text,i.syringe_units::text,i.dose_input_unit,i.dose_mg::text AS dose_mg_exact,i.preparation_id,i.administration_route
          FROM injection_entries i
          LEFT JOIN medications m ON m.id = i.medication_id
         WHERE ${injectionWhere}

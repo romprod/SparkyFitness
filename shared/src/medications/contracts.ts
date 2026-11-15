@@ -156,6 +156,9 @@ export interface CreateMedicationInput {
 export type UpdateMedicationInput = Partial<CreateMedicationInput>;
 
 export interface MedicationEntry {
+  dose_mg_exact?: string | null;
+  administration_route?: 'injection' | 'nasal' | null;
+  preparation_id?: string | null;
   pen_id?: string | null;
   syringe_id?: string | null;
   volume_ml?: string | null;
@@ -261,6 +264,8 @@ export interface MedicationPen {
 }
 
 export interface InjectionEntry {
+  dose_mg_exact?: string | null;
+  administration_route?: 'injection' | 'nasal' | null;
   volume_ml?: string | null;
   syringe_units?: string | null;
   dose_input_unit?: string | null;
@@ -329,6 +334,7 @@ export interface LogInjectionInput {
 
 // pen_id/deduct_pen are deliberately not editable: delete and re-log to change the pen.
 export interface UpdateInjectionInput {
+  calculated_draw?: CalculatedDrawInput;
   injected_at?: string;
   entry_date?: string | null;
   site?: string | null;

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   LAB_MARKER_PRESETS,
   createLabMarkerBodySchema,
+  createManualLabPanelBodySchema,
   createLabResultBodySchema,
   importLabReportBodySchema,
   labResultListQuerySchema,
@@ -15,6 +16,9 @@ import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
 import {
   createLabMarker,
+  createManualLabPanel,
+  listLabPanels,
+  deleteLabPanel,
   createLabResult,
   deleteLabMarker,
   deleteLabReports,
@@ -261,12 +265,84 @@ router.delete('/markers/:id', async (req, res, next) => {
  * @swagger
  * /v2/lab-results/panels/latest:
  *   get:
- *     summary: Compare the latest three imported lab reports
- *     description: Returns complete results of actual report groups, ordered by collected_on descending (undated last), created_at and id. Individual manual/FHIR results are not grouped into reports.
+ *     summary: Compare the latest three lab panels
+ *     description: Returns complete results of actual report groups, ordered by collected_on descending (undated last), created_at and id. Ungrouped manual/FHIR results are not inferred as panels.
  *     tags: [Wellness & Metrics]
  *     security: [{cookieAuth: []}]
  *     responses: {200: {description: Minimal report metadata and result values, units and reference ranges.},403: {description: Missing check-in permission.}}
  */
+/**
+ * @swagger
+ * /v2/lab-results/panels:
+ *   get:
+ *     summary: Full history of explicit imported and manual lab panels
+ *     tags: [Wellness & Metrics]
+ *     security: [{cookieAuth: []}]
+ *     responses: {200: {description: Complete panel history with notes and raw result values.},403: {description: Missing check-in permission.}}
+ *   post:
+ *     summary: Save one manual multi-marker lab panel atomically
+ *     tags: [Wellness & Metrics]
+ *     security: [{cookieAuth: []}]
+ *     responses: {201: {description: Saved panel and results.},400: {description: Invalid date, marker, duplicate or value.},403: {description: Missing check-in permission.}}
+ * /v2/lab-results/panels/{id}:
+ *   delete:
+ *     summary: Delete one explicit lab panel and its results
+ *     tags: [Wellness & Metrics]
+ *     security: [{cookieAuth: []}]
+ *     parameters: [{in: path, name: id, required: true, schema: {type: string, format: uuid}}]
+ *     responses: {200: {description: Deleted counts.},404: {description: Panel not found.},403: {description: Missing check-in permission.}}
+ */
+router.get('/panels', async (req, res, next) => {
+  try {
+    const { targetUserId, authenticatedUserId } = actingUsers(req);
+    res.json(await listLabPanels(targetUserId, authenticatedUserId));
+  } catch (error) {
+    next(error);
+  }
+});
+router.post('/panels', async (req, res, next) => {
+  try {
+    const { targetUserId, authenticatedUserId } = actingUsers(req);
+    const parsed = createManualLabPanelBodySchema.safeParse(req.body);
+    if (!parsed.success) return invalidBody(res, parsed.error);
+    if (
+      parsed.data.expected_owner_id !== undefined &&
+      parsed.data.expected_owner_id !== targetUserId
+    ) {
+      return res
+        .status(409)
+        .json({ error: 'The active profile changed. Review the panel again.' });
+    }
+    res
+      .status(201)
+      .json(
+        await createManualLabPanel(
+          targetUserId,
+          parsed.data,
+          authenticatedUserId
+        )
+      );
+  } catch (error) {
+    next(error);
+  }
+});
+router.delete('/panels/:id', async (req, res, next) => {
+  try {
+    const { targetUserId, authenticatedUserId } = actingUsers(req);
+    if (!uuidSchema.safeParse(req.params.id).success)
+      return res.status(404).json({ error: 'Lab panel not found' });
+    const outcome = await deleteLabPanel(
+      targetUserId,
+      req.params.id,
+      authenticatedUserId
+    );
+    if (!outcome) return res.status(404).json({ error: 'Lab panel not found' });
+    res.json(outcome);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/panels/latest', async (req, res, next) => {
   try {
     const { targetUserId, authenticatedUserId } = actingUsers(req);

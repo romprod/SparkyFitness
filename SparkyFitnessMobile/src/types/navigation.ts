@@ -11,6 +11,7 @@ import type {
   FoodPhotoLogItem,
   IndividualSessionResponse,
   MedicationEntry,
+  InjectionEntry,
   MindfulnessSessionResponse,
   OralCareSessionResponse,
   OralCareType,
@@ -515,7 +516,9 @@ export type RootStackParamList = {
   WhatsNew: undefined;
   MedicationsList: undefined;
   MedicationAdherence: undefined;
-  MedicationEntryEdit: { entry: MedicationEntry };
+  MedicationEntryEdit:
+    | { entry: MedicationEntry }
+    | { injection: InjectionEntry; medicationName?: string };
   MedicationDetail: { medicationId: string };
   MedicationForm: {
     medicationId?: string;

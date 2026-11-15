@@ -8,6 +8,10 @@ import BottomSheetPicker from '../components/BottomSheetPicker';
 import FormInput from '../components/FormInput';
 import OptionalDateField from '../components/glp1/OptionalDateField';
 import PreparationSummary from '../components/glp1/PreparationSummary';
+import PreparationCreationWizard from '../components/glp1/PreparationCreationWizard';
+import PreparationCorrection from '../components/glp1/PreparationCorrection';
+import { useMedicationDetail } from '../hooks/useMedications';
+import { getTodayDate } from '../utils/dateUtils';
 import Button from '../components/ui/Button';
 import Switch from '../components/ui/Switch';
 import {
@@ -20,10 +24,10 @@ import { useScreenHeader } from '../hooks/useScreenHeader';
 import { useNativeIOSHeadersActive } from '../services/nativeTabBarPreference';
 import type { RootStackScreenProps } from '../types/navigation';
 import {
-  calculatePreparation,
-  calculatePreparationValues,
+  resolvePreparedMedicationRoute,
+  deviceDoseSchema,
   type MedicationPen,
-  type MedicationPreparationInput,
+  type MedicationPreparationCreationInput,
 } from '@workspace/shared';
 
 type Glp1PenFormScreenProps = RootStackScreenProps<'Glp1PenForm'>;
@@ -51,7 +55,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
-  kind: 'pen',
+  kind: 'vial',
   status: 'sealed',
   label: '',
   doseMg: '',
@@ -104,9 +108,19 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
   route,
   navigation,
 }) => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { medicationId, penId } = route.params;
   const isEditing = !!penId;
+  const medication = useMedicationDetail(medicationId).data;
+  const preparationRoute =
+    resolvePreparedMedicationRoute(medication ?? {}) ?? 'injection';
+  const candidateTarget = deviceDoseSchema.safeParse({
+    value: String(medication?.dose_amount ?? ''),
+    unit: medication?.dose_unit?.toLowerCase(),
+  });
+  const preparationTarget = candidateTarget.success
+    ? candidateTarget.data
+    : null;
   const insets = useSafeAreaInsets();
   const usesNativeHeader = useNativeIOSHeadersActive();
   const activeWorkoutBarPadding = useActiveWorkoutBarPadding('stack');
@@ -134,59 +148,40 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
     []
   );
 
-  const [recordPreparation, setRecordPreparation] = useState(false);
-  const [preparationMass, setPreparationMass] = useState('');
-  const [massUnit, setMassUnit] = useState<'mg' | 'mcg'>('mg');
-  const [preparationMode, setPreparationMode] = useState<
-    'reconstituted' | 'premixed'
-  >('reconstituted');
-  const [preparedDate, setPreparedDate] = useState('');
-  const [diluent, setDiluent] = useState('');
+  const [recordPreparation, setRecordPreparation] = useState(!isEditing);
+  const [creationInput, setCreationInput] =
+    useState<MedicationPreparationCreationInput | null>(null);
+  const [creationReady, setCreationReady] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const onPreparationChange = useCallback(
+    (input: MedicationPreparationCreationInput | null, ready: boolean) => {
+      setCreationInput(input);
+      setCreationReady(ready);
+    },
+    []
+  );
   const canRecordPreparation =
     !existing?.preparation && (!existing || existing.doses_used === 0);
   const recordingPreparation =
     form.kind === 'vial' && canRecordPreparation && recordPreparation;
-  const preparationValues = calculatePreparationValues({
-    mass_value: Number(preparationMass),
-    mass_unit: massUnit,
-    final_volume_ml: Number(form.volume),
-  });
-  const preparationMassMg = preparationValues?.mass_mg;
-  const preparation = calculatePreparation(
-    preparationMassMg ?? 0,
-    Number(form.volume),
-    Number(form.doseMg)
-  );
 
   const isSaving = createPen.isPending || updatePen.isPending;
 
   const handleSave = () => {
-    if (isSaving || (isEditing && !existing)) return;
-    if (
-      recordingPreparation &&
-      (!preparationMassMg ||
-        !Number.isFinite(Number(form.volume)) ||
-        Number(form.volume) <= 0 ||
-        !preparedDate)
-    ) {
-      Alert.alert(
-        t('common.error', { defaultValue: 'Error' }),
-        t('medications.preparation.invalidRecord', {
-          defaultValue:
-            'Enter positive vial content, a positive final volume and a prepared date.',
-        })
-      );
-      return;
-    }
+    if (isSaving || correcting || (isEditing && !existing)) return;
+    if (recordingPreparation && (!creationInput || !creationReady)) return;
     const doseMg = optionalNumber(form.doseMg);
     const dosesTotal = optionalNumber(form.dosesTotal);
     const concentration =
-      form.kind === 'vial'
-        ? recordingPreparation && preparationMassMg
-          ? (preparationValues?.concentration_mg_ml ?? null)
-          : optionalNumber(form.concentration)
+      form.kind === 'vial' && !recordingPreparation
+        ? optionalNumber(form.concentration)
         : null;
-    const volume = form.kind === 'vial' ? optionalNumber(form.volume) : null;
+    const volume =
+      form.kind === 'vial'
+        ? recordingPreparation
+          ? null
+          : optionalNumber(form.volume)
+        : null;
     const threshold = form.reorderFlag
       ? optionalNumber(form.reorderThreshold)
       : null;
@@ -235,17 +230,7 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
       );
       return;
     }
-    const preparationInput: MedicationPreparationInput | undefined =
-      recordingPreparation
-        ? {
-            mode: preparationMode,
-            mass_value: Number(preparationMass),
-            mass_unit: massUnit,
-            final_volume_ml: Number(form.volume),
-            prepared_date: preparedDate,
-            diluent: diluent.trim() || null,
-          }
-        : undefined;
+    const preparationInput = recordingPreparation ? creationInput : null;
     const body = {
       kind: form.kind,
       ...('status' in edits && form.status !== existing?.status
@@ -338,7 +323,10 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
       kind: 'primary',
       label: t('common.save', { defaultValue: 'Save' }),
       busy: isSaving,
-      disabled: isEditing && !existing,
+      disabled:
+        (isEditing && !existing) ||
+        (recordingPreparation && !creationReady) ||
+        correcting,
       busyLabel: t('common.saving', { defaultValue: 'Saving…' }),
       onPress: handleSave,
     },
@@ -478,13 +466,33 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
         </View>
 
         {form.kind === 'vial' && (
-          <View className="gap-3 rounded-xl border border-chrome-border p-3">
-            {isEditing && (
-              <PreparationSummary preparation={existing?.preparation} />
+          <View className="gap-3">
+            {isEditing && !existing?.preparation && (
+              <PreparationSummary preparation={null} />
+            )}
+            {existing?.preparation && (
+              <>
+                <PreparationSummary preparation={existing.preparation} />
+                {!correcting ? (
+                  <Button
+                    variant="secondary"
+                    onPress={() => setCorrecting(true)}
+                  >
+                    {t('medications.preparation.edit', {
+                      defaultValue: 'Edit preparation',
+                    })}
+                  </Button>
+                ) : (
+                  <PreparationCorrection
+                    pen={existing}
+                    onClose={() => setCorrecting(false)}
+                  />
+                )}
+              </>
             )}
             {canRecordPreparation && (
               <View className="flex-row justify-between items-center">
-                <Text className="text-base text-text-primary flex-1">
+                <Text className="text-base text-text-primary">
                   {t('medications.preparation.record', {
                     defaultValue: 'Save preparation details',
                   })}
@@ -499,108 +507,17 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
               </View>
             )}
             {recordingPreparation && (
-              <>
-                <Text className="text-sm text-text-muted">
-                  {t('medications.preparation.immutableHelp', {
-                    defaultValue:
-                      'Saved preparation inputs cannot be changed. Use the labelled product information; no beyond-use period is assumed.',
-                  })}
-                </Text>
-                <BottomSheetPicker
-                  value={preparationMode}
-                  onSelect={setPreparationMode}
-                  title={t('medications.preparation.mode', {
-                    defaultValue: 'Preparation type',
-                  })}
-                  options={[
-                    {
-                      value: 'reconstituted' as const,
-                      label: t('medications.preparation.reconstituted', {
-                        defaultValue: 'Reconstituted',
-                      }),
-                    },
-                    {
-                      value: 'premixed' as const,
-                      label: t('medications.preparation.premixed', {
-                        defaultValue: 'Premixed',
-                      }),
-                    },
-                  ]}
-                />
-                <Text className="text-sm text-text-secondary">
-                  {t('medications.preparation.massValue', {
-                    defaultValue: 'Labelled vial content',
-                  })}
-                </Text>
-                <FormInput
-                  accessibilityLabel={t('medications.preparation.massValue', {
-                    defaultValue: 'Labelled vial content',
-                  })}
-                  value={preparationMass}
-                  onChangeText={setPreparationMass}
-                  keyboardType="decimal-pad"
-                />
-                <BottomSheetPicker
-                  value={massUnit}
-                  onSelect={setMassUnit}
-                  title={t('medications.preparation.massUnit', {
-                    defaultValue: 'Mass unit',
-                  })}
-                  options={[
-                    {
-                      value: 'mg' as const,
-                      label: t('medications.preparation.unitMg', {
-                        defaultValue: 'mg',
-                      }),
-                    },
-                    {
-                      value: 'mcg' as const,
-                      label: t('medications.preparation.unitMcg', {
-                        defaultValue: 'mcg',
-                      }),
-                    },
-                  ]}
-                />
-                <OptionalDateField
-                  label={t('medications.preparation.preparedDate', {
-                    defaultValue: 'Prepared date',
-                  })}
-                  value={preparedDate}
-                  onChange={setPreparedDate}
-                />
-                <Text className="text-sm text-text-secondary">
-                  {t('medications.preparation.diluent', {
-                    defaultValue: 'Diluent (optional)',
-                  })}
-                </Text>
-                <FormInput
-                  accessibilityLabel={t('medications.preparation.diluent', {
-                    defaultValue: 'Diluent (optional)',
-                  })}
-                  value={diluent}
-                  onChangeText={setDiluent}
-                />
-                {preparation && (
-                  <Text className="text-sm text-text-secondary">
-                    {t('medications.preparation.result', {
-                      defaultValue:
-                        '{{concentration}} mg/mL · {{draw}} mL per entered dose',
-                      concentration:
-                        preparation.concentrationMgMl.toLocaleString(
-                          i18n.language,
-                          { maximumSignificantDigits: 6 }
-                        ),
-                      draw: preparation.drawMl.toLocaleString(i18n.language, {
-                        maximumSignificantDigits: 6,
-                      }),
-                    })}
-                  </Text>
-                )}
-              </>
+              <PreparationCreationWizard
+                target={preparationTarget}
+                administrationRoute={preparationRoute}
+                initialDate={isEditing ? '' : getTodayDate()}
+                initialVolume={form.volume}
+                onChange={onPreparationChange}
+              />
             )}
           </View>
         )}
-        {form.kind === 'vial' && (
+        {form.kind === 'vial' && !recordingPreparation && (
           <View className="flex-row gap-4">
             <View className="flex-1 gap-1.5">
               <Text className="text-text-secondary text-sm font-medium">
@@ -609,16 +526,8 @@ const Glp1PenFormScreen: React.FC<Glp1PenFormScreenProps> = ({
                 })}
               </Text>
               <FormInput
-                value={
-                  recordingPreparation
-                    ? String(
-                        preparationMassMg && Number(form.volume) > 0
-                          ? (preparationValues?.concentration_mg_ml ?? null)
-                          : ''
-                      )
-                    : form.concentration
-                }
-                editable={!recordingPreparation && !existing?.preparation}
+                value={form.concentration}
+                editable={!existing?.preparation}
                 onChangeText={(v) => setField('concentration', v)}
                 keyboardType="decimal-pad"
               />
