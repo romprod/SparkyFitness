@@ -46,12 +46,17 @@ import type {
   MedicationPenWriteInput,
 } from '@/types/medications';
 
+import type { MedicationInventoryForecast } from '@workspace/shared';
+import { MedicationContainerForecast } from './MedicationInventoryForecast';
+
 interface Glp1InventoryManagerProps {
   med: Medication;
+  forecast?: MedicationInventoryForecast;
 }
 
 export default function Glp1InventoryManager({
   med,
+  forecast,
 }: Glp1InventoryManagerProps) {
   const { t } = useTranslation();
   const medId = med.id;
@@ -468,6 +473,14 @@ export default function Glp1InventoryManager({
           </div>
         )}
         {p.preparation && <SavedPreparation preparation={p.preparation} />}
+        {forecast?.containers
+          .filter((container) => container.container_id === p.id)
+          .map((container) => (
+            <MedicationContainerForecast
+              key={container.container_id}
+              container={container}
+            />
+          ))}
         {p.kind === 'vial' && <MedicationVialCostLink penId={p.id} />}
         {p.kind === 'vial' && (p.preparation || p.doses_used === 0) && (
           <Button

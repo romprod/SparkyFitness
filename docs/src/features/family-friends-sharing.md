@@ -140,3 +140,5 @@ Vial labelled mass is medication metadata and follows existing medication-manage
 ### Medication course history
 
 Manage Medications also covers explicitly created courses, reviewed revisions, lifecycle actions and legacy-rule handoffs. Course history follows the existing medication sharing permissions; Reports access can read it but does not grant medication writes. Handoff requires a review of the selected rules and a cutover date. Earlier actual doses remain unchanged and are never automatically linked to a new course. New course reminders are not available in an older native app merely because the website supports the course.
+
+Medication inventory forecasts follow medication read access for the selected profile. The selected owner's reorder defaults can be used for that read; only the authenticated owner can change their own defaults through the dedicated settings API. Forecasts do not change recorded stock or doses.

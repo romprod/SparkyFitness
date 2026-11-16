@@ -50,6 +50,10 @@ export const medicationCourseBucketSchema = z.enum([
   'ended',
   'completed',
 ]);
+export const medicationCourseDeviceChoiceSchema = z.enum([
+  'preferred',
+  'explicit',
+]);
 export const medicationCourseDoseBasisSchema = z.enum([
   'per_injection',
   'per_week',
@@ -119,6 +123,7 @@ export const medicationCourseStepInputSchema = z
   .strict();
 export const medicationCoursePlanInputSchema = z
   .object({
+    device_id: z.string().uuid().nullable().optional(),
     name: z.string().trim().min(1),
     notes: z.string().nullable().optional(),
     start_date: medicationCourseDaySchema,
@@ -261,6 +266,8 @@ export const medicationCourseRevisionSchema = z.object({
   user_id: uuid,
   course_id: uuid,
   predecessor_id: uuid.nullable(),
+  device_id: uuid.nullable(),
+  device_choice: medicationCourseDeviceChoiceSchema,
   revision_no: z.number().int().positive(),
   name: z.string(),
   notes: z.string().nullable(),
@@ -291,7 +298,46 @@ export const medicationCourseSchema = z.object({
   deleted_at: nullableInstant,
   revisions: z.array(medicationCourseRevisionSchema),
 });
+export const medicationCourseDeviceBindingSchema = z
+  .object({
+    choice: medicationCourseDeviceChoiceSchema,
+    device_id: uuid.nullable(),
+    device_name: z.string().nullable(),
+    source: z.enum(['plan', 'preferred', 'missing', 'incompatible']),
+  })
+  .superRefine((binding, context) => {
+    if (
+      (binding.source === 'preferred' && binding.choice !== 'preferred') ||
+      (binding.source === 'plan' && binding.choice !== 'explicit')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Resolved device source must preserve the authored choice',
+      });
+    }
+    if (
+      (binding.source === 'plan' || binding.source === 'preferred') &&
+      binding.device_id === null
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A resolved device must reference a real saved device',
+      });
+    }
+    if (
+      binding.choice === 'explicit' &&
+      binding.device_id === null &&
+      binding.source !== 'missing'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'A deleted explicit selection remains missing until an explicit choice',
+      });
+    }
+  });
 export const medicationCourseReviewSchema = z.object({
+  device_binding: medicationCourseDeviceBindingSchema,
   timezone: z.string().min(1),
   expected_version: z.number().int().nonnegative(),
   review_fingerprint: z.string().min(1),
@@ -485,4 +531,11 @@ export type MedicationCourseDue = z.infer<typeof medicationCourseDueSchema>;
 
 export type MedicationCourseSlotFulfilment = z.infer<
   typeof medicationCourseSlotFulfilmentSchema
+>;
+
+export type MedicationCourseDeviceChoice = z.infer<
+  typeof medicationCourseDeviceChoiceSchema
+>;
+export type MedicationCourseDeviceBinding = z.infer<
+  typeof medicationCourseDeviceBindingSchema
 >;

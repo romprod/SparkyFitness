@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Glp1InventoryManager from '@/pages/Medications/Glp1InventoryManager';
+import {
+  inventoryForecastFixture,
+  forecastCoverage,
+} from '@/tests/fixtures/medicationInventoryForecast';
 import type { Medication, MedicationPen } from '@/types/medications';
 
 const mockSave = jest.fn();
@@ -31,7 +35,10 @@ jest.mock('@/hooks/useMedicationSyringes', () => ({
   }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
-  usePreferences: () => ({ timezone: 'Europe/London' }),
+  usePreferences: () => ({
+    timezone: 'Europe/London',
+    formatDate: (day: string) => day,
+  }),
 }));
 const med = { id: 'medicine', dose_amount: 0.6, dose_unit: 'mg' } as Medication;
 beforeEach(() => {
@@ -528,4 +535,37 @@ it('preserves hidden concentration and volume on an unchanged legacy pen', () =>
     'doses_total',
   ])
     expect(body).not.toHaveProperty(field);
+});
+
+it('attaches a prepared-container forecast only to its matching existing stock record', () => {
+  mockPens = [
+    {
+      id: 'matching',
+      kind: 'vial',
+      status: 'in_use',
+      label: 'Prepared example',
+    },
+    { id: 'other', kind: 'vial', status: 'sealed', label: 'Other stock' },
+  ];
+  const forecast = inventoryForecastFixture().medications[0]!;
+  forecast.containers = [
+    {
+      container_id: 'matching',
+      remaining_doses: 7,
+      current_dose: null,
+      coverage: forecastCoverage(),
+    },
+    {
+      container_id: 'not-listed',
+      remaining_doses: 99,
+      current_dose: null,
+      coverage: forecastCoverage(),
+    },
+  ];
+  render(<Glp1InventoryManager med={med} forecast={forecast} />);
+  expect(screen.getAllByText('Prepared-container forecast')).toHaveLength(1);
+  expect(
+    screen.getByText(/Remaining measurable administrations/)
+  ).toHaveTextContent(': 7');
+  expect(screen.queryByText(/: 99/)).not.toBeInTheDocument();
 });

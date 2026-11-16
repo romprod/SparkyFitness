@@ -12,6 +12,7 @@ import {
   INJECTION_SITES,
 } from '@workspace/shared';
 import Medications from '@/pages/Medications/Medications';
+import { inventoryForecastFixture } from '@/tests/fixtures/medicationInventoryForecast';
 const mockInvoiceUser = { id: 'owner', activeUserId: 'owner' };
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockInvoiceUser, loading: false }),
@@ -36,7 +37,8 @@ jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({
     timezone: 'Europe/London',
     formatDate: (date: string) => date,
-    formatDateInUserTimezone: (date: Date) => date.toISOString(),
+    formatDateInUserTimezone: (date: Date | string) =>
+      new Date(date).toISOString(),
   }),
 }));
 jest.mock('@/components/DayNavigator', () => ({
@@ -117,6 +119,8 @@ beforeEach(() => {
           authenticatedUserId: mockInvoiceUser.id,
           activeUserId: mockInvoiceUser.activeUserId,
         };
+      if (endpoint === '/v2/medication-inventory/forecast')
+        return { ...inventoryForecastFixture(), medications: [] };
       if (endpoint === '/v2/medication-courses')
         return { courses: [], today: '2026-11-16', timezone: 'Europe/London' };
       if (endpoint === '/v2/medication-purchases/vial-costs')

@@ -8,6 +8,7 @@ import { useAuth, type User } from '@/hooks/useAuth';
 import { useActiveUser } from '@/contexts/ActiveUserContext';
 import { getMedicationPurchaseIdentity as getCurrentIdentity } from '@/api/Medications/purchaseService';
 import * as api from '@/api/Medications/courseService';
+import { medicationInventoryKeys } from '@/api/keys/medicationInventory';
 
 const generations = new WeakMap<User, number>();
 const cleared = new WeakSet<User>();
@@ -131,6 +132,7 @@ export function useCourseHandoffRules(medicationId: string, enabled: boolean) {
 export function invalidateMedicationCourses(client: QueryClient) {
   for (const key of [
     medicationCourseKeys.all,
+    medicationInventoryKeys.all,
     ['medications'],
     ['medication-entries'],
     ['medication-injections'],

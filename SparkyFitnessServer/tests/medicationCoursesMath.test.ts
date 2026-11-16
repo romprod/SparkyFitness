@@ -52,6 +52,8 @@ const revision = (
   patch: Partial<MedicationCourseRevision> = {}
 ): MedicationCourseRevision => ({
   id: 'rev',
+  device_id: null,
+  device_choice: 'preferred',
   user_id: 'owner',
   course_id: 'course',
   predecessor_id: null,

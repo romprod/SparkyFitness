@@ -56,6 +56,17 @@ jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
   }),
   invalidateMedicationCourses: jest.fn(),
 }));
+const mockDevices = { syringes: [], default_syringe_id: null } as {
+  syringes: Array<{
+    id: string;
+    name: string;
+    device_type?: 'syringe' | 'pen' | 'pump';
+  }>;
+  default_syringe_id: string | null;
+};
+jest.mock('@/hooks/Medications/useMedicationInventoryForecast', () => ({
+  useMedicationForecastDevices: () => ({ data: mockDevices, isError: false }),
+}));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationTitration: () => ({ data: [] }),
 }));
@@ -78,7 +89,8 @@ const close = jest.fn(),
   refresh = jest.fn();
 function setup(
   mode: 'create' | 'handoff' | 'edit' | 'revise' = 'create',
-  course = courseFixture()
+  course = courseFixture(),
+  med = courseMedication
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -86,7 +98,7 @@ function setup(
   return render(
     <QueryClientProvider client={client}>
       <MedicationCourseEditor
-        med={courseMedication}
+        med={med}
         today="2026-11-16"
         timezone="Europe/London"
         scope={scope}
@@ -110,6 +122,8 @@ const acknowledge = () => {
 };
 beforeEach(() => {
   mockCurrent = true;
+  mockDevices.syringes = [];
+  mockDevices.default_syringe_id = null;
   close.mockReset();
   refresh.mockReset();
   refresh.mockResolvedValue(undefined);
@@ -405,4 +419,95 @@ it('shows reviewed effective cyclic dates with heterogeneous anchors, resolved d
   await screen.findByRole('button', { name: 'Confirm course' });
   expect(screen.getAllByText(/Formatted 2026-08-01/)).toHaveLength(4);
   expect(screen.queryByText(/Formatted 2020-01-01/)).not.toBeInTheDocument();
+});
+
+it('retains a deleted explicit device until an explicit preferred choice, without selecting the first saved device', async () => {
+  const course = courseFixture();
+  course.revisions[0]!.device_choice = 'explicit';
+  course.revisions[0]!.device_id = null;
+  mockDevices.syringes = [
+    { id: courseIds.rule, name: 'First device', device_type: 'syringe' },
+  ];
+  setup('edit', course, { ...courseMedication, type_id: 'injection' });
+  expect(
+    screen.getByRole('combobox', { name: 'Forecast device (optional)' })
+  ).toHaveTextContent('Missing saved device');
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(mockReview.mock.calls[0]![2]).not.toHaveProperty('device_id');
+  expect(screen.getByText(/Device basis:/)).toHaveTextContent(
+    'No usable saved device'
+  );
+});
+it('reviews the authoritative named preferred device without adding an inferred plan binding', async () => {
+  mockDevices.syringes = [
+    { id: courseIds.rule, name: 'First device', device_type: 'syringe' },
+    { id: courseIds.legacy, name: 'Preferred example', device_type: 'pen' },
+    { id: courseIds.step, name: 'Nasal only', device_type: 'pump' },
+  ];
+  mockDevices.default_syringe_id = courseIds.legacy;
+  mockReview.mockImplementation(async (_med, _id, input) =>
+    courseReview(input, {
+      device_binding: {
+        choice: 'preferred',
+        device_id: courseIds.legacy,
+        device_name: 'Preferred example',
+        source: 'preferred',
+      },
+    })
+  );
+  setup('create', courseFixture(), {
+    ...courseMedication,
+    type_id: 'injection',
+  });
+  expect(
+    screen.getByRole('combobox', { name: 'Forecast device (optional)' })
+  ).toHaveTextContent('Preferred example');
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(mockReview.mock.calls[0]![2]).not.toHaveProperty('device_id');
+  expect(screen.getByText(/Device basis:/)).toHaveTextContent(
+    'Preferred example · Saved preferred device'
+  );
+});
+
+it('sends explicit null only when the user chooses preferred after a missing explicit selection', async () => {
+  const course = courseFixture();
+  course.revisions[0]!.device_choice = 'explicit';
+  course.revisions[0]!.device_id = null;
+  setup('edit', course, { ...courseMedication, type_id: 'injection' });
+  fireEvent.pointerDown(
+    screen.getByRole('combobox', { name: 'Forecast device (optional)' }),
+    { button: 0, ctrlKey: false }
+  );
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'Use saved preferred device' })
+  );
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(mockReview.mock.calls[0]![2]).toHaveProperty('device_id', null);
+});
+it('offers only route-compatible devices and preserves an explicitly chosen real identifier in review', async () => {
+  mockDevices.syringes = [
+    { id: courseIds.rule, name: 'Injection device', device_type: 'syringe' },
+    { id: courseIds.step, name: 'Saved pump', device_type: 'pump' },
+  ];
+  setup('create', courseFixture(), {
+    ...courseMedication,
+    type_id: 'nasal_spray',
+  });
+  fireEvent.pointerDown(
+    screen.getByRole('combobox', { name: 'Forecast device (optional)' }),
+    { button: 0, ctrlKey: false }
+  );
+  expect(
+    screen.queryByRole('option', { name: 'Injection device' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('option', { name: 'Saved pump' }));
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(mockReview.mock.calls[0]![2]).toHaveProperty(
+    'device_id',
+    courseIds.step
+  );
 });

@@ -42,6 +42,7 @@ import { WaterTrackingSettings } from './WaterTrackingSettings';
 import { FastingSettings } from './FastingSettings';
 import { GuidedWorkoutSettings } from './GuidedWorkoutSettings';
 import CycleSettings from './CycleSettings';
+import MedicationReorderDefaults from './MedicationReorderDefaults';
 import { PreferenceSettings } from './PreferenceSettings';
 import { HeartRateZoneSettings } from './HeartRateZoneSettings';
 import { ProfileInformation } from './ProfileInformation';
@@ -68,6 +69,7 @@ const SECTION_TO_TAB_MAP: Record<string, string> = {
   'water-tracking': 'nutrition-diet',
   'fasting-settings': 'nutrition-diet',
   'cycle-settings': 'wellness',
+  'medication-reorder-defaults': 'wellness',
   'guided-workouts': 'wellness',
   'custom-categories': 'wellness',
   'food-and-exercise-data-providers': 'developer-integrations',
@@ -376,6 +378,7 @@ const Settings = () => {
             >
               <CycleSettings />
             </AccordionItem>
+            <MedicationReorderDefaults />
             <AccordionItem
               value="guided-workouts"
               className="border rounded-lg mb-4"

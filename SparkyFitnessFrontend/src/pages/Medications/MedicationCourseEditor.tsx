@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   medicationCoursePlanInputSchema,
+  resolvePreparedMedicationRoute,
+  isDeviceEligibleForRoute,
   addDays,
   type MedicationCourse,
   type MedicationCourseRevision,
@@ -43,6 +45,7 @@ import {
 import MedicationCourseRules from './MedicationCourseRules';
 import { formatScheduleDescription } from './medicationUtils';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { useMedicationForecastDevices } from '@/hooks/Medications/useMedicationInventoryForecast';
 
 type Mode = 'create' | 'handoff' | 'edit' | 'revise';
 type Scope = ReturnType<typeof useMedicationCourseScope>;
@@ -124,6 +127,15 @@ export default function MedicationCourseEditor({
 }) {
   const { t } = useTranslation();
   const actions = useMedicationCourseActions(scope);
+  const preparedRoute = resolvePreparedMedicationRoute(med);
+  const devicesQuery = useMedicationForecastDevices(preparedRoute !== null);
+  const eligibleDevices =
+    devicesQuery.data?.syringes.filter((device) =>
+      isDeviceEligibleForRoute(device.device_type, preparedRoute)
+    ) ?? [];
+  const preferredDevice = eligibleDevices.find(
+    (device) => device.id === devicesQuery.data?.default_syringe_id
+  );
   const { timeFormat, formatDate } = usePreferences();
   const client = useQueryClient();
   const [mode, setMode] = useState(initialMode);
@@ -131,6 +143,16 @@ export default function MedicationCourseEditor({
     ...initialPlan(med, today, revision),
     ...(initialMode === 'revise' ? { start_date: today } : {}),
   }));
+  // Omission preserves an existing binding, including a deleted explicit device.
+  const deviceSelection =
+    draft.device_id !== undefined
+      ? (draft.device_id ?? 'preferred')
+      : revision?.device_choice === 'explicit'
+        ? (revision.device_id ?? 'missing')
+        : 'preferred';
+  const selectedDeviceMissing =
+    deviceSelection !== 'preferred' &&
+    !eligibleDevices.some((device) => device.id === deviceSelection);
   const [baseVersion, setBaseVersion] = useState(course?.version ?? 0);
   const [selected, setSelected] = useState<MedicationCourseHandoffCandidate[]>(
     []
@@ -597,6 +619,62 @@ export default function MedicationCourseEditor({
                 </SelectItem>
               </SelectContent>
             </Select>
+            {preparedRoute && (
+              <div className="space-y-2">
+                <Label htmlFor="course-device">
+                  {t(
+                    'medications.forecasts.planDevice',
+                    'Forecast device (optional)'
+                  )}
+                </Label>
+                <Select
+                  value={deviceSelection}
+                  onValueChange={(value) =>
+                    change({ device_id: value === 'preferred' ? null : value })
+                  }
+                >
+                  <SelectTrigger id="course-device">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="preferred">
+                      {t(
+                        'medications.forecasts.usePreferred',
+                        'Use saved preferred device'
+                      )}
+                      {preferredDevice ? ` · ${preferredDevice.name}` : ''}
+                    </SelectItem>
+                    {selectedDeviceMissing && (
+                      <SelectItem value={deviceSelection} disabled>
+                        {t(
+                          'medications.forecasts.missingSelectedDevice',
+                          'Missing saved device — selection retained'
+                        )}
+                      </SelectItem>
+                    )}
+                    {eligibleDevices.map((device) => (
+                      <SelectItem key={device.id} value={device.id}>
+                        {device.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'medications.forecasts.planDeviceHelp',
+                    'Forecasts use this real device, or a compatible saved preferred device. This does not change recorded doses or select a device for actual logging.'
+                  )}
+                </p>
+                {devicesQuery.isError && (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    {t(
+                      'medications.forecasts.devicesError',
+                      'Could not load devices. Your existing selection is retained.'
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
             <MedicationCourseRules
               rules={draft.rules}
               disabled={locked}
@@ -799,6 +877,26 @@ export default function MedicationCourseEditor({
               {t('medications.courses.zone', 'Plan timezone')}:{' '}
               {review.timezone}
             </p>
+            {preparedRoute && (
+              <p className="break-words">
+                {t('medications.forecasts.deviceBasis', 'Device basis')}:{' '}
+                {review.device_binding.device_name ??
+                  t(
+                    'medications.forecasts.missingDevice',
+                    'No usable saved device'
+                  )}{' '}
+                ·{' '}
+                {t(
+                  `medications.forecasts.deviceSource.${review.device_binding.source}`,
+                  {
+                    plan: 'Selected for the plan',
+                    preferred: 'Saved preferred device',
+                    missing: 'Missing device selection',
+                    incompatible: 'Incompatible device selection',
+                  }[review.device_binding.source]
+                )}
+              </p>
+            )}
             <h4 className="font-semibold">
               {t('medications.courses.review', 'Review changes')}
             </h4>

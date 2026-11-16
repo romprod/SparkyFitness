@@ -406,3 +406,6 @@ export * from './medications/courseLifecycle.ts';
 export * from './medications/courseRevisions.ts';
 export * from './medications/courseSchedules.ts';
 export * from './medications/courseAdherence.ts';
+export * from './schemas/api/MedicationInventoryForecast.api.zod.ts';
+export * from './medications/inventoryForecastPlan.ts';
+export * from './medications/inventoryForecast.ts';

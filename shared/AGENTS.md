@@ -112,3 +112,9 @@ C01/C02/bounded C06 use `/api/v2/medication-purchases`, separate from delegated 
 `schemas/api/MedicationCourses.api.zod.ts` and `schemas/database/MedicationCourses.zod.ts` define opt-in courses, explicit revision lineage, multiple authored recurrence rules, optional phases, instant activity intervals, reviewed legacy-rule handoffs and mutation receipts. Actual-dose attribution is nullable and explicit; never infer legacy links. Preserve date-only authored boundaries separately from actual timestamps and frozen tracking days.
 
 Actual logs retain a forward-only `course_origin` marker after course-reference detachment, preventing managed doses from becoming legacy same-medication adherence credit. New injections capture an immutable `medication_name_snapshot`; no old names or origin markers are inferred or backfilled. These fields are server-owned, never client attribution inputs.
+
+## Medication inventory forecasts
+
+`schemas/api/MedicationInventoryForecast.api.zod.ts` defines fixed 365-day/800-slot per-medication read forecasts, qualified unknown coverage, separately labelled prepared-only scope, exact dose strings and owner reorder defaults. Plan `device_id` omission preserves the current choice; explicit null chooses preferred. Revision `device_choice` retains explicit missing selections after FK deletion. Never fabricate a device, infer historical bindings or mutate stock while reading a forecast.
+
+Inventory projections advance only their separate authored-phase cursor when pending or projected future slots are simulated as consumed; actual-based Today helpers and logs remain unchanged. Excluded extra stock prevents exact total depletion and purchase urgency, while known usable prepared stock can still prove bounded coverage of complete known demand. Unknown demand remains unknown.

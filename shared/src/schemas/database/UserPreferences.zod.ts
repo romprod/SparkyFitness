@@ -35,6 +35,9 @@ const weeklyWeightChangeSchema = z
   .multipleOf(0.001);
 
 export const userPreferencesSchema = z.object({
+  // Owner-only reorder API persists these; optional preserves older preference payloads.
+  medication_reorder_lead_days: z.number().int().nonnegative().optional(),
+  medication_reorder_buffer_days: z.number().int().nonnegative().optional(),
   adaptive_activity_separate: z.boolean().optional(),
   adjust_macros_with_exercise: z.boolean().optional(),
   voice_input_enabled: z.boolean().optional(),

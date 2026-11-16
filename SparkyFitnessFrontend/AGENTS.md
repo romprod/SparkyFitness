@@ -201,8 +201,14 @@ Owner-requested website chrome: shared layouts no longer render Initial Beta Rel
 
 ## Opt-in course UI
 
-Keep P05/P06 course controls within Cabinet schedule/titration flows, without new navigation or stock tooling. Creating managed future dues requires explicit review of selected legacy-rule bounds. Preserve actor/profile identity, exact pending-operation retry and stale-review handling; never infer legacy course links. Frozen superseded revisions must not appear editable. Match source lifecycle groups and material-revision review, and disclose unknown phase carry rather than guessing. Older native clients do not receive new-course reminders; preserve the unchanged legacy path and current chart/PDF/stock behavior. No ramp/stack/forecast/prescription feature is included.
+Keep P05/P06 course controls within Cabinet schedule/titration flows, without new navigation or stock tooling. Creating managed future dues requires explicit review of selected legacy-rule bounds. Preserve actor/profile identity, exact pending-operation retry and stale-review handling; never infer legacy course links. Frozen superseded revisions must not appear editable. Match source lifecycle groups and material-revision review, and disclose unknown phase carry rather than guessing. Older native clients do not receive new-course reminders; preserve the unchanged legacy path and current chart/PDF/stock behavior. That course-history tranche includes no ramp/stack/forecast/prescription feature; the later selected I06 scope is recorded below.
 
 Managed slot fulfilment is separate from the actual recorded timestamp/tracking day. A historical selected slot can be fulfilled by a dose recorded at browser Now; determine fulfilment from its explicit revision/rule/slot association, not only a date-filtered actual-history list. Never backdate an actual dose merely to make a checklist appear complete.
 
 Managed plans feed the website checklist; this tranche does not add a timed website medication-notification transport. Existing native apps do not schedule these plans until they are updated.
+
+## Inventory forecast UI
+
+I06 forecasts stay in Preparation & stock; reorder defaults stay in Settings with 14-day lead/3-day buffer and valid zero. Course device choice remains within the existing course editor. Show authoritative scope, assumptions, unknown reasons and finite-course/horizon bounds. Do not present prepared-stock coverage as total-stock runout when sealed/unmodelled stock exists. Unknown demand prevents exact results; known stock may still prove all known demand covered within a finite course or horizon. Preserve explicit missing-device state and the named preferred-device assumption; no fabricated device/BUD.
+
+Use the server/shared forecast result without duplicating physical math, phase progression or stock sorting in the client. Keep profile/permission and stale-response guards, stock-family invalidation and existing Cabinet/Today/chart behavior. This selected scope adds no native UI, ordering, notifications, P07/I07/I08 or prescriptions. Candidate source checks are not live deployment evidence.

@@ -57,6 +57,8 @@ export function medicationCourseFixture(): MedicationCourse {
         target_dose: '1',
         dose_unit: 'mg',
         dose_basis: 'per_injection',
+        device_id: null,
+        device_choice: 'preferred',
         created_at: '2026-11-01T00:00:00.000Z',
         deleted_at: null,
         rules: [

@@ -7,8 +7,10 @@ import type {
   DrawResult,
 } from '@workspace/shared';
 
-export const listSyringes = (): Promise<MedicationSyringeListResponse> =>
-  apiCall('/v2/medications/syringes', { method: 'GET' });
+export const listSyringes = (
+  signal?: AbortSignal
+): Promise<MedicationSyringeListResponse> =>
+  apiCall('/v2/medications/syringes', { method: 'GET', signal });
 export const createSyringe = (
   body: MedicationSyringeInput
 ): Promise<MedicationSyringe> =>

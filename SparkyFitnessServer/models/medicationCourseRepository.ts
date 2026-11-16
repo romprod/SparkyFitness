@@ -690,10 +690,14 @@ export async function insertCourseRevision(
   predecessorId: string | null,
   plan: MedicationCoursePlanInput,
   now: Date,
-  initialActivityAt: string | null
+  initialActivityAt: string | null,
+  device: Pick<MedicationCourseRevision, 'device_id' | 'device_choice'> = {
+    device_id: plan.device_id ?? null,
+    device_choice: plan.device_id ? 'explicit' : 'preferred',
+  }
 ): Promise<void> {
   await client.query(
-    'INSERT INTO medication_course_revisions(id,user_id,course_id,predecessor_id,revision_no,name,notes,start_date,end_date,cycle_anchor_date,target_dose,dose_unit,dose_basis,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',
+    'INSERT INTO medication_course_revisions(id,user_id,course_id,predecessor_id,revision_no,name,notes,start_date,end_date,cycle_anchor_date,target_dose,dose_unit,dose_basis,created_at,device_id,device_choice) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)',
     [
       revisionId,
       owner,
@@ -709,6 +713,8 @@ export async function insertCourseRevision(
       plan.dose_unit,
       plan.dose_basis,
       now,
+      device.device_id,
+      device.device_choice,
     ]
   );
   await storeCourseChildren(client, owner, revisionId, plan);

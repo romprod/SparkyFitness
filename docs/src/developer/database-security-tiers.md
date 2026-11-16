@@ -256,3 +256,9 @@ The four medication-purchase tables use the authenticated actor (`authenticated_
 ### Consumed-cost extension
 
 Explicit vial `label_mass_mg` remains medication metadata under the existing `medication_pens` medication RLS; it is not a new owner-only financial table. The derived Costs response stays authenticated-owner-only and does not grant financial access to medication/report delegates. No new RLS table or permission domain is introduced by this extension.
+
+### Medication inventory forecast configuration
+
+`medication_course_revisions.device_id` references a real account-owned or read-only global device under the existing medication permission policy. `device_choice` preserves an explicit selection after its device FK is cleared by deletion; an explicit missing selection must not fall back to the preferred device. Device compatibility is validated at reviewed writes and forecast reads. No actual-dose snapshots are rewritten.
+
+`user_preferences.medication_reorder_lead_days` and `medication_reorder_buffer_days` retain the existing owner-write/profile-read RLS classification. Their dedicated settings API is authenticated-actor self only. Forecast reads use the target medication owner's settings; they do not grant preference writes to medication delegates. Defaults are 14 and 3 whole days, including valid zero values, and forecast GET requests never persist them.

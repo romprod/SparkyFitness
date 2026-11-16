@@ -21,11 +21,14 @@ import {
 import type { Medication } from '@/types/medications';
 import AddMedicationDialog from './AddMedicationDialog';
 import Glp1InventoryManager from './Glp1InventoryManager';
+import MedicationInventoryForecast from './MedicationInventoryForecast';
+import { useMedicationInventoryForecast } from '@/hooks/Medications/useMedicationInventoryForecast';
 
 /** Shared stock tools for all injectable peptides; no GLP-1 model or flag is required. */
 export default function PeptideStock({ meds }: { meds: Medication[] }) {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
+  const forecast = useMedicationInventoryForecast();
   const injectables = meds.filter(
     (m) => resolvePreparedMedicationRoute(m) !== null
   );
@@ -99,9 +102,19 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
           )}
         </CardContent>
       </Card>
+      <MedicationInventoryForecast />
       {selected && (
         <div key={selected.id} className="space-y-4">
-          <Glp1InventoryManager med={selected} />
+          <Glp1InventoryManager
+            med={selected}
+            forecast={
+              !forecast.query.isError
+                ? forecast.data?.medications.find(
+                    (item) => item.medication_id === selected.id
+                  )
+                : undefined
+            }
+          />
         </div>
       )}
     </div>

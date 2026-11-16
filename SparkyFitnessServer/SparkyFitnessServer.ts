@@ -108,6 +108,10 @@ import cycleRoutesV2 from './routes/v2/cycleRoutes.js';
 import pregnancyRoutesV2 from './routes/v2/pregnancyRoutes.js';
 import reportRoutesV2 from './routes/v2/reportRoutes.js';
 import medicationCourseRoutes from './routes/v2/medicationCourseRoutes.js';
+import {
+  medicationInventoryRoutes,
+  medicationReorderRoutes,
+} from './routes/v2/medicationInventoryRoutes.js';
 import appointmentReportRoutes from './routes/v2/appointmentReportRoutes.js';
 import nutritionKineticsRoutesV2 from './routes/v2/nutritionKineticsRoutes.js';
 import mindfulnessRoutesV2 from './routes/v2/mindfulnessRoutes.js';
@@ -865,6 +869,8 @@ app.use('/api/water-containers', waterContainerRoutes);
 app.use('/api/v2/measurements', waterIntakeRoutesV2);
 app.use('/api/v2/medications', medicationRoutesV2);
 app.use('/api/v2/medication-courses', medicationCourseRoutes);
+app.use('/api/v2/medication-inventory', medicationInventoryRoutes);
+app.use('/api/v2/preferences', medicationReorderRoutes);
 app.use('/api/v2/medication-purchases', medicationPurchaseRoutesV2);
 app.use('/api/v2/symptoms', symptomRoutesV2);
 app.use('/api/v2/cycle', cycleRoutesV2);

@@ -29,6 +29,7 @@ import {
   type MedicationCourseHistory,
   type MedicationCourseDue,
 } from '@workspace/shared';
+import { loadCourseDevice } from './medicationCourseDeviceService.js';
 import { getClient } from '../db/poolManager.js';
 import { canAccessUserData } from '../utils/permissionUtils.js';
 import {
@@ -96,6 +97,7 @@ function authoredPlan(
         : r.days_of_week,
     })),
     steps: input.steps,
+    device_id: input.device_id,
   });
   if (plan.end_date && plan.end_date < plan.start_date)
     throw courseProblem('The authored end must not precede the start.', 422);
@@ -145,15 +147,24 @@ function reviewFingerprint(
     handoff,
   });
 }
-function revisionReview(
+async function revisionReview(
+  client: PoolClient,
+  owner: string,
   course: MedicationCourse,
   input: MedicationCourseReviewInput,
   actuals: CourseActual[],
   today: string
-): MedicationCourseReview {
+): Promise<MedicationCourseReview> {
   expectedVersion(course, input.expected_version);
   const old = tip(course),
     plan = authoredPlan(courseCarryCyclicAnchors(old, authoredPlan(input)));
+  const device = await loadCourseDevice(
+    client,
+    owner,
+    course.medication_id,
+    plan,
+    old
+  );
   const changes = courseMaterialChanges(coursePlan(old), plan);
   const oldActuals = actuals.filter(
     (a) => a.course_revision_id === old.id && courseAdministered(a)
@@ -183,7 +194,8 @@ function revisionReview(
   return medicationCourseReviewSchema.parse({
     expected_version: course.version,
     timezone: course.timezone,
-    review_fingerprint: reviewFingerprint(course, plan, actuals),
+    review_fingerprint: reviewFingerprint(course, plan, actuals, device.proof),
+    device_binding: device.binding,
     material_changes: changes,
     requires_revision: changes.length > 0 && oldActuals.length > 0,
     plan,
@@ -279,7 +291,9 @@ async function createReviewState(
     });
   }
   const context = await loadCourseOwnerContext(client, owner, now);
+  const device = await loadCourseDevice(client, owner, medicationId, plan);
   const fingerprint = reviewFingerprint(null, plan, [], {
+    device: device.proof,
     context,
     medication,
     selected,
@@ -295,8 +309,10 @@ async function createReviewState(
   return {
     medication,
     selected,
+    device,
     review: medicationCourseReviewSchema.parse({
       expected_version: 0,
+      device_binding: device.binding,
       timezone: context.timezone,
       review_fingerprint: fingerprint,
       material_changes: [],
@@ -371,6 +387,8 @@ export async function reviewMedicationCourse(
     const course = await lockMedicationCourse(client, owner, id);
     const context = await loadCourseOwnerContext(client, owner, now);
     return revisionReview(
+      client,
+      owner,
       course,
       input,
       await loadCourseActuals(client, owner, id),
@@ -467,7 +485,8 @@ export async function createMedicationCourse(
         now,
         state.medication.is_active
           ? dayToUtcRange(plan.start_date, context.timezone).start.toISOString()
-          : null
+          : null,
+        state.device.choice
       );
       if (input.handoff) {
         for (const row of state.selected) {
@@ -515,6 +534,13 @@ export async function editMedicationCourse(
     expectedVersion(course, input.expected_version);
     const old = tip(course),
       plan = authoredPlan(courseCarryCyclicAnchors(old, authoredPlan(input)));
+    const device = await loadCourseDevice(
+      client,
+      owner,
+      course.medication_id,
+      plan,
+      old
+    );
     const actuals = await loadCourseActuals(client, owner, id);
     if (
       courseMaterialChanges(coursePlan(old), plan).length &&
@@ -526,7 +552,7 @@ export async function editMedicationCourse(
         'This authored history needs a reviewed successor revision; resume or reopen the current tip first if needed.'
       );
     await client.query(
-      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10 WHERE user_id=$1 AND id=$2',
+      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12 WHERE user_id=$1 AND id=$2',
       [
         owner,
         old.id,
@@ -538,6 +564,8 @@ export async function editMedicationCourse(
         plan.target_dose ?? null,
         plan.dose_unit,
         plan.dose_basis,
+        device.choice.device_id,
+        device.choice.device_choice,
       ]
     );
     await storeCourseChildren(client, owner, old.id, plan, old);
@@ -569,7 +597,14 @@ export async function reviseMedicationCourse(
       );
     const context = await loadCourseOwnerContext(client, owner, now);
     const actuals = await loadCourseActuals(client, owner, id);
-    const reviewed = revisionReview(course, input, actuals, context.today);
+    const reviewed = await revisionReview(
+      client,
+      owner,
+      course,
+      input,
+      actuals,
+      context.today
+    );
     if (reviewed.review_fingerprint !== input.review_fingerprint)
       throw courseProblem(
         'The course or its attributed actuals changed. Refresh the review while keeping this draft.'
@@ -628,7 +663,9 @@ export async function reviseMedicationCourse(
       old.id,
       plan,
       now,
-      med?.rows[0]?.is_active ? cutoff : null
+      med?.rows[0]?.is_active ? cutoff : null,
+      (await loadCourseDevice(client, owner, course.medication_id, plan, old))
+        .choice
     );
     await client.query(
       'UPDATE medication_courses SET current_revision_id=$3,version=version+1 WHERE user_id=$1 AND id=$2',

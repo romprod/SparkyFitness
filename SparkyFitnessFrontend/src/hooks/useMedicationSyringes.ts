@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import i18n from 'i18next';
+import { medicationInventoryKeys } from '@/api/keys/medicationInventory';
 import type {
   DrawPreviewInput,
   MedicationSyringeInput,
@@ -8,7 +9,10 @@ import * as syringeService from '@/api/Medications/syringeService';
 
 const syringeKeys = { all: ['medication-syringes'] as const };
 export const useMedicationSyringes = () =>
-  useQuery({ queryKey: syringeKeys.all, queryFn: syringeService.listSyringes });
+  useQuery({
+    queryKey: syringeKeys.all,
+    queryFn: ({ signal }) => syringeService.listSyringes(signal),
+  });
 export const useSaveMedicationSyringe = () => {
   const client = useQueryClient();
   return useMutation({
@@ -24,6 +28,7 @@ export const useSaveMedicationSyringe = () => {
         : syringeService.createSyringe(body),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: syringeKeys.all });
+      void client.invalidateQueries({ queryKey: medicationInventoryKeys.all });
       client.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       client.invalidateQueries({ queryKey: ['medication-injections'] });
     },
@@ -41,6 +46,7 @@ export const useDeleteMedicationSyringe = () => {
     mutationFn: syringeService.deleteSyringe,
     onSuccess: () => {
       client.invalidateQueries({ queryKey: syringeKeys.all });
+      void client.invalidateQueries({ queryKey: medicationInventoryKeys.all });
       client.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       client.invalidateQueries({ queryKey: ['medication-injections'] });
     },
@@ -58,6 +64,7 @@ export const useDefaultMedicationSyringe = () => {
     mutationFn: syringeService.setDefaultSyringe,
     onSuccess: () => {
       client.invalidateQueries({ queryKey: syringeKeys.all });
+      void client.invalidateQueries({ queryKey: medicationInventoryKeys.all });
       client.invalidateQueries({ queryKey: ['medication-draw-preview'] });
       client.invalidateQueries({ queryKey: ['medication-injections'] });
     },
