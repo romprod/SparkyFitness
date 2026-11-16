@@ -16,6 +16,14 @@ const mockInvoiceUser = { id: 'owner', activeUserId: 'owner' };
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockInvoiceUser, loading: false }),
 }));
+jest.mock('@/contexts/ActiveUserContext', () => ({
+  useActiveUser: () => ({
+    activeUserId: mockInvoiceUser.activeUserId,
+    hasPermission: () => true,
+    hasWritePermission: () => true,
+    isActingOnBehalf: false,
+  }),
+}));
 const mockApiCall = jest.fn();
 jest.mock('@/api/api', () => ({
   apiCall: (endpoint: string, options?: unknown) =>
@@ -109,6 +117,8 @@ beforeEach(() => {
           authenticatedUserId: mockInvoiceUser.id,
           activeUserId: mockInvoiceUser.activeUserId,
         };
+      if (endpoint === '/v2/medication-courses')
+        return { courses: [], today: '2026-11-16', timezone: 'Europe/London' };
       if (endpoint === '/v2/medication-purchases/vial-costs')
         return { vials: [] };
       if (endpoint === '/v2/medication-purchases/analytics')

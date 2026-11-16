@@ -1,3 +1,4 @@
+import type { MedicationCourseAttributionInput } from '../schemas/api/MedicationCourses.api.zod.ts';
 import type { CalculatedDrawInput } from './draw.ts';
 import type { MedicationPreparation } from '../schemas/api/MedicationPreparation.api.zod.ts';
 import type { SerumPoint } from './glp1.ts';
@@ -155,7 +156,11 @@ export interface CreateMedicationInput {
 
 export type UpdateMedicationInput = Partial<CreateMedicationInput>;
 
-export interface MedicationEntry {
+export interface MedicationEntry extends Omit<
+  MedicationCourseAttributionInput,
+  'course_expected_version'
+> {
+  course_origin?: boolean | null;
   dose_mg_exact?: string | null;
   administration_route?: 'injection' | 'nasal' | null;
   preparation_id?: string | null;
@@ -190,7 +195,7 @@ export interface MedicationEntry {
   site?: string | null;
 }
 
-export interface CreateMedicationEntryInput {
+export interface CreateMedicationEntryInput extends MedicationCourseAttributionInput {
   medication_id: string;
   schedule_id?: string | null;
   status?: MedicationEntryStatus;
@@ -205,7 +210,7 @@ export interface CreateMedicationEntryInput {
   custom_fields?: Record<string, unknown> | null;
 }
 
-export interface UpdateMedicationEntryInput {
+export interface UpdateMedicationEntryInput extends MedicationCourseAttributionInput {
   schedule_id?: string | null;
   status?: MedicationEntryStatus;
   taken_at?: string | null;
@@ -265,7 +270,12 @@ export interface MedicationPen {
   notes: string | null;
 }
 
-export interface InjectionEntry {
+export interface InjectionEntry extends Omit<
+  MedicationCourseAttributionInput,
+  'course_expected_version'
+> {
+  medication_name_snapshot?: string | null;
+  course_origin?: boolean | null;
   dose_mg_exact?: string | null;
   administration_route?: 'injection' | 'nasal' | null;
   volume_ml?: string | null;
@@ -329,7 +339,7 @@ export interface SiteSuggestionResponse {
   activeSiteIds: string[] | null;
 }
 
-export interface LogInjectionInput {
+export interface LogInjectionInput extends MedicationCourseAttributionInput {
   calculated_draw?: CalculatedDrawInput;
   medication_id: string;
   /** Omit while deduct_pen is true to let the server auto-pick the pen (in-use first, else oldest sealed). */
@@ -344,7 +354,7 @@ export interface LogInjectionInput {
 }
 
 // pen_id/deduct_pen are deliberately not editable: delete and re-log to change the pen.
-export interface UpdateInjectionInput {
+export interface UpdateInjectionInput extends MedicationCourseAttributionInput {
   calculated_draw?: CalculatedDrawInput;
   injected_at?: string;
   entry_date?: string | null;

@@ -136,3 +136,7 @@ A meal's ingredient list can link another reusable meal (e.g. a sauce or side) i
 Invoice headers, medication/consumable lines, vial associations and operation receipts are private to the authenticated owner. Medication-management and report-sharing grants do not expose them. The Costs API rejects delegated/switched profile contexts; switch back to your own profile to use your invoices. Linking or unlinking an existing vial changes its invoice association only, not its remaining stock or dose history.
 
 Vial labelled mass is medication metadata and follows existing medication-management sharing permissions. It remains independent of stock/preparation values. This does not grant the delegate access to the owner's derived cost report: invoice and analytics endpoints remain private to the authenticated owner.
+
+### Medication course history
+
+Manage Medications also covers explicitly created courses, reviewed revisions, lifecycle actions and legacy-rule handoffs. Course history follows the existing medication sharing permissions; Reports access can read it but does not grant medication writes. Handoff requires a review of the selected rules and a cutover date. Earlier actual doses remain unchanged and are never automatically linked to a new course. New course reminders are not available in an older native app merely because the website supports the course.

@@ -454,3 +454,11 @@ C01/C02/bounded C06 use `/api/v2/medication-purchases`, separate from delegated 
 ## Appointment PDF export
 
 `GET /api/v2/reports/appointment.pdf` is an authenticated-owner-only extension of the existing Prescriber Ready flow; it must not widen delegated lab access. `appointmentReportService.ts` assembles a repeatable read of complete selected-range facts with medication entries/injections merged once and latest three explicit lab panels independently labelled. Keep strict real ISO calendar dates, inclusive IANA-zone boundaries and the 90-day default. `appointmentReportPdf.ts` is a pure renderer with bundled licensed fonts and synthetic fixture tests. Do not log report content, persist PDFs, infer clinical facts or silently cap rows. Responses are no-store. Verify PDFKit and fonts from the actual production module/image, using a dependency graph that matches the committed lock. No owner PDF is a test fixture. Existing Print/CSV and their delegation rules remain unchanged.
+
+## Course history integration
+
+The opt-in medication course model uses explicit course/revision/rule/step/activity/handoff/operation records under the medication permission domain. Preserve actual log facts; association is explicit, never inferred from medication/date similarity. All legacy schedule mutation/log/archive/PDF paths must remain guard-aware after reviewed handoff. New managed dues cannot coexist with an unreviewed legacy takeover. Handoff bounds only reviewed selected rules, preserving unrelated fields/history. Validate operation replay, stale revision, owner/delegate scope, material-edit and lifecycle transactions with real isolated PostgreSQL races. Do not drop additive course data or blindly roll back to an unaware backend after real handoff.
+
+Managed slot fulfilment is separate from the actual recorded timestamp/tracking day. A historical selected slot can be fulfilled by a dose recorded at browser Now; determine fulfilment from its explicit revision/rule/slot association, not only a date-filtered actual-history list. Never backdate an actual dose merely to make a checklist appear complete.
+
+Ordinary revision must preserve known cycle anchors on each authored rule, including rules with different anchors inherited through handoff. A predecessor or new revision start is not a replacement for a known per-rule anchor.

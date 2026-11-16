@@ -6,6 +6,8 @@ import {
   localDateTimeToUtc,
   utcToLocalDateTimeInput,
   medicationDoseInMg,
+  medicationCourseDoseSchema,
+  type MedicationCourseAttributionInput,
   type CalculatedDrawInput,
   positiveDeviceDoseSchema,
   resolvePreparedMedicationRoute,
@@ -18,6 +20,12 @@ import InjectionSiteSettings from './InjectionSiteSettings';
 import MedicationSyringeSettings from './MedicationSyringeSettings';
 import MedicationDrawPreview from './MedicationDrawPreview';
 import MedicationBudWarning from './MedicationBudWarning';
+import MedicationCourseAttributionPicker from './MedicationCourseAttributionPicker';
+import {
+  useMedicationCourses,
+  useMedicationCourseDue,
+  HttpApiError,
+} from '@/hooks/Medications/useMedicationCourses';
 import {
   useMedicationSyringes,
   useMedicationDrawPreview,
@@ -42,12 +50,68 @@ import type { Medication } from '@/types/medications';
 
 interface Glp1LogInjectionProps {
   med: Medication;
+  courseContext?: MedicationCourseAttributionInput;
+  plannedDose?: { value: string; unit: string } | null;
+  initialTakenAt?: string;
+  initialEntryDate?: string;
+  initialNotes?: string;
+  onLogged?: () => void;
 }
 
-export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
+export default function Glp1LogInjection({
+  med,
+  courseContext,
+  plannedDose,
+  initialTakenAt,
+  initialEntryDate,
+  initialNotes,
+  onLogged,
+}: Glp1LogInjectionProps) {
   const { t } = useTranslation();
   const { timezone } = usePreferences();
   const medId = med.id;
+  const courses = useMedicationCourses(medId);
+  const [courseDraft, setCourseDraft] =
+    useState<MedicationCourseAttributionInput | null>(null);
+  const [courseOverride, setCourseOverride] =
+    useState<MedicationCourseAttributionInput | null>(null);
+  const [plannedOverride, setPlannedOverride] = useState<
+    { value: string; unit: string } | null | undefined
+  >();
+  const [showCoursePicker, setShowCoursePicker] = useState(false);
+  const [courseStale, setCourseStale] = useState(false);
+  const [courseMessage, setCourseMessage] = useState('');
+  const attribution = courseOverride ?? courseContext ?? courseDraft;
+  const courseSelected = Boolean(attribution?.course_revision_id);
+  const explicitCourseDraft =
+    courseContext !== undefined ||
+    courseDraft !== null ||
+    courseOverride !== null;
+  const courseDue = useMedicationCourseDue(
+    attribution?.scheduled_day ?? '',
+    !!courseContext?.course_slot_key && !!attribution?.scheduled_day
+  );
+  const bindingKey = `${courses.scope.key}:${medId}`;
+  const [courseBindingKey, setCourseBindingKey] = useState(bindingKey);
+  if (courseBindingKey !== bindingKey) {
+    setCourseBindingKey(bindingKey);
+    setCourseDraft(null);
+    setCourseOverride(null);
+    setPlannedOverride(undefined);
+    setShowCoursePicker(false);
+    setCourseStale(false);
+    setCourseMessage('');
+  }
+  const displayedPlan =
+    plannedOverride === undefined ? plannedDose : plannedOverride;
+  const plannedKnown =
+    displayedPlan != null &&
+    medicationCourseDoseSchema.safeParse(displayedPlan.value).success;
+  const courseAllowed = () =>
+    courses.scope.isCurrent() &&
+    courses.scope.canWrite &&
+    med.user_id === courses.scope.ownerId;
+
   const route = resolvePreparedMedicationRoute(med);
   const nasal = route === 'nasal';
   const resetUnit = nasal ? 'pumps' : 'mg';
@@ -63,14 +127,15 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
   );
 
   const [doseMg, setDoseMg] = useState(
-    nasal
-      ? '1'
-      : medicationDoseInMg(med) != null
-        ? String(medicationDoseInMg(med))
-        : ''
+    courseContext
+      ? ''
+      : nasal
+        ? '1'
+        : medicationDoseInMg(med) != null
+          ? String(medicationDoseInMg(med))
+          : ''
   );
-  const newTimeDraft = () => {
-    const instant = new Date().toISOString();
+  const newTimeDraft = (instant = new Date().toISOString()) => {
     return {
       medicationId: medId,
       value: utcToLocalDateTimeInput(instant, timezone),
@@ -78,9 +143,11 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
       automaticInstant: instant as string | null,
     };
   };
-  const [timeDraft, setTimeDraft] = useState(newTimeDraft);
+  const [timeDraft, setTimeDraft] = useState(() =>
+    newTimeDraft(initialTakenAt)
+  );
   if (timeDraft.medicationId !== medId) {
-    setTimeDraft(newTimeDraft());
+    setTimeDraft(newTimeDraft(initialTakenAt));
   } else if (timeDraft.automaticInstant && timeDraft.timezone !== timezone) {
     // Preferences can load after the form: keep the captured instant, not its
     // initial browser-zone wall time, when formatting an untouched default.
@@ -93,7 +160,7 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
   const injectedAt = timeDraft.value;
   const setInjectedAt = (value: string) =>
     setTimeDraft({ ...timeDraft, value, automaticInstant: null });
-  const [injectionNotes, setInjectionNotes] = useState('');
+  const [injectionNotes, setInjectionNotes] = useState(initialNotes ?? '');
   const [penChoice, setPenChoice] = useState<string | null>(null);
   const selectedPen =
     penChoice === null
@@ -195,19 +262,149 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
       ? !calculationBlocked
       : manualDose != null && Number.isFinite(manualDose) && manualDose > 0);
 
+  const plannedInput =
+    plannedKnown && displayedPlan
+      ? positiveDeviceDoseSchema.safeParse({
+          value: displayedPlan.value,
+          unit: displayedPlan.unit,
+        })
+      : null;
+  const usablePlannedDraw =
+    calculatedMode &&
+    plannedInput?.success &&
+    (nasal ? ['pumps', 'mcg', 'mg'] : ['mcg', 'mg', 'ml', 'units']).includes(
+      plannedInput.data.unit
+    );
+  const plannedManualMg =
+    plannedKnown && displayedPlan
+      ? medicationDoseInMg({
+          dose_amount: Number(displayedPlan.value),
+          dose_unit: displayedPlan.unit,
+        })
+      : null;
+  const usePlanned = () => {
+    if (!courseAllowed()) return;
+    if (usablePlannedDraw && plannedInput?.success) {
+      setDoseMg(plannedInput.data.value);
+      setDoseUnit(plannedInput.data.unit);
+    } else if (!calculatedMode && plannedManualMg !== null) {
+      setDoseMg(String(plannedManualMg));
+      setDoseUnit('mg');
+    }
+  };
+  const refreshCourse = async () => {
+    if (!courseAllowed()) return;
+    setCourseMessage('');
+    if (courseContext?.course_slot_key && attribution?.scheduled_day) {
+      const fresh = await courseDue.query.refetch();
+      if (!courseAllowed()) return;
+      const slot = fresh.data?.slots.find(
+        (slot) =>
+          slot.course_revision_id === attribution.course_revision_id &&
+          slot.course_rule_id === attribution.course_rule_id &&
+          slot.course_slot_key === attribution.course_slot_key &&
+          slot.scheduled_day === attribution.scheduled_day
+      );
+      if (
+        !slot ||
+        fresh.data?.fulfilled_slots.some(
+          (row) =>
+            row.course_slot_key === slot.course_slot_key &&
+            row.course_revision_id === slot.course_revision_id
+        )
+      ) {
+        setCourseMessage(
+          t(
+            'medications.courses.slotUnavailable',
+            'This planned slot is no longer available or is already recorded. Refresh the checklist; your actual draft is retained.'
+          )
+        );
+        return;
+      }
+      setCourseOverride({
+        course_revision_id: slot.course_revision_id,
+        course_rule_id: slot.course_rule_id,
+        course_step_id: slot.course_step_id,
+        course_slot_key: slot.course_slot_key,
+        course_expected_version: slot.course_expected_version,
+        scheduled_day: slot.scheduled_day,
+        scheduled_for: slot.scheduled_for,
+      });
+      setPlannedOverride(
+        slot.per_dose_amount == null
+          ? null
+          : { value: slot.per_dose_amount, unit: slot.dose_unit }
+      );
+    } else if (attribution?.course_revision_id) {
+      const fresh = await courses.query.refetch();
+      if (!courseAllowed()) return;
+      const course = fresh.data?.courses.find((row) =>
+        row.revisions.some(
+          (revision) =>
+            revision.id === attribution.course_revision_id &&
+            !revision.deleted_at
+        )
+      );
+      if (!course) {
+        setCourseMessage(
+          t(
+            'medications.courses.slotUnavailable',
+            'This planned slot is no longer available or is already recorded. Refresh the checklist; your actual draft is retained.'
+          )
+        );
+        return;
+      }
+      setCourseDraft({
+        ...attribution,
+        course_expected_version: course.version,
+      });
+    }
+    await Promise.all([
+      pensQ.refetch(),
+      syringesQ.refetch(),
+      ...(calculatedMode && calculatedInput ? [previewQ.refetch()] : []),
+    ]);
+    if (courseAllowed()) {
+      setCourseStale(false);
+      setCourseMessage(
+        t(
+          'medications.courses.actualRefreshed',
+          'Course data refreshed. Review the retained actual amount and current calculation before logging.'
+        )
+      );
+    }
+  };
+
   const handleLog = () => {
-    if (!doseValid) return;
+    if (
+      !doseValid ||
+      courseStale ||
+      (explicitCourseDraft && !courseAllowed()) ||
+      (courseSelected && !injectedAt)
+    )
+      return;
     const willDeduct = effectivePenId !== 'none';
     logMutation.mutate(
       {
         medication_id: medId,
+        ...(attribution ?? {}),
+        ...(courseSelected
+          ? {
+              entry_date:
+                timeDraft.automaticInstant && initialEntryDate
+                  ? initialEntryDate
+                  : injectedAt.slice(0, 10),
+            }
+          : {}),
         site: nasal ? null : site,
         ...(calculatedMode && calculatedInput
           ? { calculated_draw: calculatedInput }
           : { dose_mg: manualDose }),
-        injected_at: injectedAt
-          ? localDateTimeToUtc(injectedAt, timeDraft.timezone).toISOString()
-          : undefined,
+        injected_at:
+          timeDraft.automaticInstant ??
+          (injectedAt
+            ? localDateTimeToUtc(injectedAt, timeDraft.timezone).toISOString()
+            : undefined),
         pen_id: willDeduct ? effectivePenId : null,
         deduct_pen: willDeduct,
         notes: injectionNotes.trim() || null,
@@ -217,6 +414,27 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
           setSelectedSite(null);
           setTimeDraft(newTimeDraft());
           setInjectionNotes('');
+          setCourseDraft(null);
+          setCourseOverride(null);
+          setPlannedOverride(undefined);
+          setCourseStale(false);
+          setCourseMessage('');
+          onLogged?.();
+        },
+        onError: (error) => {
+          if (
+            courseSelected &&
+            error instanceof HttpApiError &&
+            error.status === 409
+          ) {
+            setCourseStale(true);
+            setCourseMessage(
+              t(
+                'medications.courses.staleDose',
+                'This course changed. Refresh before logging. Your actual draft is retained.'
+              )
+            );
+          }
         },
       }
     );
@@ -233,6 +451,78 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {courseContext && (
+          <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-sm">
+            <p>
+              {t('medications.courses.plannedDose', 'Planned dose')}:{' '}
+              {plannedKnown && displayedPlan
+                ? `${displayedPlan.value} ${displayedPlan.unit}`
+                : t('medications.courses.unknownDose', 'Unknown')}
+            </p>
+            <p className="text-muted-foreground">
+              {t(
+                'medications.courses.enterActual',
+                'Enter and confirm the actual dose. The planned amount is not an administration.'
+              )}
+            </p>
+            {plannedKnown && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  logMutation.isPending ||
+                  (!usablePlannedDraw &&
+                    (calculatedMode || plannedManualMg === null))
+                }
+                onClick={usePlanned}
+              >
+                {t('medications.courses.usePlanned', 'Use planned amount')}
+              </Button>
+            )}
+          </div>
+        )}
+        {!courseContext && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCoursePicker((value) => !value)}
+            >
+              {t('medications.courses.association', 'Plan association')}
+            </Button>
+            {showCoursePicker && (
+              <MedicationCourseAttributionPicker
+                medicationId={medId}
+                value={courseDraft}
+                disabled={logMutation.isPending}
+                onChange={(value) => {
+                  setCourseDraft(value);
+                  setCourseStale(false);
+                  setCourseMessage('');
+                }}
+              />
+            )}
+          </>
+        )}
+        {courseMessage && (
+          <p
+            role="status"
+            className="rounded-md border bg-muted/20 p-3 text-sm text-foreground"
+          >
+            {courseMessage}
+          </p>
+        )}
+        {courseStale && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void refreshCourse()}
+          >
+            {t('medications.courses.refreshCourse', 'Refresh course')}
+          </Button>
+        )}
         <div className="space-y-1">
           <Label htmlFor="glp1-pen" className="text-xs text-muted-foreground">
             {t('medications.glp1.deduct', 'Deduct from pen/vial')}
@@ -379,9 +669,14 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
                 if (!calculatedMode) setDoseUnit(resetUnit);
               }}
               placeholder={
-                medicationDoseInMg(med) != null
-                  ? String(medicationDoseInMg(med))
-                  : '0'
+                courseContext
+                  ? t(
+                      'medications.courses.actualPlaceholder',
+                      'Enter actual amount'
+                    )
+                  : medicationDoseInMg(med) != null
+                    ? String(medicationDoseInMg(med))
+                    : '0'
               }
             />
             {calculatedMode && (
@@ -481,7 +776,14 @@ export default function Glp1LogInjection({ med }: Glp1LogInjectionProps) {
 
         <Button
           onClick={handleLog}
-          disabled={(!nasal && !site) || !doseValid || logMutation.isPending}
+          disabled={
+            (!nasal && !site) ||
+            !doseValid ||
+            logMutation.isPending ||
+            courseStale ||
+            (explicitCourseDraft && !courseAllowed()) ||
+            (courseSelected && !injectedAt)
+          }
           className="w-full"
         >
           {logMutation.isPending

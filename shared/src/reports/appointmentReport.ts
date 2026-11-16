@@ -35,6 +35,32 @@ export interface AppointmentReportData {
       status: string;
     }[];
   }[];
+  /** Explicit authored managed revisions, labelled separately from current legacy plans. */
+  managedPlans?: {
+    courseId: string;
+    revisionId: string;
+    revisionNo: number;
+    medicationId: string | null;
+    medicationName: string;
+    timezone: string;
+    name: string;
+    current: boolean;
+    status: 'active' | 'paused' | 'completed';
+    deleted: boolean;
+    startDate: string | null;
+    endDate: string | null;
+    closedDate: string | null;
+    targetDose: string | null;
+    doseUnit: string;
+    doseBasis: 'per_injection' | 'per_week';
+    schedules: AppointmentReportData['currentMedications'][number]['schedules'];
+    steps: {
+      doseAmount: string;
+      doseUnit: string;
+      durationDays: number | null;
+    }[];
+    activity: { fromAt: string; untilAt: string | null }[];
+  }[];
   /** Independently read ordinary entries and actual injections, merged exactly once. */
   doseLog: {
     id: string;

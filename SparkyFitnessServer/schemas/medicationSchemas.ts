@@ -1,4 +1,7 @@
-import { calculatedDrawInputSchema } from '@workspace/shared';
+import {
+  calculatedDrawInputSchema,
+  medicationCourseAttributionInputSchema,
+} from '@workspace/shared';
 import {
   medicationPreparationInputSchema,
   medicationVialLabelMassSchema,
@@ -179,6 +182,7 @@ export type UpdatePenBody = z.infer<typeof UpdatePenBodySchema>;
 // --------------------------------------------------------------------------
 export const CreateInjectionBodySchema = z
   .object({
+    ...medicationCourseAttributionInputSchema.shape,
     medication_id: z.string().uuid(),
     calculated_draw: calculatedDrawInputSchema.optional(),
     pen_id: z.string().uuid().nullable().optional(),
@@ -196,13 +200,47 @@ export const CreateInjectionBodySchema = z
     source: z.string().optional(),
     custom_fields: customFields,
   })
-  .loose();
+  .loose()
+  .superRefine((data, context) => {
+    for (const field of ['course_origin', 'medication_name_snapshot'])
+      if (Object.prototype.hasOwnProperty.call(data, field))
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: 'This historical snapshot is set by the server.',
+        });
+    if ((data.scheduled_for || data.scheduled_day) && !data.course_slot_key)
+      context.addIssue({
+        code: 'custom',
+        path: ['scheduled_for'],
+        message:
+          'A saved scheduled timestamp requires an explicit course slot.',
+      });
+    const hasCourseMetadata =
+      data.course_revision_id ||
+      data.course_rule_id ||
+      data.course_step_id ||
+      data.course_slot_key ||
+      data.scheduled_day ||
+      data.course_expected_version;
+    if (!hasCourseMetadata) return;
+    const attribution = medicationCourseAttributionInputSchema.safeParse(data);
+    if (!attribution.success) {
+      for (const issue of attribution.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    }
+  });
 export type CreateInjectionBody = z.infer<typeof CreateInjectionBodySchema>;
 
 // Update is a partial patch. pen_id/deduct_pen are deliberately excluded — inventory
 // deduction can't be re-pointed after the fact; delete and re-log instead.
 export const UpdateInjectionBodySchema = z
   .object({
+    ...medicationCourseAttributionInputSchema.shape,
     calculated_draw: calculatedDrawInputSchema.optional(),
     injected_at: z.string().nullable().optional(), // ISO timestamp
     entry_date: optionalDateString,
@@ -212,7 +250,33 @@ export const UpdateInjectionBodySchema = z
     source: z.string().optional(),
     custom_fields: customFields,
   })
-  .loose();
+  .loose()
+  .superRefine((data, context) => {
+    for (const field of ['course_origin', 'medication_name_snapshot'])
+      if (Object.prototype.hasOwnProperty.call(data, field))
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: 'This historical snapshot is set by the server.',
+        });
+    const hasCourseMetadata =
+      data.course_revision_id ||
+      data.course_rule_id ||
+      data.course_step_id ||
+      data.course_slot_key ||
+      data.scheduled_day ||
+      data.course_expected_version;
+    if (!hasCourseMetadata) return;
+    const attribution = medicationCourseAttributionInputSchema.safeParse(data);
+    if (!attribution.success) {
+      for (const issue of attribution.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    }
+  });
 export type UpdateInjectionBody = z.infer<typeof UpdateInjectionBodySchema>;
 
 // --------------------------------------------------------------------------
@@ -273,6 +337,7 @@ export type SerumCurveQuery = z.infer<typeof SerumCurveQuerySchema>;
 // --------------------------------------------------------------------------
 export const CreateMedicationEntryBodySchema = z
   .object({
+    ...medicationCourseAttributionInputSchema.shape,
     medication_id: z.string().uuid(),
     schedule_id: z.string().uuid().nullable().optional(),
     status: z.enum(['taken', 'skipped', 'snoozed', 'prn_taken']).optional(),
@@ -286,7 +351,38 @@ export const CreateMedicationEntryBodySchema = z
     source: z.string().optional(),
     custom_fields: customFields,
   })
-  .loose();
+  .loose()
+  .superRefine((data, context) => {
+    if (Object.prototype.hasOwnProperty.call(data, 'course_origin'))
+      context.addIssue({
+        code: 'custom',
+        path: ['course_origin'],
+        message: 'This historical origin is set by the server.',
+      });
+    if (data.course_revision_id && data.schedule_id)
+      context.addIssue({
+        code: 'custom',
+        path: ['schedule_id'],
+        message: 'Select either a managed course or a legacy schedule.',
+      });
+    const hasCourseMetadata =
+      data.course_revision_id ||
+      data.course_rule_id ||
+      data.course_step_id ||
+      data.course_slot_key ||
+      data.scheduled_day ||
+      data.course_expected_version;
+    if (!hasCourseMetadata) return;
+    const attribution = medicationCourseAttributionInputSchema.safeParse(data);
+    if (!attribution.success) {
+      for (const issue of attribution.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    }
+  });
 export type CreateMedicationEntryBody = z.infer<
   typeof CreateMedicationEntryBodySchema
 >;
@@ -295,6 +391,7 @@ export type CreateMedicationEntryBody = z.infer<
 // of a dose logged after the fact. medication_id is not editable.
 export const UpdateMedicationEntryBodySchema = z
   .object({
+    ...medicationCourseAttributionInputSchema.shape,
     schedule_id: z.string().uuid().nullable().optional(),
     status: z.enum(['taken', 'skipped', 'snoozed', 'prn_taken']).optional(),
     taken_at: z.string().nullable().optional(),
@@ -303,7 +400,38 @@ export const UpdateMedicationEntryBodySchema = z
     notes: optionalNullableString,
     custom_fields: customFields,
   })
-  .loose();
+  .loose()
+  .superRefine((data, context) => {
+    if (Object.prototype.hasOwnProperty.call(data, 'course_origin'))
+      context.addIssue({
+        code: 'custom',
+        path: ['course_origin'],
+        message: 'This historical origin is set by the server.',
+      });
+    if (data.course_revision_id && data.schedule_id)
+      context.addIssue({
+        code: 'custom',
+        path: ['schedule_id'],
+        message: 'Select either a managed course or a legacy schedule.',
+      });
+    const hasCourseMetadata =
+      data.course_revision_id ||
+      data.course_rule_id ||
+      data.course_step_id ||
+      data.course_slot_key ||
+      data.scheduled_day ||
+      data.course_expected_version;
+    if (!hasCourseMetadata) return;
+    const attribution = medicationCourseAttributionInputSchema.safeParse(data);
+    if (!attribution.success) {
+      for (const issue of attribution.error.issues)
+        context.addIssue({
+          code: 'custom',
+          path: issue.path,
+          message: issue.message,
+        });
+    }
+  });
 export type UpdateMedicationEntryBody = z.infer<
   typeof UpdateMedicationEntryBodySchema
 >;

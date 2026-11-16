@@ -1,3 +1,5 @@
+import type { MedicationCourseAttributionInput } from '../schemas/api/MedicationCourses.api.zod.ts';
+import { courseEntryMatchesSlot } from './courseAdherence.ts';
 import { addDays } from '../utils/timezone.ts';
 import type { MedicationEntryStatus } from './contracts.ts';
 import { getDueDosesForDate, type SharedMedication } from './schedules.ts';
@@ -7,7 +9,12 @@ import { getDueDosesForDate, type SharedMedication } from './schedules.ts';
 // a timezone, and render the result with their own components and colours.
 
 /** The slice of a logged entry the adherence rules read. */
-export interface AdherenceEntry {
+export interface AdherenceEntry extends Omit<
+  MedicationCourseAttributionInput,
+  'course_expected_version'
+> {
+  id?: string;
+  course_origin?: boolean | null;
   medication_id: string;
   schedule_id: string | null;
   status: MedicationEntryStatus;
@@ -15,6 +22,17 @@ export interface AdherenceEntry {
   entry_date: string;
   /** 'injection' rows are GLP-1 injection logs merged into the entries feed. */
   entry_type?: 'entry' | 'injection';
+}
+
+interface AdherenceDueDose {
+  medication: { id: string };
+  schedule: { id: string } & Pick<
+    MedicationCourseAttributionInput,
+    | 'course_revision_id'
+    | 'course_rule_id'
+    | 'course_slot_key'
+    | 'scheduled_day'
+  >;
 }
 
 const entryDay = (entry: { entry_date: string }): string =>
@@ -29,9 +47,42 @@ const entryDay = (entry: { entry_date: string }): string =>
  */
 export function entryMatchesDue(
   entry: AdherenceEntry,
-  due: { medication: { id: string }; schedule: { id: string } }
+  due: AdherenceDueDose
 ): boolean {
-  if (entry.status === 'prn_taken') return false;
+  const { course_revision_id, course_rule_id, course_slot_key, scheduled_day } =
+    due.schedule;
+  if (course_revision_id) {
+    if (
+      !course_rule_id ||
+      !course_slot_key ||
+      !scheduled_day ||
+      entry.medication_id !== due.medication.id
+    )
+      return false;
+    return courseEntryMatchesSlot(
+      {
+        course_revision_id: entry.course_revision_id ?? null,
+        course_rule_id: entry.course_rule_id ?? null,
+        course_slot_key: entry.course_slot_key ?? null,
+        scheduled_day: entry.scheduled_day ?? null,
+      },
+      {
+        course_revision_id,
+        course_rule_id,
+        course_slot_key,
+        scheduled_day,
+      }
+    );
+  }
+  // Explicit managed actuals cannot satisfy legacy medication-level fallbacks.
+  if (
+    entry.course_origin === true ||
+    entry.course_revision_id ||
+    entry.course_rule_id ||
+    entry.course_slot_key ||
+    entry.status === 'prn_taken'
+  )
+    return false;
 
   return (
     entry.schedule_id === due.schedule.id ||
@@ -52,7 +103,7 @@ export interface ChecklistProgress {
 
 /** How many of a day's due doses have been taken or skipped. */
 export function computeChecklistProgress(
-  dueDoses: { medication: { id: string }; schedule: { id: string } }[],
+  dueDoses: AdherenceDueDose[],
   entries: AdherenceEntry[]
 ): ChecklistProgress {
   const completed = dueDoses.filter((due) =>
@@ -145,7 +196,14 @@ export function computeAdherence<M extends SharedMedication>({
         dayTaken++;
       }
     }
-    const prnTaken = dayEntries.filter((e) => e.status === 'prn_taken').length;
+    const prnTaken = dayEntries.filter(
+      (e) =>
+        e.status === 'prn_taken' &&
+        e.course_origin !== true &&
+        !e.course_revision_id &&
+        !e.course_rule_id &&
+        !e.course_slot_key
+    ).length;
     // Scheduled taken + as-needed activity, capped at what was due.
     const effectiveTaken =
       dayDue.length > 0
@@ -172,7 +230,15 @@ export function computeAdherence<M extends SharedMedication>({
   }
 
   const hasSkips = (date: string): boolean =>
-    entries.some((e) => entryDay(e) === date && e.status === 'skipped');
+    entries.some(
+      (e) =>
+        entryDay(e) === date &&
+        e.status === 'skipped' &&
+        e.course_origin !== true &&
+        !e.course_revision_id &&
+        !e.course_rule_id &&
+        !e.course_slot_key
+    );
 
   // Walk back from the newest day. Today does not break the streak while it is still open
   // (incomplete and nothing skipped), so the walk starts from yesterday in that case.

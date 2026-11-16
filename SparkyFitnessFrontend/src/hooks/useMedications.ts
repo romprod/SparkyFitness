@@ -7,6 +7,7 @@ import {
 import { invalidateMedicationPurchaseData } from '@/hooks/useMedicationPurchases';
 import * as medicationService from '@/api/Medications/medicationService';
 import { reportKeys } from '@/api/keys/reports';
+import { medicationCourseKeys } from '@/hooks/Medications/useMedicationCourses';
 import { dailyProgressKeys, diaryReportKeys } from '@/api/keys/diary';
 import type {
   Medication,
@@ -91,6 +92,7 @@ export const useCorrectPreparationMutation = (medId: string) => {
 // refreshes without a manual page reload. refetchType: 'all' also refreshes the
 // cache while the Reports tab isn't mounted (e.g. editing from Cabinet or Symptoms).
 const invalidateReports = (queryClient: QueryClient) => {
+  void queryClient.invalidateQueries({ queryKey: medicationCourseKeys.all });
   void invalidateMedicationPurchaseData(queryClient, ['analytics', 'editor']);
   void queryClient.invalidateQueries({ queryKey: ['glucoseContext'] });
   return queryClient.invalidateQueries({

@@ -81,6 +81,95 @@ describe('private appointment data snapshot', () => {
     });
     expect(state.getClient).not.toHaveBeenCalled();
   });
+  it('labels managed revision facts separately and uses only saved injection scheduled instants', async () => {
+    rows.set('FROM medication_courses c', [
+      {
+        course_id: 'course',
+        medication_id: 'med',
+        medication_name_snapshot: 'Synthetic managed medication',
+        timezone: 'Europe/London',
+        current_revision_id: 'new',
+        id: 'old',
+        revision_no: 1,
+        name: 'Synthetic old plan',
+        status: 'completed',
+        deleted_at: null,
+        start_date: '2026-01-01',
+        end_date: '2026-03-28',
+        closed_date: '2026-03-28',
+        target_dose: '0.25',
+        dose_unit: 'mg',
+        dose_basis: 'per_injection',
+      },
+    ]);
+    rows.set('FROM medication_course_rules', [
+      {
+        revision_id: 'old',
+        schedule_type_id: 'daily',
+        time_of_day: '08:00',
+        days_of_week: null,
+        start_date: null,
+        end_date: null,
+      },
+    ]);
+    rows.set('FROM medication_course_steps', [
+      { revision_id: 'old', dose: '0.25', dose_unit: 'mg', duration_days: 28 },
+    ]);
+    rows.set('FROM medication_course_activity', [
+      {
+        revision_id: 'old',
+        from_at: '2026-01-01T00:00:00Z',
+        until_at: '2026-03-29T00:00:00Z',
+      },
+    ]);
+    rows.set('FROM injection_entries', [
+      {
+        id: 'old-injection',
+        medication_id: 'med',
+        injected_at: '2026-03-29T08:12:00Z',
+        entry_date: '2026-03-29',
+        dose_mg: '0.25',
+        scheduled_for: null,
+      },
+      {
+        id: 'new-injection',
+        medication_id: 'med',
+        injected_at: '2026-03-29T08:12:00Z',
+        entry_date: '2026-03-29',
+        dose_mg: '0.25',
+        scheduled_for: '2026-03-29T08:00:00Z',
+      },
+    ]);
+    const data = await getAppointmentReportData(owner, {}, now);
+    expect(data.managedPlans).toEqual([
+      expect.objectContaining({
+        revisionId: 'old',
+        current: false,
+        status: 'completed',
+        name: 'Synthetic old plan',
+        startDate: '2026-01-01',
+        closedDate: '2026-03-28',
+        steps: [{ doseAmount: '0.25', doseUnit: 'mg', durationDays: 28 }],
+        schedules: [
+          expect.objectContaining({
+            active: false,
+            startDate: '2026-01-01',
+            endDate: '2026-03-28',
+          }),
+        ],
+      }),
+    ]);
+    expect(data.doseLog).toHaveLength(2);
+    expect(
+      data.doseLog.find((dose) => dose.id === 'old-injection')
+    ).toMatchObject({ scheduledFor: null, timingDeltaMinutes: null });
+    expect(
+      data.doseLog.find((dose) => dose.id === 'new-injection')
+    ).toMatchObject({
+      scheduledFor: '2026-03-29T08:00:00.000Z',
+      timingDeltaMinutes: 12,
+    });
+  });
   it('merges independent full histories exactly once with snapshots, skipped status and explicit unknown/zero delivery', async () => {
     rows.set('FROM profiles', [{ name: 'Synthetic name' }]);
     rows.set('FROM medications ', [

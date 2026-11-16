@@ -1,3 +1,10 @@
+import type { Medication, MedicationSchedule } from '@workspace/shared';
+import type { PoolClient } from 'pg';
+import {
+  guardLegacyScheduleMutation,
+  transitionCourseMedicationActivity,
+} from './medicationCourseRepository.js';
+import { lockLogMedication } from '../services/medicationCourseLogService.js';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreateMedicationBody,
@@ -7,6 +14,9 @@ import type {
 } from '../schemas/medicationSchemas.js';
 
 // Column lists kept in one place so SELECTs stay consistent.
+type MedicationRow = Medication;
+type ScheduleRow = MedicationSchedule;
+
 const MED_COLS = `id, user_id, name, display_name, type_id, route_id,
   strength_value, strength_unit, dose_amount, dose_unit, rxnorm_rxcui, ndc,
   prescriber, pharmacy, rx_number, reason_text, effectiveness_rating,
@@ -19,7 +29,7 @@ const SCHEDULE_COLS = `id, medication_id, user_id, schedule_type_id, time_of_day
   source, custom_fields, created_at, updated_at`;
 
 async function createMedication(userId: string, data: CreateMedicationBody) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const result = await client.query(
       `INSERT INTO medications (
@@ -72,12 +82,12 @@ async function listMedications(
   userId: string,
   opts: { glp1Only?: boolean; activeOnly?: boolean } = {}
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const where: string[] = ['user_id = $1'];
     if (opts.glp1Only) where.push('is_glp1 = TRUE');
     if (opts.activeOnly) where.push('is_active = TRUE');
-    const medsResult = await client.query(
+    const medsResult = await client.query<MedicationRow>(
       `SELECT ${MED_COLS} FROM medications
        WHERE ${where.join(' AND ')}
        ORDER BY is_active DESC, name ASC`,
@@ -86,15 +96,15 @@ async function listMedications(
 
     if (medsResult.rows.length === 0) return [];
 
-    const medIds = medsResult.rows.map((m: any) => m.id);
-    const schedulesResult = await client.query(
+    const medIds = medsResult.rows.map((m) => m.id);
+    const schedulesResult = await client.query<ScheduleRow>(
       `SELECT ${SCHEDULE_COLS} FROM medication_schedules
        WHERE medication_id = ANY($1) AND user_id = $2
        ORDER BY time_of_day NULLS LAST, created_at ASC`,
       [medIds, userId]
     );
 
-    const schedulesByMedId: Record<string, any[]> = {};
+    const schedulesByMedId: Record<string, ScheduleRow[]> = {};
     for (const sched of schedulesResult.rows) {
       if (!schedulesByMedId[sched.medication_id]) {
         schedulesByMedId[sched.medication_id] = [];
@@ -102,7 +112,7 @@ async function listMedications(
       schedulesByMedId[sched.medication_id].push(sched);
     }
 
-    return medsResult.rows.map((med: any) => ({
+    return medsResult.rows.map((med) => ({
       ...med,
       schedules: schedulesByMedId[med.id] || [],
     }));
@@ -112,7 +122,7 @@ async function listMedications(
 }
 
 async function getMedicationById(userId: string, id: string) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const med = await client.query(
       `SELECT ${MED_COLS} FROM medications WHERE id = $1 AND user_id = $2`,
@@ -135,10 +145,21 @@ async function updateMedication(
   id: string,
   data: UpdateMedicationBody
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
+  const activityTransaction = data.is_active !== undefined;
+  let activeBefore: boolean | undefined;
   try {
+    if (activityTransaction) {
+      await client.query('BEGIN');
+      const previous = await client.query<{ is_active: boolean }>(
+        'SELECT is_active FROM medications WHERE id=$1 AND user_id=$2 FOR UPDATE',
+        [id, userId]
+      );
+      activeBefore = previous.rows[0]?.is_active;
+    }
+
     const updates: string[] = [];
-    const values: any[] = [id, userId];
+    const values: unknown[] = [id, userId];
     let index = 3;
 
     const fields: (keyof UpdateMedicationBody)[] = [
@@ -187,6 +208,7 @@ async function updateMedication(
         `SELECT ${MED_COLS} FROM medications WHERE id = $1 AND user_id = $2`,
         [id, userId]
       );
+      if (activityTransaction) await client.query('COMMIT');
       return current.rows[0] ?? null;
     }
 
@@ -197,14 +219,28 @@ async function updateMedication(
                    RETURNING ${MED_COLS}`;
 
     const result = await client.query(query, values);
+    if (activityTransaction) {
+      if (activeBefore !== undefined && data.is_active !== undefined)
+        await transitionCourseMedicationActivity(
+          client,
+          userId,
+          id,
+          activeBefore,
+          data.is_active
+        );
+      await client.query('COMMIT');
+    }
     return result.rows[0] ?? null;
+  } catch (error) {
+    if (activityTransaction) await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
 }
 
 async function deleteMedication(userId: string, id: string) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const result = await client.query(
       'DELETE FROM medications WHERE id = $1 AND user_id = $2 RETURNING id',
@@ -223,7 +259,7 @@ async function addSchedule(
   medicationId: string,
   data: CreateScheduleBody
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const result = await client.query(
       `INSERT INTO medication_schedules (
@@ -265,8 +301,24 @@ async function updateSchedule(
   scheduleId: string,
   data: UpdateScheduleBody
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    const parent = await client.query<{ medication_id: string }>(
+      'SELECT medication_id FROM medication_schedules WHERE id=$1 AND user_id=$2',
+      [scheduleId, userId]
+    );
+    await lockLogMedication(
+      client,
+      userId,
+      parent.rows[0]?.medication_id ?? null
+    );
+    await client.query(
+      'SELECT id FROM medication_schedules WHERE id=$1 AND user_id=$2 FOR UPDATE',
+      [scheduleId, userId]
+    );
+    await guardLegacyScheduleMutation(client, userId, scheduleId, data);
+
     const updates: string[] = [];
     const values: unknown[] = [scheduleId, userId];
     let index = 3;
@@ -309,6 +361,7 @@ async function updateSchedule(
         `SELECT ${SCHEDULE_COLS} FROM medication_schedules WHERE id = $1 AND user_id = $2`,
         [scheduleId, userId]
       );
+      await client.query('COMMIT');
       return current.rows[0] ?? null;
     }
 
@@ -320,20 +373,44 @@ async function updateSchedule(
        RETURNING ${SCHEDULE_COLS}`,
       values
     );
+    await client.query('COMMIT');
     return result.rows[0] ?? null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
 }
 
 async function deleteSchedule(userId: string, scheduleId: string) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    const parent = await client.query<{ medication_id: string }>(
+      'SELECT medication_id FROM medication_schedules WHERE id=$1 AND user_id=$2',
+      [scheduleId, userId]
+    );
+    await lockLogMedication(
+      client,
+      userId,
+      parent.rows[0]?.medication_id ?? null
+    );
+    await client.query(
+      'SELECT id FROM medication_schedules WHERE id=$1 AND user_id=$2 FOR UPDATE',
+      [scheduleId, userId]
+    );
+    await guardLegacyScheduleMutation(client, userId, scheduleId, null);
+
     const result = await client.query(
       'DELETE FROM medication_schedules WHERE id = $1 AND user_id = $2 RETURNING id',
       [scheduleId, userId]
     );
+    await client.query('COMMIT');
     return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }

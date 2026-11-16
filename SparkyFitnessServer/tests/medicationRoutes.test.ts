@@ -106,7 +106,34 @@ describe('Medication Routes V2', () => {
 
   describe('GET /api/v2/medications', () => {
     it('lists medications for the user', async () => {
-      const meds = [{ id: UID, name: 'Wegovy', is_glp1: true }];
+      const meds = [
+        {
+          id: UID,
+          user_id: UID,
+          name: 'Synthetic medication',
+          is_glp1: true,
+          display_name: null,
+          type_id: null,
+          route_id: null,
+          strength_value: null,
+          strength_unit: null,
+          dose_amount: null,
+          dose_unit: null,
+          reason_text: null,
+          effectiveness_rating: null,
+          color: null,
+          icon: null,
+          photo_path: null,
+          is_active: true,
+          is_quick: false,
+          notes: null,
+          source: 'manual',
+          custom_fields: {},
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          schedules: [],
+        },
+      ];
       vi.mocked(medicationRepository.listMedications).mockResolvedValue(meds);
       const res = await request(app)
         .get('/api/v2/medications')

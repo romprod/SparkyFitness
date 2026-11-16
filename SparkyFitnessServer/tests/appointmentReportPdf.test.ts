@@ -178,3 +178,37 @@ it('preserves date-only legacy facts without presenting invented midnight timing
   expect(result.text).toContain('Recorded timing: —');
   expect(result.text).not.toContain('00:00');
 });
+
+it('prints current and historic authored managed plans without fabricating dose events', async () => {
+  const data = appointmentReportFixture();
+  data.managedPlans = [1, 2].map((revisionNo) => ({
+    courseId: 'synthetic-course',
+    revisionId: `revision-${revisionNo}`,
+    revisionNo,
+    medicationId: 'synthetic-medication',
+    medicationName: 'Synthetic managed medication',
+    timezone: 'Europe/London',
+    name: `Synthetic plan ${revisionNo}`,
+    current: revisionNo === 2,
+    status: revisionNo === 1 ? ('completed' as const) : ('paused' as const),
+    deleted: false,
+    startDate: revisionNo === 1 ? '2026-01-01' : '2026-02-01',
+    endDate: null,
+    closedDate: revisionNo === 1 ? '2026-01-31' : null,
+    targetDose: '0.25',
+    doseUnit: 'mg',
+    doseBasis: 'per_injection' as const,
+    schedules: appointmentReportFixture(true).currentMedications[0]!.schedules,
+    steps: [{ doseAmount: '0.25', doseUnit: 'mg', durationDays: 28 }],
+    activity: [
+      { fromAt: '2026-01-01T08:00:00Z', untilAt: '2026-02-01T08:00:00Z' },
+    ],
+  }));
+  const parsed = await parse(false, data);
+  expect(parsed.text).toContain('Managed plan current and revision history');
+  expect(parsed.text).toContain('Plan timezone: Europe/London.');
+  expect(parsed.text).toContain('revision 1 | historical | completed');
+  expect(parsed.text).toContain('revision 2 | current | paused');
+  expect(parsed.text).toContain('Authored step 1: 0.25 mg; duration 28 days.');
+  expect(parsed.text).toContain('No doses or medication events in this range.');
+});

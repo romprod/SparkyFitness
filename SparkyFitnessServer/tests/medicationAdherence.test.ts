@@ -457,3 +457,89 @@ describe('tallySymptomsByDay', () => {
     expect(byDay).toEqual({});
   });
 });
+
+describe('explicit managed and legacy adherence separation', () => {
+  const refs = {
+    course_revision_id: 'revision-1',
+    course_rule_id: 'rule-1',
+    course_slot_key: 'stable-slot',
+    scheduled_day: '2026-10-14',
+  };
+  const managedDue = {
+    medication: { id: 'med-1' },
+    schedule: { id: 'rule-1', ...refs },
+  };
+  it('requires exact revision, rule, slot and scheduled day for a managed due dose', () => {
+    expect(
+      entryMatchesDue(
+        entry({ schedule_id: null, entry_type: 'injection' }),
+        managedDue
+      )
+    ).toBe(false);
+    expect(
+      entryMatchesDue(entry({ ...refs, schedule_id: null }), managedDue)
+    ).toBe(true);
+    for (const field of [
+      'course_revision_id',
+      'course_rule_id',
+      'course_slot_key',
+      'scheduled_day',
+    ] as const)
+      expect(
+        entryMatchesDue(
+          entry({ ...refs, [field]: 'different', schedule_id: null }),
+          managedDue
+        )
+      ).toBe(false);
+  });
+  it('never credits an attributed managed entry to an unassigned or injection legacy fallback', () => {
+    for (const entry_type of ['entry', 'injection'] as const)
+      expect(
+        entryMatchesDue(entry({ ...refs, schedule_id: null, entry_type }), {
+          medication: { id: 'med-1' },
+          schedule: { id: 'legacy-rule' },
+        })
+      ).toBe(false);
+  });
+  it('leaves legacy rolling totals unchanged by managed PRN and skipped events', () => {
+    const input = {
+      medications: [med('med-1')],
+      endDate: '2026-10-14',
+      timezone: TZ,
+      windowDays: 1,
+    };
+    const baseline = computeAdherence({ ...input, entries: [entry()] });
+    expect(
+      computeAdherence({
+        ...input,
+        entries: [
+          entry(),
+          entry({ ...refs, status: 'prn_taken' }),
+          entry({ ...refs, status: 'skipped' }),
+        ],
+      })
+    ).toEqual(baseline);
+  });
+  it('keeps detached managed origin out of legacy fallback and PRN topups', () => {
+    const detached = entry({
+      course_origin: true,
+      schedule_id: null,
+      entry_type: 'injection',
+    });
+    expect(
+      entryMatchesDue(detached, {
+        medication: { id: 'med-1' },
+        schedule: { id: 'legacy' },
+      })
+    ).toBe(false);
+    expect(
+      computeAdherence({
+        medications: [med('med-1')],
+        entries: [{ ...detached, status: 'prn_taken' }],
+        endDate: '2026-10-14',
+        timezone: TZ,
+        windowDays: 1,
+      }).taken
+    ).toBe(0);
+  });
+});

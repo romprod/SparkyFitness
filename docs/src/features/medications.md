@@ -144,3 +144,13 @@ Monthly presentation applies a deterministic category rounding residual so round
 The selected chart extension is implemented and source-tested. Cabinet and Diary will explain missing required modelling parameters separately from no logged dose history. Custom profiles, the existing absorbed/site/total model and latest-60 history notice remain intact. This adds clarity about model coverage, not a new model or an expansion of recorded history. Final client and live verification are separate gates.
 
 Existing custom-profile fallback values remain part of model resolution; the notice does not turn a missing/zero/non-numeric custom setting that already uses those defaults into an unavailable model. The selected diagnostic distinguishes an unresolved profile or invalid effective parameters from an otherwise available model with no logged history.
+
+## Selected opt-in course history
+
+The selected website course-history extension is implemented and source-tested inside existing Cabinet schedule/titration tools. You explicitly opt into a course; old schedules and doses are not converted automatically. A review step identifies which existing schedule rules will be bounded before the new course supplies future dues. Unselected rules remain unchanged. Material revisions keep prior course history rather than rewriting it.
+
+Courses use Active, Scheduled, Paused, Past end date and Completed groups. Pausing and resuming do not generate missed doses for the paused period. Actual dose timestamps, delivered quantities and stock remain recorded facts. Older native apps retain the bounded legacy reminder path and do not gain reminders for these new website courses; no native binary is included. Ramps, stacks, forecasts and prescriptions are not part of this selected extension. Focused source/client and isolated transaction checks pass; exact App and live release evidence are recorded separately.
+
+Managed course creation, revision and explicitly attributed logging are website flows in this tranche. Older native clients keep their legacy behavior; they do not gain the new course-management/association controls or new-course reminders.
+
+Managed plans feed the website checklist; this tranche does not add a timed website medication-notification transport. Existing native apps do not schedule these plans until they are updated.

@@ -30,8 +30,12 @@ import {
   formatDose,
   INJECTION_SITES,
   medicationDoseInMg,
+  medicationCourseDoseSchema,
+  resolvePreparedMedicationRoute,
   type MedSubtype,
   type SharedScheduleRule,
+  type MedicationCourseExpectedSlot,
+  type MedicationCourseAttributionInput,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,10 +84,15 @@ import { MedTypeIcon } from './AddMedicationDialog';
 import GlpDailyCheckIn from './GlpDailyCheckIn';
 import Glp1QuickLogDialog from './Glp1QuickLogDialog';
 import MedicationLogCalendar from './MedicationLogCalendar';
+import { useMedicationCourseDue } from '@/hooks/Medications/useMedicationCourses';
+import MedicationCourseDoseDialog from './MedicationCourseDoseDialog';
+import MedicationCourseAttributionPicker from './MedicationCourseAttributionPicker';
 
 export interface DueDose {
   medication: MedicationDetail;
-  schedule: SharedScheduleRule & { id: string };
+  schedule: SharedScheduleRule & {
+    id: string;
+  } & Partial<MedicationCourseExpectedSlot>;
 }
 
 // Mass-based injectable doses are logged as injection entries (single source of truth with
@@ -118,6 +127,18 @@ export default function TodayMedications({
   const { t } = useTranslation();
   const { timezone, formatTime, timeFormat } = usePreferences();
   const { hasPermission, activeUserName } = useActiveUser();
+  const courseDue = useMedicationCourseDue(selectedDate);
+  const [managedDose, setManagedDose] = useState<{
+    due: DueDose;
+    takenAt: string;
+    notes: string | null;
+    scopeKey: string;
+  } | null>(null);
+  const [staleSlots, setStaleSlots] = useState<Set<string>>(new Set());
+  const [editAttribution, setEditAttribution] =
+    useState<MedicationCourseAttributionInput | null>(null);
+  const [editScopeKey, setEditScopeKey] = useState('');
+  const [editStale, setEditStale] = useState(false);
 
   // The GLP-1 check-in stores its data as check-in custom measurements, so it
   // requires check-in access. A delegate with only medications access would
@@ -133,6 +154,7 @@ export default function TodayMedications({
     null
   );
   const [editTime, setEditTime] = useState('');
+  const [originalEditTime, setOriginalEditTime] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editSite, setEditSite] = useState('none');
 
@@ -165,8 +187,62 @@ export default function TodayMedications({
   // Schedules evaluation
   const dueDoses = useMemo(() => {
     if (loadingMeds || meds.length === 0) return [];
-    return getDueDosesForDate(meds, selectedDate, timezone);
-  }, [meds, selectedDate, timezone, loadingMeds]);
+    const legacy: DueDose[] = getDueDosesForDate(meds, selectedDate, timezone);
+    const managed: DueDose[] = (courseDue.data?.slots ?? []).flatMap((slot) => {
+      const medication = meds.find(
+        (med) =>
+          med.id === slot.medication_id &&
+          med.user_id === courseDue.scope.ownerId
+      );
+      return medication && slot.scheduled_day === selectedDate
+        ? [{ medication, schedule: { ...slot, id: slot.course_rule_id } }]
+        : [];
+    });
+    return [...legacy, ...managed];
+  }, [
+    meds,
+    selectedDate,
+    timezone,
+    loadingMeds,
+    courseDue.data,
+    courseDue.scope.ownerId,
+  ]);
+
+  // The server verifies actual completion across administration days. These minimal
+  // match rows are only for the checklist; the activity log remains the selected day.
+  const fulfilledEntries = useMemo(
+    () =>
+      (courseDue.data?.fulfilled_slots ?? []).flatMap((fulfilled) => {
+        const due = dueDoses.find(
+          (item) =>
+            item.schedule.course_revision_id === fulfilled.course_revision_id &&
+            item.schedule.course_rule_id === fulfilled.course_rule_id &&
+            item.schedule.course_slot_key === fulfilled.course_slot_key &&
+            item.schedule.scheduled_day === fulfilled.scheduled_day
+        );
+        return due
+          ? [
+              {
+                id: fulfilled.entry_id,
+                medication_id: due.medication.id,
+                schedule_id: null,
+                status: fulfilled.status,
+                entry_type: fulfilled.source_kind,
+                entry_date: fulfilled.entry_date,
+                course_revision_id: fulfilled.course_revision_id,
+                course_rule_id: fulfilled.course_rule_id,
+                course_slot_key: fulfilled.course_slot_key,
+                scheduled_day: fulfilled.scheduled_day,
+              },
+            ]
+          : [];
+      }),
+    [courseDue.data, dueDoses]
+  );
+  const checklistEntries = useMemo(
+    () => [...entries, ...fulfilledEntries],
+    [entries, fulfilledEntries]
+  );
 
   const prnMeds = useMemo(() => {
     return meds.filter((m) => {
@@ -270,11 +346,29 @@ export default function TodayMedications({
           {!loadingMeds &&
             dues.map((due, idx) => {
               const entry = entries.find((e) => entryMatchesDue(e, due));
-              const isLogged =
-                entry &&
-                (entry.status === 'taken' || entry.status === 'skipped');
-              const isSnoozed = entry && entry.status === 'snoozed';
-              const doseLabel = formatDose(due.medication, due.schedule);
+              const fulfilment = fulfilledEntries.find((e) =>
+                entryMatchesDue(e, due)
+              );
+              const status = fulfilment?.status ?? entry?.status;
+              const loggedNotes =
+                fulfilment && fulfilment.id !== entry?.id ? null : entry?.notes;
+              const isLogged = status === 'taken' || status === 'skipped';
+              const isSnoozed = status === 'snoozed';
+              const managed = Boolean(due.schedule.course_revision_id);
+              const locked =
+                managed &&
+                (!courseDue.scope.canWrite ||
+                  courseDue.query.isError ||
+                  !courseDue.scope.isCurrent() ||
+                  staleSlots.has(due.schedule.course_slot_key!));
+              const noteKey = due.schedule.course_slot_key || due.schedule.id;
+              const doseLabel = managed
+                ? medicationCourseDoseSchema.safeParse(
+                    due.schedule.per_dose_amount
+                  ).success
+                  ? `${due.schedule.per_dose_amount} ${due.schedule.dose_unit}`
+                  : t('medications.courses.unknownDose', 'Unknown')
+                : formatDose(due.medication, due.schedule);
 
               return (
                 <div
@@ -289,9 +383,9 @@ export default function TodayMedications({
                 >
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 shrink-0">
-                      {isLogged && entry.status === 'taken' ? (
+                      {isLogged && status === 'taken' ? (
                         <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      ) : isLogged && entry.status === 'skipped' ? (
+                      ) : isLogged && status === 'skipped' ? (
                         <X className="h-5 w-5 text-muted-foreground" />
                       ) : (
                         <MedTypeIcon
@@ -338,20 +432,29 @@ export default function TodayMedications({
                             'medications.today.addNote',
                             'Add note...'
                           )}
-                          value={logNotes[due.schedule.id] || ''}
+                          value={logNotes[noteKey] || ''}
                           onChange={(e) =>
                             setLogNotes((prev) => ({
                               ...prev,
-                              [due.schedule.id]: e.target.value,
+                              [noteKey]: e.target.value,
                             }))
                           }
                           className="h-7 text-xs mt-2 max-w-[200px]"
                         />
                       )}
-                      {isLogged && entry?.notes && (
+                      {managed &&
+                        staleSlots.has(due.schedule.course_slot_key!) && (
+                          <p role="alert">
+                            {t(
+                              'medications.courses.staleDose',
+                              'The course changed. Refresh the checklist and review the dose before trying again. Your draft has been kept.'
+                            )}
+                          </p>
+                        )}
+                      {isLogged && loggedNotes && (
                         <p className="text-xs text-muted-foreground italic mt-1.5">
                           {t('medications.today.note2', 'Note: {{notes}}', {
-                            notes: entry.notes,
+                            notes: loggedNotes,
                           })}
                         </p>
                       )}
@@ -359,13 +462,13 @@ export default function TodayMedications({
                   </div>
 
                   <div className="flex items-center justify-end gap-2 mt-3 sm:mt-0 shrink-0">
-                    {isLogged && entry ? (
+                    {isLogged && (fulfilment || entry) ? (
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-8 px-2 text-xs hover:bg-destructive/10 hover:text-destructive flex items-center gap-1"
-                        onClick={() => handleUndoEntry(entry)}
-                        disabled={isPending}
+                        onClick={() => handleUndoEntry(fulfilment ?? entry!)}
+                        disabled={isPending || locked}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />{' '}
                         {t('medications.today.undo', 'Undo')}
@@ -377,7 +480,7 @@ export default function TodayMedications({
                           size="sm"
                           className="h-8 text-xs text-amber-600 border-amber-200 hover:bg-amber-50"
                           onClick={() => handleLogScheduled(due, 'snoozed')}
-                          disabled={isPending || isSnoozed}
+                          disabled={isPending || isSnoozed || locked}
                         >
                           {isSnoozed
                             ? t('medications.today.snoozed', 'Snoozed')
@@ -388,7 +491,7 @@ export default function TodayMedications({
                           size="sm"
                           className="h-8 text-xs text-muted-foreground hover:bg-muted"
                           onClick={() => handleLogScheduled(due, 'skipped')}
-                          disabled={isPending}
+                          disabled={isPending || locked}
                         >
                           {t('medications.today.skip', 'Skip')}
                         </Button>
@@ -396,7 +499,7 @@ export default function TodayMedications({
                           size="sm"
                           className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
                           onClick={() => handleLogScheduled(due, 'taken')}
-                          disabled={isPending}
+                          disabled={isPending || locked}
                         >
                           {t('medications.today.take', 'Take')}
                         </Button>
@@ -494,8 +597,8 @@ export default function TodayMedications({
   );
 
   const { completed: completedDosesCount, pct: progressPercentage } = useMemo(
-    () => computeChecklistProgress(dueDoses, entries),
-    [dueDoses, entries]
+    () => computeChecklistProgress(dueDoses, checklistEntries),
+    [dueDoses, checklistEntries]
   );
 
   // True 14-day adherence: evaluate each day's scheduled doses vs. what was taken.
@@ -516,7 +619,7 @@ export default function TodayMedications({
       dueDoses.find((d) => {
         if (!d.medication.is_glp1) return false;
         // Check if already logged on the selected date to hide the due banner once taken/skipped
-        const isLogged = entries.some(
+        const isLogged = checklistEntries.some(
           (e) =>
             entryMatchesDue(e, d) &&
             (e.status === 'taken' || e.status === 'skipped')
@@ -524,12 +627,59 @@ export default function TodayMedications({
         return !isLogged;
       }) ?? null
     );
-  }, [dueDoses, entries]);
+  }, [dueDoses, checklistEntries]);
 
   const handleLogScheduled = (
     due: DueDose,
     status: 'taken' | 'skipped' | 'snoozed'
   ) => {
+    if (due.schedule.course_revision_id) {
+      const slot = due.schedule as MedicationCourseExpectedSlot;
+      if (
+        !courseDue.scope.canWrite ||
+        courseDue.query.isError ||
+        !courseDue.scope.isCurrent() ||
+        staleSlots.has(slot.course_slot_key)
+      )
+        return;
+      const takenAt = new Date().toISOString();
+      const notes = logNotes[slot.course_slot_key]?.trim() || null;
+      if (status === 'taken') {
+        setManagedDose({ due, takenAt, notes, scopeKey: courseDue.scope.key });
+      } else {
+        createEntryMutation.mutate(
+          {
+            medication_id: due.medication.id,
+            status,
+            taken_at: takenAt,
+            entry_date: utcToLocalDateTimeInput(takenAt, timezone).slice(0, 10),
+            notes,
+            course_revision_id: slot.course_revision_id,
+            course_rule_id: slot.course_rule_id,
+            course_step_id: slot.course_step_id,
+            course_slot_key: slot.course_slot_key,
+            course_expected_version: slot.course_expected_version,
+            scheduled_day: slot.scheduled_day,
+            scheduled_for: slot.scheduled_for,
+          },
+          {
+            onSuccess: () =>
+              setLogNotes((previous) => {
+                const copy = { ...previous };
+                delete copy[slot.course_slot_key];
+                return copy;
+              }),
+            onError: (error) => {
+              if ((error as { status?: number }).status === 409)
+                setStaleSlots((previous) =>
+                  new Set(previous).add(slot.course_slot_key)
+                );
+            },
+          }
+        );
+      }
+      return;
+    }
     let scheduledFor = null;
     if (due.schedule.time_of_day) {
       try {
@@ -660,7 +810,14 @@ export default function TodayMedications({
     );
   };
 
-  const handleUndoEntry = (entry: MedicationEntry) => {
+  const handleUndoEntry = (
+    entry: Pick<MedicationEntry, 'id' | 'entry_type' | 'course_revision_id'>
+  ) => {
+    if (
+      entry.course_revision_id &&
+      (!courseDue.scope.canWrite || !courseDue.scope.isCurrent())
+    )
+      return;
     // Merged injection rows carry injection ids; deleting through the injection
     // endpoint also credits the dose back to the pen it was deducted from.
     if (entry.entry_type === 'injection') {
@@ -672,20 +829,45 @@ export default function TodayMedications({
 
   const openEditEntry = (entry: MedicationEntry) => {
     setEditingEntry(entry);
-    setEditTime(utcToLocalDateTimeInput(entry.taken_at, timezone));
+    setEditAttribution(null);
+    setEditStale(false);
+    setEditScopeKey(courseDue.scope.key);
+    const localTime = utcToLocalDateTimeInput(entry.taken_at, timezone);
+    setEditTime(localTime);
+    setOriginalEditTime(localTime);
     setEditNotes(entry.notes ?? '');
     setEditSite(entry.site ?? 'none');
   };
 
   const handleSaveEditEntry = () => {
-    if (!editingEntry) return;
+    if (!editingEntry || editStale) return;
+    if (
+      editingEntry.course_revision_id &&
+      (!courseDue.scope.canWrite ||
+        !courseDue.scope.isCurrent() ||
+        editScopeKey !== courseDue.scope.key)
+    )
+      return;
+    if (
+      editAttribution &&
+      (!courseDue.scope.canWrite ||
+        !courseDue.scope.isCurrent() ||
+        editScopeKey !== courseDue.scope.key)
+    )
+      return;
     const notes = editNotes.trim() || null;
-    const takenAtUtc = editTime
-      ? localDateTimeToUtc(editTime, timezone).toISOString()
-      : undefined;
+    const timeChanged = editTime !== originalEditTime;
+    const takenAtUtc =
+      editTime && timeChanged
+        ? localDateTimeToUtc(editTime, timezone).toISOString()
+        : undefined;
     // Keep the calendar day aligned with the edited local time.
-    const entryDate = editTime ? editTime.substring(0, 10) : undefined;
+    const entryDate =
+      editTime && timeChanged ? editTime.substring(0, 10) : undefined;
     const onSuccess = () => setEditingEntry(null);
+    const onError = (error: Error) => {
+      if ((error as { status?: number }).status === 409) setEditStale(true);
+    };
 
     if (editingEntry.entry_type === 'injection') {
       updateInjectionMutation.mutate(
@@ -696,9 +878,10 @@ export default function TodayMedications({
             ...(entryDate ? { entry_date: entryDate } : {}),
             site: editSite === 'none' ? null : editSite,
             notes,
+            ...(editAttribution ?? {}),
           },
         },
-        { onSuccess }
+        { onSuccess, onError }
       );
     } else {
       updateEntryMutation.mutate(
@@ -708,9 +891,10 @@ export default function TodayMedications({
             ...(takenAtUtc ? { taken_at: takenAtUtc } : {}),
             ...(entryDate ? { entry_date: entryDate } : {}),
             notes,
+            ...(editAttribution ?? {}),
           },
         },
-        { onSuccess }
+        { onSuccess, onError }
       );
     }
   };
@@ -774,6 +958,31 @@ export default function TodayMedications({
 
   return (
     <div className="space-y-6">
+      {courseDue.scope.ready && courseDue.query.isLoading && (
+        <p className="text-sm text-muted-foreground">
+          {t('medications.courses.loadingDues', 'Loading course doses…')}
+        </p>
+      )}
+      {courseDue.scope.ready && courseDue.query.isError && (
+        <p role="alert">
+          {t(
+            'medications.courses.dueLoadFailed',
+            'Course doses could not be loaded. Refresh the checklist before logging a planned dose.'
+          )}
+        </p>
+      )}
+      {(staleSlots.size > 0 || courseDue.query.isError) && (
+        <Button
+          variant="outline"
+          onClick={async () => {
+            const result = await courseDue.query.refetch();
+            if (courseDue.scope.isCurrent() && result.data)
+              setStaleSlots(new Set());
+          }}
+        >
+          {t('medications.courses.refreshCourse', 'Refresh course')}
+        </Button>
+      )}
       {/* Next GLP-1 injection banner */}
       {nextGlpDue && (
         <Card className="border-blue-500/30 bg-blue-50/40 dark:bg-blue-950/20">
@@ -811,7 +1020,7 @@ export default function TodayMedications({
                 </p>
               </div>
             </div>
-            {!entries.some(
+            {!checklistEntries.some(
               (e) =>
                 entryMatchesDue(e, nextGlpDue) &&
                 (e.status === 'taken' || e.status === 'skipped')
@@ -820,7 +1029,14 @@ export default function TodayMedications({
                 size="sm"
                 className="bg-blue-600 text-white hover:bg-blue-700"
                 onClick={() => handleLogScheduled(nextGlpDue, 'taken')}
-                disabled={isPending}
+                disabled={
+                  isPending ||
+                  Boolean(
+                    nextGlpDue.schedule.course_revision_id &&
+                    (!courseDue.scope.canWrite ||
+                      staleSlots.has(nextGlpDue.schedule.course_slot_key!))
+                  )
+                }
               >
                 {t('medications.today.logShot', 'Log shot')}
               </Button>
@@ -1230,6 +1446,47 @@ export default function TodayMedications({
         </div>
       </div>
 
+      {managedDose &&
+        managedDose.scopeKey === courseDue.scope.key &&
+        courseDue.scope.ready &&
+        courseDue.scope.isCurrent() && (
+          <MedicationCourseDoseDialog
+            key={`${managedDose.scopeKey}:${managedDose.due.schedule.course_slot_key}`}
+            med={managedDose.due.medication}
+            slot={managedDose.due.schedule as MedicationCourseExpectedSlot}
+            prepared={
+              resolvePreparedMedicationRoute(managedDose.due.medication) !==
+              null
+            }
+            takenAt={managedDose.takenAt}
+            notes={managedDose.notes}
+            onRefresh={async () => {
+              const result = await courseDue.query.refetch();
+              if (
+                !courseDue.scope.isCurrent() ||
+                managedDose.scopeKey !== courseDue.scope.key
+              )
+                return null;
+              return (
+                result.data?.slots.find(
+                  (slot) =>
+                    slot.course_slot_key ===
+                    managedDose.due.schedule.course_slot_key
+                ) ?? null
+              );
+            }}
+            onClose={() => setManagedDose(null)}
+            onLogged={() => {
+              const key = managedDose.due.schedule.course_slot_key!;
+              setLogNotes((previous) => {
+                const copy = { ...previous };
+                delete copy[key];
+                return copy;
+              });
+              setManagedDose(null);
+            }}
+          />
+        )}
       {/* Compact site prompt for GLP-1 injectables logged from this tab */}
       {pendingInjection && (
         <Glp1QuickLogDialog
@@ -1300,11 +1557,40 @@ export default function TodayMedications({
               />
             </div>
           </div>
+          {editingEntry &&
+            editScopeKey === courseDue.scope.key &&
+            courseDue.scope.ready && (
+              <MedicationCourseAttributionPicker
+                medicationId={editingEntry.medication_id}
+                initial={{
+                  course_revision_id: editingEntry.course_revision_id,
+                  course_rule_id: editingEntry.course_rule_id,
+                  course_step_id: editingEntry.course_step_id,
+                  course_slot_key: editingEntry.course_slot_key,
+                  scheduled_day: editingEntry.scheduled_day,
+                  scheduled_for: editingEntry.scheduled_for,
+                }}
+                value={editAttribution}
+                onChange={setEditAttribution}
+                disabled={isPending || !courseDue.scope.canWrite}
+              />
+            )}
+          {editStale && (
+            <p role="alert">
+              {t(
+                'medications.courses.staleDose',
+                'The course changed. Refresh the checklist and review the dose before trying again. Your draft has been kept.'
+              )}
+            </p>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditingEntry(null)}>
               {t('common.cancel', 'Cancel')}
             </Button>
-            <Button onClick={handleSaveEditEntry} disabled={isPending}>
+            <Button
+              onClick={handleSaveEditEntry}
+              disabled={isPending || editStale}
+            >
               {isPending
                 ? t('common.saving', 'Saving...')
                 : t('common.save', 'Save')}

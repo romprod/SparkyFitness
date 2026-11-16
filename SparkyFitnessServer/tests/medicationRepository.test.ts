@@ -1,4 +1,8 @@
 import { vi, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  createMockDbClient,
+  type MockDbClient,
+} from './helpers/mockDbClient.js';
 import medicationRepository from '../models/medicationRepository.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getClient } from '../db/poolManager.js';
@@ -7,20 +11,24 @@ vi.mock('../db/poolManager', () => ({
   getClient: vi.fn(),
 }));
 
+vi.mock('../models/medicationCourseRepository.js', () => ({
+  guardLegacyScheduleMutation: vi.fn(),
+}));
+
 describe('medicationRepository', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockClient: any;
+  let mockClient: MockDbClient;
   const userId = uuidv4();
   const scheduleId = uuidv4();
 
   beforeEach(() => {
-    mockClient = {
-      query: vi.fn(),
-      release: vi.fn(),
-    };
-    // @ts-expect-error mocked in the module mock above
-    getClient.mockResolvedValue(mockClient);
-    mockClient.query.mockClear();
+    mockClient = createMockDbClient();
+    vi.mocked(getClient).mockResolvedValue(mockClient);
+    mockClient.query.mockReset();
+    mockClient.query
+      .mockResolvedValue({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
   });
 
   afterEach(() => {
@@ -44,7 +52,9 @@ describe('medicationRepository', () => {
         }
       );
 
-      const [sql, values] = mockClient.query.mock.calls[0];
+      const [sql, values] = mockClient.query.mock.calls.find(([sql]) =>
+        String(sql).includes('UPDATE medication_schedules')
+      )!;
       expect(sql).toContain('UPDATE medication_schedules');
       expect(sql).toContain('schedule_type_id = $3');
       expect(sql).toContain('time_of_day = $4');
@@ -73,7 +83,9 @@ describe('medicationRepository', () => {
         {}
       );
 
-      const [sql, values] = mockClient.query.mock.calls[0];
+      const [sql, values] = mockClient.query.mock.calls.find(([sql]) =>
+        String(sql).includes('SELECT id, medication_id')
+      )!;
       expect(sql).toContain('SELECT');
       expect(sql).not.toContain('UPDATE');
       expect(values).toEqual([scheduleId, userId]);
@@ -90,7 +102,9 @@ describe('medicationRepository', () => {
         source: 'sneaky',
       });
 
-      const [sql, values] = mockClient.query.mock.calls[0];
+      const [sql, values] = mockClient.query.mock.calls.find(([sql]) =>
+        String(sql).includes('UPDATE medication_schedules')
+      )!;
       expect(sql).not.toContain('custom_fields =');
       expect(sql).not.toContain('source =');
       expect(values).toEqual([scheduleId, userId, '07:30']);

@@ -7,6 +7,7 @@ import type {
   MedicationWithMeal,
   MedicationPen,
   MedicationPreparationCreationInput,
+  MedicationCourseAttributionInput,
 } from '@workspace/shared';
 
 /**
@@ -90,7 +91,12 @@ export interface ListMedicationsOptions {
   activeOnly?: boolean;
 }
 
-export interface MedicationEntry {
+export interface MedicationEntry extends Omit<
+  MedicationCourseAttributionInput,
+  'course_expected_version'
+> {
+  /** Retained managed origin is read-only; it is not an attribution input. */
+  course_origin?: boolean | null;
   id: string;
   medication_id: string;
   schedule_id: string | null;
@@ -122,7 +128,7 @@ export interface MedicationEntry {
   site?: string | null;
 }
 
-export interface CreateMedicationEntryInput {
+export interface CreateMedicationEntryInput extends MedicationCourseAttributionInput {
   medication_id: string;
   schedule_id?: string | null;
   status?: 'taken' | 'skipped' | 'snoozed' | 'prn_taken';
@@ -137,7 +143,7 @@ export interface CreateMedicationEntryInput {
   custom_fields?: Record<string, unknown> | null;
 }
 
-export interface UpdateMedicationEntryInput {
+export interface UpdateMedicationEntryInput extends MedicationCourseAttributionInput {
   schedule_id?: string | null;
   status?: 'taken' | 'skipped' | 'snoozed' | 'prn_taken';
   taken_at?: string | null;

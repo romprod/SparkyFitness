@@ -22,6 +22,10 @@ describe('medicationEntryRepository.createEntry — nutrient snapshot', () => {
     mockClient.query.mockReset();
     vi.mocked(getClient).mockResolvedValue(mockClient);
     mockClient.query.mockClear();
+    mockClient.query
+      .mockResolvedValue({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: medicationId }] });
   });
 
   afterEach(() => {
@@ -57,16 +61,14 @@ describe('medicationEntryRepository.createEntry — nutrient snapshot', () => {
       expect.stringContaining('m.is_supplement, m.nutrients'),
       [medicationId, userId, null]
     );
-    // The INSERT must persist the snapshot as a JSON string in the last param.
+    // The INSERT must persist the snapshot as a JSON string at its stable INSERT position.
     const insertCall = mockClient.query.mock.calls.find((c: unknown[]) =>
       String(c[0]).includes('INSERT INTO medication_entries')
     );
     expect(insertCall).toBeDefined();
     expect(insertCall![0]).toContain('nutrients_snapshot');
     const insertParams = insertCall![1] as unknown[];
-    expect(insertParams[insertParams.length - 1]).toBe(
-      JSON.stringify(nutrients)
-    );
+    expect(insertParams[13]).toBe(JSON.stringify(nutrients));
     expect(result.id).toBe(entryId);
   });
 
@@ -95,7 +97,7 @@ describe('medicationEntryRepository.createEntry — nutrient snapshot', () => {
       String(c[0]).includes('INSERT INTO medication_entries')
     );
     const insertParams = insertCall![1] as unknown[];
-    expect(insertParams[insertParams.length - 1]).toBeNull();
+    expect(insertParams[13]).toBeNull();
   });
 
   it('forces a supplement dose_amount_snapshot from the medication, ignoring a client-supplied value', async () => {

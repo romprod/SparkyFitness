@@ -175,6 +175,28 @@ export async function getAppointmentReportData(
       'SELECT medication_id,schedule_type_id,time_of_day::text,days_of_week,interval_days,day_of_month,cycle_on_days,cycle_off_days,with_meal,prn_reason,prn_max_per_day,dose_amount::text,start_date::text,end_date::text,active FROM medication_schedules WHERE user_id=$1 ORDER BY time_of_day NULLS LAST,id',
       [owner]
     );
+    const managedRevisions = await client.query<Row>(
+      `SELECT c.id AS course_id,c.medication_id,c.medication_name_snapshot,c.timezone,c.current_revision_id,
+              r.id,r.revision_no,r.name,r.status,r.deleted_at,r.start_date::text,r.end_date::text,r.closed_date::text,
+              r.target_dose::text,r.dose_unit,r.dose_basis
+         FROM medication_courses c JOIN medication_course_revisions r ON r.course_id=c.id AND r.user_id=c.user_id
+        WHERE c.user_id=$1 ORDER BY c.captured_at,c.id,r.revision_no`,
+      [owner]
+    );
+    const managedRules = await client.query<Row>(
+      `SELECT revision_id,schedule_type_id,time_of_day::text,days_of_week,interval_days,day_of_month,cycle_on_days,cycle_off_days,
+              with_meal,prn_reason,prn_max_per_day,dose_amount::text,start_date::text,end_date::text
+         FROM medication_course_rules WHERE user_id=$1 ORDER BY revision_id,rule_index`,
+      [owner]
+    );
+    const managedSteps = await client.query<Row>(
+      'SELECT revision_id,dose::text,dose_unit,duration_days FROM medication_course_steps WHERE user_id=$1 ORDER BY revision_id,step_index',
+      [owner]
+    );
+    const managedActivity = await client.query<Row>(
+      'SELECT revision_id,from_at,until_at FROM medication_course_activity WHERE user_id=$1 ORDER BY revision_id,from_at',
+      [owner]
+    );
     const titration = await client.query<Row>(
       'SELECT medication_id,dose_mg::text,dose_unit,start_date::text,planned_weeks,status FROM medication_titration_steps WHERE user_id=$1 ORDER BY step_order,id',
       [owner]
@@ -185,7 +207,7 @@ export async function getAppointmentReportData(
       args
     );
     const injections = await client.query<Row>(
-      'SELECT id,medication_id,dose_mg::text,volume_ml::text,dose_input_unit,administration_route,injected_at,entry_date::text,site FROM injection_entries WHERE user_id=$1 AND entry_date BETWEEN $2 AND $3 ORDER BY entry_date,injected_at,id',
+      'SELECT i.id,i.medication_id,i.dose_mg::text,i.volume_ml::text,i.dose_input_unit,i.administration_route,i.injected_at,i.scheduled_for,i.entry_date::text,i.site,i.medication_name_snapshot FROM injection_entries i WHERE i.user_id=$1 AND i.entry_date BETWEEN $2 AND $3 ORDER BY i.entry_date,i.injected_at,i.id',
       args
     );
     const symptoms = await client.query<Row>(
@@ -249,14 +271,23 @@ export async function getAppointmentReportData(
           id: String(row.id),
           sourceKind: 'injection',
           medicationId: text(row.medication_id),
-          name: nameById.get(String(row.medication_id)) ?? null,
-          nameBasis: nameById.has(String(row.medication_id))
-            ? 'current_link'
-            : 'unknown',
+          name:
+            text(row.medication_name_snapshot) ??
+            nameById.get(String(row.medication_id)) ??
+            null,
+          nameBasis: row.medication_name_snapshot
+            ? 'snapshot'
+            : nameById.has(String(row.medication_id))
+              ? 'current_link'
+              : 'unknown',
           trackingDay: String(row.entry_date),
           occurredAt: recordedIso(row.injected_at),
-          scheduledFor: null,
-          timingDeltaMinutes: null,
+          scheduledFor: recordedIso(row.scheduled_for),
+          timingDeltaMinutes: timingDeltaMinutes(
+            row.injected_at,
+            row.scheduled_for,
+            true
+          ),
           status: 'taken',
           administered: true,
           doseAmount: knownDeliveredMass(row),
@@ -312,6 +343,62 @@ export async function getAppointmentReportData(
             startDate: text(t.start_date),
             plannedWeeks: number(t.planned_weeks),
             status: String(t.status),
+          })),
+      })),
+      managedPlans: managedRevisions.rows.map((revision) => ({
+        courseId: String(revision.course_id),
+        revisionId: String(revision.id),
+        revisionNo: Number(revision.revision_no),
+        medicationId: text(revision.medication_id),
+        medicationName: String(revision.medication_name_snapshot),
+        timezone: String(revision.timezone),
+        name: String(revision.name),
+        current: revision.current_revision_id === revision.id,
+        status: revision.status as 'active' | 'paused' | 'completed',
+        deleted:
+          revision.deleted_at !== null && revision.deleted_at !== undefined,
+        startDate: text(revision.start_date),
+        endDate: text(revision.end_date),
+        closedDate: text(revision.closed_date),
+        targetDose: text(revision.target_dose),
+        doseUnit: String(revision.dose_unit),
+        doseBasis: revision.dose_basis as 'per_injection' | 'per_week',
+        schedules: managedRules.rows
+          .filter((rule) => rule.revision_id === revision.id)
+          .map((rule) => ({
+            type: String(rule.schedule_type_id),
+            timeOfDay: text(rule.time_of_day),
+            daysOfWeek: Array.isArray(rule.days_of_week)
+              ? rule.days_of_week.map(Number)
+              : null,
+            intervalDays: number(rule.interval_days),
+            dayOfMonth: number(rule.day_of_month),
+            cycleOnDays: number(rule.cycle_on_days),
+            cycleOffDays: number(rule.cycle_off_days),
+            withMeal: text(rule.with_meal),
+            prnReason: text(rule.prn_reason),
+            prnMaxPerDay: number(rule.prn_max_per_day),
+            doseAmount: text(rule.dose_amount) ?? text(revision.target_dose),
+            doseUnit: text(revision.dose_unit),
+            startDate: text(rule.start_date) ?? text(revision.start_date),
+            endDate: text(rule.end_date) ?? text(revision.end_date),
+            active:
+              revision.current_revision_id === revision.id &&
+              revision.status === 'active' &&
+              !revision.deleted_at,
+          })),
+        steps: managedSteps.rows
+          .filter((step) => step.revision_id === revision.id)
+          .map((step) => ({
+            doseAmount: String(step.dose),
+            doseUnit: String(step.dose_unit),
+            durationDays: number(step.duration_days),
+          })),
+        activity: managedActivity.rows
+          .filter((activity) => activity.revision_id === revision.id)
+          .map((activity) => ({
+            fromAt: iso(activity.from_at)!,
+            untilAt: iso(activity.until_at),
           })),
       })),
       doseLog,

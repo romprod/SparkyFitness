@@ -189,7 +189,20 @@ const translateMealRelation = (withMeal: MedicationWithMeal): string => {
 };
 
 export const formatScheduleDescription = (
-  sched: MedicationSchedule,
+  sched: Pick<MedicationSchedule, 'schedule_type_id'> &
+    Partial<
+      Pick<
+        MedicationSchedule,
+        | 'time_of_day'
+        | 'with_meal'
+        | 'days_of_week'
+        | 'interval_days'
+        | 'cycle_on_days'
+        | 'cycle_off_days'
+        | 'day_of_month'
+        | 'prn_reason'
+      >
+    >,
   timeFormat: string
 ) => {
   const timeStr = sched.time_of_day
@@ -208,7 +221,7 @@ export const formatScheduleDescription = (
       return `${i18n.t('medications.scheduleDesc.daily', 'Daily')}${timeStr}${mealStr}`;
     case 'weekly':
     case 'specific_days':
-      return `${i18n.t('medications.scheduleDesc.weeklyOn', 'Weekly on {{days}}', { days: formatDaysOfWeek(sched.days_of_week) })}${timeStr}${mealStr}`;
+      return `${i18n.t('medications.scheduleDesc.weeklyOn', 'Weekly on {{days}}', { days: formatDaysOfWeek(sched.days_of_week ?? null) })}${timeStr}${mealStr}`;
     case 'every_n_days':
       return `${i18n.t('medications.scheduleDesc.everyNDays', 'Every {{n}} days', { n: sched.interval_days })}${timeStr}${mealStr}`;
     case 'cyclic':

@@ -1,3 +1,11 @@
+import type { PoolClient } from 'pg';
+import {
+  courseLogFields,
+  lockLogMedication,
+  lockStoredCourseLog,
+  validateCourseLog,
+  type StoredCourseLog,
+} from '../services/medicationCourseLogService.js';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreateMedicationEntryBody,
@@ -6,11 +14,27 @@ import type {
 
 const ENTRY_COLS = `id, medication_id, schedule_id, user_id, status, taken_at, scheduled_for, entry_date,
   med_name_snapshot, dose_amount_snapshot, dose_unit_snapshot, notes, source, custom_fields, created_at, updated_at,
-  nutrients_snapshot`;
+  nutrients_snapshot, course_revision_id, course_rule_id, course_step_id, scheduled_day, course_slot_key, course_origin`;
 
 async function createEntry(userId: string, data: CreateMedicationEntryBody) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    if (data.course_revision_id && data.schedule_id)
+      throw Object.assign(
+        new Error(
+          'Select either a managed course slot or a legacy schedule, not both.'
+        ),
+        { statusCode: 422 }
+      );
+    await lockLogMedication(client, userId, data.medication_id);
+    await validateCourseLog(
+      client,
+      userId,
+      data.medication_id,
+      data,
+      data.entry_date
+    );
     // Fetch medication snapshot details. We always look the medication up (when a
     // medication_id is present) because — beyond filling in any missing name/dose
     // snapshots — we must capture the per-dose nutrient payload for supplements.
@@ -60,9 +84,9 @@ async function createEntry(userId: string, data: CreateMedicationEntryBody) {
       `INSERT INTO medication_entries (
          medication_id, schedule_id, user_id, status, taken_at, scheduled_for, entry_date,
          med_name_snapshot, dose_amount_snapshot, dose_unit_snapshot, notes, source, custom_fields,
-         nutrients_snapshot)
+         nutrients_snapshot, course_revision_id, course_rule_id, course_step_id, scheduled_day, course_slot_key, course_origin)
        VALUES ($1, $2, $3, COALESCE($4, 'taken'), COALESCE($5, NOW()), $6, COALESCE($7, CURRENT_DATE),
-         $8, $9, $10, $11, COALESCE($12, 'manual'), COALESCE($13, '{}'::jsonb), $14)
+         $8, $9, $10, $11, COALESCE($12, 'manual'), COALESCE($13, '{}'::jsonb), $14, $15, $16, $17, $18, $19, $20)
        RETURNING ${ENTRY_COLS}`,
       [
         data.medication_id,
@@ -81,9 +105,15 @@ async function createEntry(userId: string, data: CreateMedicationEntryBody) {
         nutrientsSnapshot !== null && nutrientsSnapshot !== undefined
           ? JSON.stringify(nutrientsSnapshot)
           : null,
+        ...courseLogFields.map((key) => data[key] ?? null),
+        data.course_revision_id ? true : null,
       ]
     );
+    await client.query('COMMIT');
     return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
@@ -93,7 +123,7 @@ async function listEntries(
   userId: string,
   opts: { fromDate?: string; toDate?: string; medicationId?: string } = {}
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const params: Array<string | number> = [userId];
     const where: string[] = ['user_id = $1'];
@@ -135,7 +165,7 @@ async function listEntriesWithInjections(
   userId: string,
   opts: { fromDate?: string; toDate?: string; medicationId?: string } = {}
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const params: Array<string | number> = [userId];
     const where: string[] = ['user_id = $1'];
@@ -163,11 +193,11 @@ async function listEntriesWithInjections(
        UNION ALL
        SELECT i.id, i.medication_id, NULL::uuid AS schedule_id, i.user_id,
               'taken'::text AS status, i.injected_at AS taken_at,
-              NULL::timestamptz AS scheduled_for, i.entry_date,
-              COALESCE(m.display_name, m.name) AS med_name_snapshot,
+              i.scheduled_for, i.entry_date,
+              COALESCE(i.medication_name_snapshot, m.display_name, m.name) AS med_name_snapshot,
               i.dose_mg AS dose_amount_snapshot, 'mg'::text AS dose_unit_snapshot,
               i.notes, i.source, i.custom_fields, i.created_at, i.updated_at,
-              NULL::jsonb AS nutrients_snapshot,
+              NULL::jsonb AS nutrients_snapshot, i.course_revision_id, i.course_rule_id, i.course_step_id, i.scheduled_day, i.course_slot_key, i.course_origin,
               i.site, 'injection'::text AS entry_type,i.pen_id,i.syringe_id,i.volume_ml::text,i.syringe_units::text,i.dose_input_unit,i.dose_mg::text AS dose_mg_exact,i.preparation_id,i.administration_route
          FROM injection_entries i
          LEFT JOIN medications m ON m.id = i.medication_id
@@ -186,13 +216,58 @@ async function updateEntry(
   id: string,
   data: UpdateMedicationEntryBody
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    const parent = await client.query<StoredCourseLog>(
+      'SELECT medication_id FROM medication_entries WHERE id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    await lockLogMedication(
+      client,
+      userId,
+      parent.rows[0]?.medication_id ?? null
+    );
+    const existing = await client.query<StoredCourseLog>(
+      'SELECT * FROM medication_entries WHERE id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    const stored = existing.rows[0];
+    if (data.course_revision_id === null && stored?.course_revision_id) {
+      // Detaching a plan relationship must not erase the actual's captured timing facts.
+      data = { ...data, scheduled_for: undefined, scheduled_day: undefined };
+    }
+    const effectiveRevision =
+      data.course_revision_id !== undefined
+        ? data.course_revision_id
+        : stored?.course_revision_id;
+    const effectiveSchedule =
+      data.schedule_id !== undefined
+        ? data.schedule_id
+        : existing.rows[0]?.schedule_id;
+    if (effectiveRevision && effectiveSchedule)
+      throw Object.assign(
+        new Error(
+          'Clear the legacy schedule before explicitly assigning a managed course.'
+        ),
+        { statusCode: 422 }
+      );
+    if (stored)
+      await validateCourseLog(
+        client,
+        userId,
+        stored.medication_id,
+        data,
+        data.entry_date,
+        stored
+      );
+
     const updates: string[] = [];
     const values: unknown[] = [id, userId];
     let index = 3;
 
     const fields: (keyof UpdateMedicationEntryBody)[] = [
+      ...courseLogFields,
       'schedule_id',
       'status',
       'taken_at',
@@ -221,6 +296,7 @@ async function updateEntry(
         `SELECT ${ENTRY_COLS} FROM medication_entries WHERE id = $1 AND user_id = $2`,
         [id, userId]
       );
+      await client.query('COMMIT');
       return current.rows[0] ?? null;
     }
 
@@ -232,20 +308,45 @@ async function updateEntry(
        RETURNING ${ENTRY_COLS}`,
       values
     );
+    await client.query('COMMIT');
     return result.rows[0] ?? null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
 }
 
 async function deleteEntry(userId: string, id: string): Promise<boolean> {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
+    await client.query('BEGIN');
+    const parent = await client.query<StoredCourseLog>(
+      'SELECT medication_id FROM medication_entries WHERE id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    await lockLogMedication(
+      client,
+      userId,
+      parent.rows[0]?.medication_id ?? null
+    );
+    const existing = await client.query<StoredCourseLog>(
+      'SELECT * FROM medication_entries WHERE id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    if (existing.rows[0])
+      await lockStoredCourseLog(client, userId, existing.rows[0]);
+
     const result = await client.query(
       'DELETE FROM medication_entries WHERE id = $1 AND user_id = $2 RETURNING id',
       [id, userId]
     );
+    await client.query('COMMIT');
     return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }

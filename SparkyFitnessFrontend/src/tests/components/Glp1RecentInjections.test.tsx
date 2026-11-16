@@ -8,6 +8,36 @@ import {
 } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
 import Glp1RecentInjections from '@/pages/Medications/Glp1RecentInjections';
+let mockCourseCurrent = true;
+jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
+  HttpApiError: jest.requireActual('@/api/api').HttpApiError,
+  useMedicationCourseScope: () => ({
+    isCurrent: () => mockCourseCurrent,
+    canWrite: true,
+  }),
+}));
+jest.mock('@/pages/Medications/MedicationCourseAttributionPicker', () => ({
+  __esModule: true,
+  default: ({
+    onChange,
+  }: {
+    onChange: (value: {
+      course_revision_id: string;
+      course_expected_version: number;
+    }) => void;
+  }) => (
+    <button
+      onClick={() =>
+        onChange({
+          course_revision_id: 'explicit-revision',
+          course_expected_version: 2,
+        })
+      }
+    >
+      Choose explicit revision
+    </button>
+  ),
+}));
 const mockUpdate = jest.fn();
 const mockPreview = jest.fn();
 let mockEntries: InjectionEntry[] = [];
@@ -47,6 +77,7 @@ const syringe = {
 };
 beforeEach(() => {
   mockUpdate.mockClear();
+  mockCourseCurrent = true;
   mockTimezone = 'Europe/London';
   mockTimeFormat = 'HH:mm';
   mockFetching = false;
@@ -401,4 +432,30 @@ it('uses dose wording for an empty prepared nasal history', () => {
   expect(
     screen.queryByText('No injections logged yet.')
   ).not.toBeInTheDocument();
+});
+
+it('preserves history association when untouched and changes it only after explicit selection', () => {
+  mockEntries[0]!.course_revision_id = 'saved-revision';
+  open();
+  fireEvent.change(screen.getByLabelText('Notes'), {
+    target: { value: 'Metadata only' },
+  });
+  save();
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'course_revision_id'
+  );
+});
+it('submits explicit association without rewriting delivered amount or timestamp', () => {
+  open();
+  fireEvent.click(screen.getByRole('button', { name: 'Plan association' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Choose explicit revision' })
+  );
+  save();
+  expect(mockUpdate.mock.calls[0][0].body).toMatchObject({
+    course_revision_id: 'explicit-revision',
+    course_expected_version: 2,
+  });
+  for (const key of ['dose_mg', 'calculated_draw', 'injected_at', 'entry_date'])
+    expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(key);
 });

@@ -250,6 +250,13 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     medication_preparation_corrections: 'medication',
     medication_preparation_dose_corrections: 'medication',
     medication_schedules: 'medication',
+    medication_courses: 'medication',
+    medication_course_revisions: 'medication',
+    medication_course_rules: 'medication',
+    medication_course_steps: 'medication',
+    medication_course_activity: 'medication',
+    medication_course_handoffs: 'medication',
+    medication_course_operations: 'medication',
     medication_titration_steps: 'medication',
     medications: 'medication',
     // symptom (own permission; see the symptom_entries pins below for the

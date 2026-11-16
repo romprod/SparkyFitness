@@ -106,3 +106,9 @@ C01/C02/bounded C06 use `/api/v2/medication-purchases`, separate from delegated 
 ## Appointment report contract
 
 `src/reports/appointmentReport.ts` contains the appointment query/date-range contract and recorded-fact DTO consumed by the server renderer and existing web report card. Keep real ISO calendar-date and IANA-zone validation, default inclusive 90-day range, exact dose units and qualified lab values. Latest explicit lab panels have an independent period label. Preserve missing facts as unknown, never inferred zero or a clinical interpretation. The direct PDF is owner-only; its contract does not grant delegated access or change existing Print/CSV.
+
+## Medication course history
+
+`schemas/api/MedicationCourses.api.zod.ts` and `schemas/database/MedicationCourses.zod.ts` define opt-in courses, explicit revision lineage, multiple authored recurrence rules, optional phases, instant activity intervals, reviewed legacy-rule handoffs and mutation receipts. Actual-dose attribution is nullable and explicit; never infer legacy links. Preserve date-only authored boundaries separately from actual timestamps and frozen tracking days.
+
+Actual logs retain a forward-only `course_origin` marker after course-reference detachment, preventing managed doses from becoming legacy same-medication adherence credit. New injections capture an immutable `medication_name_snapshot`; no old names or origin markers are inferred or backfilled. These fields are server-owned, never client attribution inputs.

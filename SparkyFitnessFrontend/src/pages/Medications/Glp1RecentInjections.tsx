@@ -11,6 +11,7 @@ import {
   isDeviceEligibleForRoute,
   type DeviceDose,
   type DrawPreviewInput,
+  type MedicationCourseAttributionInput,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,11 @@ import {
   useDeleteInjectionMutation,
 } from '@/hooks/useMedications';
 import MedicationDrawPreview from './MedicationDrawPreview';
+import MedicationCourseAttributionPicker from './MedicationCourseAttributionPicker';
+import {
+  useMedicationCourseScope,
+  HttpApiError,
+} from '@/hooks/Medications/useMedicationCourses';
 import {
   useMedicationDrawPreview,
   useMedicationSyringes,
@@ -54,6 +60,11 @@ export default function Glp1RecentInjections({
   const { t } = useTranslation();
   const { formatDate, timezone } = usePreferences();
   const medId = med.id;
+  const courseScope = useMedicationCourseScope();
+  const [association, setAssociation] =
+    useState<MedicationCourseAttributionInput | null>(null);
+  const [showAssociation, setShowAssociation] = useState(false);
+  const [associationStale, setAssociationStale] = useState(false);
 
   const injQ = useMedicationInjections(medId);
   const updateInjMutation = useUpdateInjectionMutation(medId);
@@ -159,6 +170,9 @@ export default function Glp1RecentInjections({
       previewQ.data.warnings.some((warning) => warning.severity === 'block'));
 
   const openEdit = (inj: InjectionEntry) => {
+    setAssociation(null);
+    setShowAssociation(false);
+    setAssociationStale(false);
     const device = syringesQ.data?.syringes.find(
       (row) => row.id === inj.syringe_id
     );
@@ -198,6 +212,9 @@ export default function Glp1RecentInjections({
   const handleSaveEdit = () => {
     if (
       !editingInj ||
+      associationStale ||
+      (association !== null &&
+        (!courseScope.isCurrent() || !courseScope.canWrite)) ||
       editTimeInvalid ||
       editAmountBlocked ||
       (calculatedEntry &&
@@ -211,6 +228,7 @@ export default function Glp1RecentInjections({
       {
         id: editingInj.id,
         body: {
+          ...(association ?? {}),
           ...(!nasal ? { site: editSite === 'none' ? null : editSite } : {}),
           ...(amountChanged
             ? calculatedEntry && editPreviewInput
@@ -239,7 +257,13 @@ export default function Glp1RecentInjections({
       },
       {
         onSuccess: () => setEditingInj(null),
-        onError: () => {
+        onError: (error) => {
+          if (
+            association !== null &&
+            error instanceof HttpApiError &&
+            error.status === 409
+          )
+            setAssociationStale(true);
           setReviewing(false);
           if (editPreviewInput) void previewQ.refetch();
         },
@@ -349,6 +373,38 @@ export default function Glp1RecentInjections({
           </DialogHeader>
           {!reviewing && (
             <div className="space-y-4 py-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowAssociation((value) => !value)}
+              >
+                {t('medications.courses.association', 'Plan association')}
+              </Button>
+              {showAssociation && editingInj && (
+                <MedicationCourseAttributionPicker
+                  medicationId={medId}
+                  initial={editingInj}
+                  value={association}
+                  disabled={updateInjMutation.isPending}
+                  onChange={(value) => {
+                    setAssociation(value);
+                    setAssociationStale(false);
+                    setReviewing(false);
+                  }}
+                />
+              )}
+              {associationStale && (
+                <p
+                  role="status"
+                  className="rounded-md border bg-muted/20 p-3 text-sm"
+                >
+                  {t(
+                    'medications.courses.associationStale',
+                    'This plan association changed. Refresh plan choices and select explicitly before saving. Your actual dose and time are retained.'
+                  )}
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-1">
                   <Label
@@ -559,6 +615,9 @@ export default function Glp1RecentInjections({
               }}
               disabled={
                 updateInjMutation.isPending ||
+                associationStale ||
+                (association !== null &&
+                  (!courseScope.isCurrent() || !courseScope.canWrite)) ||
                 editAmountBlocked ||
                 staleReview ||
                 editTimeInvalid

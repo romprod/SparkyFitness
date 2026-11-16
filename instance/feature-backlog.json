@@ -1,13 +1,13 @@
 {
   "reviewed_on": "2026-11-14",
-  "prepared_on": "2026-11-15",
+  "prepared_on": "2026-11-16",
   "repository": "https://github.com/romprod/SparkyFitness",
   "upstream": "https://github.com/CodeWithCJ/SparkyFitness",
   "upstream_baseline": "39d9ca2d13c2a1b9f64e4be793b2f23433489d0c",
   "customisation_baseline": "d0dbab307061d938ece4e1bd32308cf2b3a120f6",
   "reference_repository": "https://github.com/kavo91/peptide-pitstop",
   "reference_commit": "1caffbcfaeb4ccaccee9806a37d169e013328528",
-  "scope": "Source-verified candidate and delivered/partial coverage for the instance fork. Current baseline 3df46182c includes the completed invoice and consumed-cost reports plus direct website requests. Selected web C04/C05 and monthly bounded C07 are implemented and tested; live operational release identity is recorded separately. Status and implementation_scope distinguish remaining work.",
+  "scope": "Source-verified delivered/partial coverage for the instance fork. PDF parity baseline a4894fbbb is live. Selected opt-in website P05/P06 is implemented/source-tested; exact App and live operational evidence are recorded separately. Status and implementation_scope distinguish remaining work.",
   "items": [
     {
       "id": "D01",
@@ -241,10 +241,13 @@
       "decision": "Extend",
       "priority": "First",
       "relative_effort": "L",
-      "dependencies_and_limits": "Deferred pending explicit course, injection-association and phase-model design; not a UI-only port. Preserve historical adherence/current phase across frequency changes, beyond existing dose snapshots. Required before schedule-aware forecasting.",
-      "status": "proposed",
+      "dependencies_and_limits": "Explicit course/revision/dose/phase model supports only new opt-in website courses, with reviewed selected-rule handoff and no inferred legacy links. I06 forecasts remain a separate later dependency; P02 ramps/P03 stacks/prescriptions and new native controls are excluded.",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/protocol-revision.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessServer/models/titrationRepository.ts"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessServer/models/titrationRepository.ts",
+      "implementation_scope": "Implemented and source-tested selected scope: opt-in website medication courses with explicit revision/dose association and reviewed material schedule changes that retain prior schedule/history. No retroactive conversion or inferred legacy links. Before managed future dues, explicitly review and bound only selected legacy schedule rules; do not silently rewrite other rules. Preserve source phase carry only when recorded provenance supports it. No P02 ramp/P03 stack/forecast/prescription expansion. Additive migration/RLS and isolated race/privacy checks pass; exact App/image/live evidence and backup/recovery are separate release gates.",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "412 unique isolated PostgreSQL cases: retained410, one authoritative historical-slot fulfilment delta and one anchor/frequency delta; fresh migrations/two replays and actual a489 old-image smoke only before any managed data. Math49 and web193 focused cases plus scoped schema/routes/compatibility/static checks pass. No global server-suite pass claim; known baseline mock failures remain documented. Actual App/image/live readback is recorded separately."
     },
     {
       "id": "P06",
@@ -257,9 +260,12 @@
       "priority": "Next",
       "relative_effort": "M",
       "dependencies_and_limits": "Depends on P05. Past courses should remain queryable.",
-      "status": "proposed",
+      "status": "implemented_partial",
       "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/lib/protocol-bucket.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/shared/src/medications/contracts.ts"
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/shared/src/medications/contracts.ts",
+      "implementation_scope": "Implemented and source-tested for the opt-in website course model: stored active/paused/completed with source precedence for Active/Scheduled/Paused/Past end date/Completed display groups. Preserve frozen superseded revisions, actual logs and activity intervals; pause/resume must not backfill missed dues. Older native clients retain bounded legacy reminder behavior and do not gain new-course reminders or a binary update. Source/client checks pass; exact App and live evidence are recorded separately.",
+      "reference_deployed_commit": "b305c4c95f2118051c0e03f719d9330bfe3f9818",
+      "verification": "412 unique isolated PostgreSQL cases: retained410, one authoritative historical-slot fulfilment delta and one anchor/frequency delta; fresh migrations/two replays and actual a489 old-image smoke only before any managed data. Math49 and web193 focused cases plus scoped schema/routes/compatibility/static checks pass. No global server-suite pass claim; known baseline mock failures remain documented. Actual App/image/live readback is recorded separately."
     },
     {
       "id": "P07",

@@ -19,6 +19,13 @@ const medicationEntriesFieldsSchema = z.object({
   // the medication it came from, which is why the row carries its own snapshots.
   medication_id: z.string().nullable(),
   schedule_id: z.string().nullable(),
+  course_origin: z.boolean().nullable().optional(),
+  course_revision_id: z.string().uuid().nullable().optional(),
+  course_rule_id: z.string().uuid().nullable().optional(),
+  course_step_id: z.string().uuid().nullable().optional(),
+  scheduled_day: z.string().nullable().optional(),
+  course_slot_key: z.string().nullable().optional(),
+
   user_id: userIdSchema,
   status: z.string(),
   taken_at: z.date(),

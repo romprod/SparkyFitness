@@ -198,3 +198,11 @@ Owner-requested website chrome: shared layouts no longer render Initial Beta Rel
 ## Direct appointment PDF
 
 `AppointmentPdfExport.tsx`, `useAppointmentReport` and `api/Reports/appointmentReport.ts` extend the existing Prescriber Ready card in Reports → Medications. Keep PDF-specific From/To controls distinct from existing chart/report filters, Print and CSV. Use authoritative active-owner identity before requesting a private PDF; abort/discard late blobs across identity changes and clean object URLs. Do not include report contents in errors or logs. Preserve the existing delegated Print flow; the new owner-only PDF control must not introduce another report destination.
+
+## Opt-in course UI
+
+Keep P05/P06 course controls within Cabinet schedule/titration flows, without new navigation or stock tooling. Creating managed future dues requires explicit review of selected legacy-rule bounds. Preserve actor/profile identity, exact pending-operation retry and stale-review handling; never infer legacy course links. Frozen superseded revisions must not appear editable. Match source lifecycle groups and material-revision review, and disclose unknown phase carry rather than guessing. Older native clients do not receive new-course reminders; preserve the unchanged legacy path and current chart/PDF/stock behavior. No ramp/stack/forecast/prescription feature is included.
+
+Managed slot fulfilment is separate from the actual recorded timestamp/tracking day. A historical selected slot can be fulfilled by a dose recorded at browser Now; determine fulfilment from its explicit revision/rule/slot association, not only a date-filtered actual-history list. Never backdate an actual dose merely to make a checklist appear complete.
+
+Managed plans feed the website checklist; this tranche does not add a timed website medication-notification transport. Existing native apps do not schedule these plans until they are updated.

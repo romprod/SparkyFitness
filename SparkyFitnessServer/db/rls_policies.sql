@@ -110,6 +110,13 @@ BEGIN
     'day_classification_cache',
     'medications',
     'medication_schedules',
+    'medication_courses',
+    'medication_course_revisions',
+    'medication_course_rules',
+    'medication_course_steps',
+    'medication_course_activity',
+    'medication_course_handoffs',
+    'medication_course_operations',
     'medication_entries',
     'medication_pens',
     'medication_syringes',
@@ -1090,6 +1097,13 @@ WITH CHECK (authenticated_user_id() = user_id);
 -- Medications (Tier 3 - Delegate Writable with medications permission)
 SELECT create_medication_policy('medications');
 SELECT create_medication_policy('medication_schedules');
+SELECT create_medication_policy('medication_courses');
+SELECT create_medication_policy('medication_course_revisions');
+SELECT create_medication_policy('medication_course_rules');
+SELECT create_medication_policy('medication_course_steps');
+SELECT create_medication_policy('medication_course_activity');
+SELECT create_medication_policy('medication_course_handoffs');
+SELECT create_medication_policy('medication_course_operations');
 SELECT create_medication_policy('medication_entries');
 SELECT create_medication_policy('medication_pens');
 CREATE POLICY select_policy ON public.medication_syringes FOR SELECT TO PUBLIC

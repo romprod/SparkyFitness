@@ -1,3 +1,11 @@
+import type { PoolClient } from 'pg';
+import {
+  courseLogFields,
+  lockLogMedication,
+  lockStoredCourseLog,
+  validateCourseLog,
+  type StoredCourseLog,
+} from '../services/medicationCourseLogService.js';
 import {
   drawDeliveredMg,
   resolvePreparedMedicationRoute,
@@ -20,7 +28,7 @@ const USED_MASS_SQL =
   '(SELECT COALESCE(SUM(si.dose_mg),0) FROM injection_entries si WHERE si.pen_id = medication_pens.id AND si.user_id = medication_pens.user_id)';
 
 const INJECTION_COLS = `id, medication_id, user_id, pen_id, preparation_id, injected_at, entry_date,
-  site, administration_route, dose_mg, dose_mg::text AS dose_mg_exact, volume_ml::text, syringe_units::text, dose_input_unit, syringe_id, notes, source, custom_fields, created_at, updated_at`;
+  site, administration_route, dose_mg, dose_mg::text AS dose_mg_exact, volume_ml::text, syringe_units::text, dose_input_unit, syringe_id, notes, source, custom_fields, created_at, updated_at, scheduled_for, course_revision_id, course_rule_id, course_step_id, scheduled_day, course_slot_key, course_origin, medication_name_snapshot`;
 
 /**
  * Create an injection entry. When `deduct_pen` is true, the pen's doses_used is incremented
@@ -31,9 +39,17 @@ const INJECTION_COLS = `id, medication_id, user_id, pen_id, preparation_id, inje
  * default dose.
  */
 async function createInjection(userId: string, data: CreateInjectionBody) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     await client.query('BEGIN');
+    await lockLogMedication(client, userId, data.medication_id);
+    await validateCourseLog(
+      client,
+      userId,
+      data.medication_id,
+      data,
+      data.entry_date
+    );
     const medication = await lockDrawMedication(
       client,
       userId,
@@ -129,9 +145,9 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
        )
        INSERT INTO injection_entries (
          medication_id, user_id, pen_id, preparation_id, injected_at, entry_date, site, dose_mg, notes,
-         source, custom_fields,volume_ml,syringe_units,dose_input_unit,syringe_id,administration_route)
+         source, custom_fields,volume_ml,syringe_units,dose_input_unit,syringe_id,administration_route,scheduled_for,course_revision_id,course_rule_id,course_step_id,scheduled_day,course_slot_key,course_origin,medication_name_snapshot)
        SELECT $1,$2,$3, (SELECT p.id FROM medication_preparations p WHERE p.pen_id=$3 AND p.user_id=$2 AND p.medication_id=$1), COALESCE($4::timestamptz, NOW()), COALESCE($5::date, CURRENT_DATE),$6,$7,$8,
-         COALESCE($9,'manual'), COALESCE($10::jsonb,'{}'::jsonb),$11,$12,$13,$14,$15
+         COALESCE($9,'manual'), COALESCE($10::jsonb,'{}'::jsonb),$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,(SELECT COALESCE(NULLIF(m.display_name,''),m.name) FROM medications m WHERE m.id=$1 AND m.user_id=$2)
        WHERE $3 IS NULL OR EXISTS (SELECT 1 FROM locked_pen)
        RETURNING ${INJECTION_COLS}`,
       [
@@ -150,6 +166,9 @@ async function createInjection(userId: string, data: CreateInjectionBody) {
         draw?.doseInputUnit ?? null,
         data.calculated_draw?.syringe_id ?? null,
         draw?.administrationRoute ?? resolvePreparedMedicationRoute(medication),
+        data.scheduled_for ?? null,
+        ...courseLogFields.map((key) => data[key] ?? null),
+        data.course_revision_id ? true : null,
       ]
     );
 
@@ -206,7 +225,7 @@ async function listInjections(
     limit?: number;
   } = {}
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     const params: Array<string | number> = [userId];
     let where = 'user_id = $1';
@@ -246,7 +265,6 @@ async function editCalculatedInjection(
   penId: string,
   data: UpdateInjectionBody
 ) {
-  await client.query('BEGIN');
   try {
     const parent = await client.query(
       'SELECT medication_id FROM medication_pens WHERE id=$1 AND user_id=$2',
@@ -304,6 +322,15 @@ async function editCalculatedInjection(
     );
     const blocker = draw.warnings.find((w) => w.severity === 'block');
     if (blocker) throw badPreparation(blocker.message);
+    const attributionFields = [...courseLogFields, 'scheduled_for'] as const;
+    const attributionUpdates = attributionFields.filter(
+      (key) => data[key] !== undefined
+    );
+    if (attributionUpdates.length)
+      await client.query(
+        `UPDATE injection_entries SET ${attributionUpdates.map((key, index) => `${key}=$${index + 3}`).join(',')} WHERE id=$1 AND user_id=$2`,
+        [id, userId, ...attributionUpdates.map((key) => data[key])]
+      );
     const result = await client.query(
       `UPDATE injection_entries SET dose_mg=$3,volume_ml=$4,syringe_units=$5,dose_input_unit=$14,injected_at=COALESCE($6::timestamptz,injected_at),entry_date=COALESCE($7::date,entry_date),site=CASE WHEN $8 THEN $9 ELSE site END,notes=CASE WHEN $10 THEN $11 ELSE notes END,custom_fields=CASE WHEN $12 THEN $13::jsonb ELSE custom_fields END,updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING ${INJECTION_COLS}`,
       [
@@ -340,10 +367,49 @@ async function updateInjection(
   id: string,
   data: UpdateInjectionBody
 ) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   let manualQuantityTransaction = false;
   let manualPenId: string | null = null;
   try {
+    if (Object.keys(data).length === 0) {
+      const unchanged = await client.query(
+        `SELECT ${INJECTION_COLS} FROM injection_entries WHERE id=$1 AND user_id=$2`,
+        [id, userId]
+      );
+      return unchanged.rows[0] ?? null;
+    }
+
+    await client.query('BEGIN');
+    manualQuantityTransaction = true;
+    const parent = await client.query<StoredCourseLog>(
+      'SELECT medication_id FROM injection_entries WHERE id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    await lockLogMedication(
+      client,
+      userId,
+      parent.rows[0]?.medication_id ?? null
+    );
+    const storedResult = await client.query<StoredCourseLog>(
+      'SELECT * FROM injection_entries WHERE id=$1 AND user_id=$2',
+      [id, userId]
+    );
+    const stored = storedResult.rows[0];
+    if (data.course_revision_id === null && stored?.course_revision_id) {
+      // Detaching a plan relationship must not erase the actual's captured timing facts.
+      data = { ...data, scheduled_for: undefined, scheduled_day: undefined };
+    }
+    if (stored)
+      await validateCourseLog(
+        client,
+        userId,
+        stored.medication_id,
+        data,
+        data.entry_date,
+        stored,
+        'injection'
+      );
+
     if (data.dose_mg !== undefined || data.calculated_draw) {
       const current = await client.query(
         'SELECT * FROM injection_entries WHERE id=$1 AND user_id=$2',
@@ -378,6 +444,7 @@ async function updateInjection(
           throw badPreparation(
             'Original vial is missing; this amount cannot be recomputed.'
           );
+        manualQuantityTransaction = false;
         return await editCalculatedInjection(
           client,
           userId,
@@ -399,7 +466,6 @@ async function updateInjection(
       }
     }
     if (data.dose_mg !== undefined) {
-      await client.query('BEGIN');
       manualQuantityTransaction = true;
       const ref = await client.query(
         'SELECT medication_id,pen_id FROM injection_entries WHERE id=$1 AND user_id=$2',
@@ -431,6 +497,8 @@ async function updateInjection(
     let index = 3;
 
     const fields: (keyof UpdateInjectionBody)[] = [
+      ...courseLogFields,
+      'scheduled_for',
       'injected_at',
       'entry_date',
       'site',
@@ -458,6 +526,7 @@ async function updateInjection(
         `SELECT ${INJECTION_COLS} FROM injection_entries WHERE id = $1 AND user_id = $2`,
         [id, userId]
       );
+      await client.query('COMMIT');
       return current.rows[0] ?? null;
     }
 
@@ -493,15 +562,29 @@ async function updateInjection(
  * deduction ever happened, so there is nothing to restore.
  */
 async function deleteInjection(userId: string, id: string) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     await client.query('BEGIN');
     const original = await client.query(
-      'SELECT pen_id,medication_id FROM injection_entries WHERE id=$1 AND user_id=$2',
+      'SELECT * FROM injection_entries WHERE id=$1 AND user_id=$2',
       [id, userId]
     );
-    if (original.rows[0]?.medication_id)
-      await lockDrawMedication(client, userId, original.rows[0].medication_id);
+    await lockLogMedication(
+      client,
+      userId,
+      original.rows[0]?.medication_id ?? null
+    );
+    if (
+      original.rows[0]?.medication_id ||
+      original.rows[0]?.course_revision_id
+    ) {
+      const refreshed = await client.query<StoredCourseLog>(
+        'SELECT * FROM injection_entries WHERE id=$1 AND user_id=$2',
+        [id, userId]
+      );
+      if (refreshed.rows[0])
+        await lockStoredCourseLog(client, userId, refreshed.rows[0]);
+    }
     if (original.rows[0]?.pen_id)
       await client.query(
         'SELECT id FROM medication_pens WHERE id=$1 AND user_id=$2 FOR UPDATE',

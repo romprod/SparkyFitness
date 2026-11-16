@@ -9,6 +9,27 @@ import {
 } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
 import Glp1LogInjection from '@/pages/Medications/Glp1LogInjection';
+let mockCourseCurrent = true;
+let mockCourseSlots: Record<string, unknown>[] = [];
+let mockFulfilled: Record<string, unknown>[] = [];
+const mockCourseRefresh = jest.fn(async () => ({
+  data: { slots: mockCourseSlots, fulfilled_slots: mockFulfilled },
+}));
+jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
+  HttpApiError: jest.requireActual('@/api/api').HttpApiError,
+  useMedicationCourses: () => ({
+    scope: {
+      key: 'owner',
+      ownerId: 'owner',
+      ready: true,
+      canWrite: true,
+      isCurrent: () => mockCourseCurrent,
+    },
+    data: { courses: [] },
+    query: { refetch: jest.fn(async () => ({ data: { courses: [] } })) },
+  }),
+  useMedicationCourseDue: () => ({ query: { refetch: mockCourseRefresh } }),
+}));
 const mockLog = jest.fn();
 const mockPreview = jest.fn();
 let mockPens: Partial<MedicationPen>[] = [];
@@ -17,11 +38,15 @@ let mockFetching = false;
 let mockTimezone = 'Europe/London';
 let mockSyringes: Partial<MedicationSyringe>[] = [];
 jest.mock('@/hooks/useMedications', () => ({
-  useMedicationPens: () => ({ data: mockPens }),
+  useMedicationPens: () => ({
+    data: mockPens,
+    refetch: jest.fn(async () => ({ data: mockPens })),
+  }),
   useLogInjectionMutation: () => ({ mutate: mockLog, isPending: false }),
 }));
 jest.mock('@/hooks/useMedicationSyringes', () => ({
   useMedicationSyringes: () => ({
+    refetch: jest.fn(async () => ({})),
     data: {
       syringes: mockSyringes,
       default_syringe_id: mockDefault,
@@ -81,6 +106,10 @@ const prep = {
 };
 beforeEach(() => {
   mockLog.mockClear();
+  mockCourseCurrent = true;
+  mockCourseSlots = [];
+  mockFulfilled = [];
+  mockCourseRefresh.mockClear();
   mockTimezone = 'Europe/London';
   mockDefault = 'syringe';
   mockSyringes = [{ ...syringe, id: 'syringe' }];
@@ -121,6 +150,7 @@ beforeEach(() => {
             : undefined,
           isFetching: mockFetching,
           isError: false,
+          refetch: jest.fn(async () => ({})),
         };
       } catch {
         return { data: undefined, isFetching: false, isError: true };
@@ -491,7 +521,7 @@ describe('new injection date and time', () => {
     expect(dateInput(container)).toHaveValue('2026-07-11T00:45');
     fireEvent.click(button());
     expect(mockLog).toHaveBeenCalledWith(
-      expect.objectContaining({ injected_at: '2026-07-10T23:45:00.000Z' }),
+      expect.objectContaining({ injected_at: '2026-07-10T23:45:30.456Z' }),
       expect.anything()
     );
   });
@@ -541,7 +571,7 @@ it('reformats an untouched current-time default when saved timezone preferences 
   expect(input()).toHaveValue('2026-07-11T08:45');
   fireEvent.click(button());
   expect(mockLog).toHaveBeenCalledWith(
-    expect.objectContaining({ injected_at: '2026-07-10T23:45:00.000Z' }),
+    expect.objectContaining({ injected_at: '2026-07-10T23:45:30.456Z' }),
     expect.anything()
   );
   jest.useRealTimers();
@@ -561,4 +591,116 @@ it('keeps an explicitly entered datetime and its zone when preferences change', 
     expect.objectContaining({ injected_at: '2026-07-09T09:15:00.000Z' }),
     expect.anything()
   );
+});
+
+const courseContext = {
+  course_revision_id: 'revision',
+  course_rule_id: 'rule',
+  course_step_id: null,
+  course_slot_key: 'slot',
+  course_expected_version: 1,
+  scheduled_day: '2026-11-01',
+  scheduled_for: '2026-11-01T09:00:00Z',
+};
+const managedMed = { ...medication, user_id: 'owner' };
+it('keeps managed unknown actual blank and the syringe graphic visible with no saved device', () => {
+  mockPens = [];
+  mockSyringes = [];
+  render(
+    <Glp1LogInjection
+      med={managedMed}
+      courseContext={courseContext}
+      plannedDose={null}
+    />
+  );
+  expect(screen.getByLabelText('Dose (mg)')).toHaveValue('');
+  expect(screen.getByText('Draw to —')).toBeInTheDocument();
+  expect(screen.getByText(/Planned dose: Unknown/)).toBeInTheDocument();
+  expect(button()).toBeDisabled();
+  expect(mockLog).not.toHaveBeenCalled();
+});
+it('uses planned raw input only by explicit action through the current prepared draw, retaining stock and attribution', () => {
+  render(
+    <Glp1LogInjection
+      med={managedMed}
+      courseContext={courseContext}
+      plannedDose={{ value: '500', unit: 'mcg' }}
+    />
+  );
+  expect(screen.getByLabelText('Entered amount')).toHaveValue('');
+  fireEvent.click(screen.getByRole('button', { name: 'Use planned amount' }));
+  expect(screen.getByLabelText('Entered amount')).toHaveValue('500');
+  fireEvent.click(button());
+  expect(mockLog).toHaveBeenCalledWith(
+    expect.objectContaining({
+      ...courseContext,
+      calculated_draw: {
+        syringe_id: 'syringe',
+        dose: { value: '500', unit: 'mcg' },
+      },
+      pen_id: 'vial',
+      deduct_pen: true,
+    }),
+    expect.anything()
+  );
+  expect(mockLog.mock.calls[0][0]).not.toHaveProperty('dose_mg');
+});
+it('preserves the captured autumn repeated-hour instant and seconds across preference reformat', () => {
+  mockTimezone = 'Europe/London';
+  const props = {
+    med: managedMed,
+    courseContext,
+    plannedDose: null,
+    initialTakenAt: '2026-10-25T01:30:45.678Z',
+  };
+  const { rerender } = render(<Glp1LogInjection {...props} />);
+  fireEvent.change(screen.getByLabelText('Entered amount'), {
+    target: { value: '0.5' },
+  });
+  mockTimezone = 'Asia/Tokyo';
+  rerender(<Glp1LogInjection {...props} />);
+  fireEvent.click(button());
+  expect(mockLog).toHaveBeenCalledWith(
+    expect.objectContaining({
+      injected_at: '2026-10-25T01:30:45.678Z',
+      scheduled_for: '2026-11-01T09:00:00Z',
+    }),
+    expect.anything()
+  );
+});
+it('stops stale scheduled injection retries until explicit canonical refresh while retaining actual draft', async () => {
+  const { HttpApiError } = jest.requireActual(
+    '@/api/api'
+  ) as typeof import('@/api/api');
+  render(
+    <Glp1LogInjection
+      med={managedMed}
+      courseContext={courseContext}
+      plannedDose={{ value: '500', unit: 'mcg' }}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Use planned amount' }));
+  fireEvent.click(button());
+  act(() => mockLog.mock.calls[0][1].onError(new HttpApiError('stale', 409)));
+  expect(button()).toBeDisabled();
+  expect(screen.getByLabelText('Entered amount')).toHaveValue('500');
+  mockCourseSlots = [
+    {
+      ...courseContext,
+      course_expected_version: 2,
+      per_dose_amount: '0.7',
+      dose_unit: 'mg',
+    },
+  ];
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh course' }))
+  );
+  expect(screen.getByLabelText('Entered amount')).toHaveValue('500');
+  expect(button()).toBeEnabled();
+  expect(mockLog).toHaveBeenCalledTimes(1);
+  fireEvent.click(button());
+  expect(mockLog.mock.calls[1][0]).toMatchObject({
+    course_expected_version: 2,
+    calculated_draw: { dose: { value: '500', unit: 'mcg' } },
+  });
 });

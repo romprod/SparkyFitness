@@ -269,10 +269,10 @@ export function renderAppointmentReportPdf(
           10,
           true
         );
-        if (!med.schedules.length) paragraph('Schedule: not recorded.');
+        if (!med.schedules.length) paragraph('Legacy schedule: not recorded.');
         for (const schedule of med.schedules) {
           paragraph(
-            `Schedule: ${schedule.type}; ${schedule.active ? 'active' : 'inactive'}; time ${schedule.timeOfDay ?? missing}; dose ${amount(schedule.doseAmount, schedule.doseUnit)}; ${schedule.startDate ?? missing} to ${schedule.endDate ?? missing}`
+            `Legacy schedule: ${schedule.type}; ${schedule.active ? 'active' : 'inactive'}; time ${schedule.timeOfDay ?? missing}; dose ${amount(schedule.doseAmount, schedule.doseUnit)}; ${schedule.startDate ?? missing} to ${schedule.endDate ?? missing}`
           );
           const cadence = [
             schedule.daysOfWeek === null
@@ -304,6 +304,62 @@ export function renderAppointmentReportPdf(
           paragraph(
             `Titration: ${amount(plan.doseAmount, plan.doseUnit)}; start ${plan.startDate ?? missing}; planned weeks ${plan.plannedWeeks ?? missing}; status ${plan.status}`
           );
+      }
+      if (data.managedPlans?.length) {
+        section('Managed plan current and revision history');
+        paragraph(
+          'Authored schedule facts, separate from recorded doses. Current identifies the selected revision at export time; historical, paused, completed or deleted revisions are not a current dosing instruction. Activity intervals record when a managed plan was enabled.'
+        );
+        for (const plan of data.managedPlans) {
+          ensure(130);
+          paragraph(
+            `${plan.medicationName} | ${plan.name} | revision ${plan.revisionNo} | ${plan.current && !plan.deleted ? 'current' : 'historical'} | ${plan.status}${plan.deleted ? ' | deleted' : ''}`,
+            10,
+            true
+          );
+          paragraph(
+            `Plan timezone: ${plan.timezone}. Authored dates: ${plan.startDate ?? missing} to ${plan.endDate ?? missing}; closed ${plan.closedDate ?? missing}. Target: ${amount(plan.targetDose, plan.doseUnit)}; basis ${plan.doseBasis === 'per_week' ? 'per week' : 'per dose'}.`
+          );
+          for (const rule of plan.schedules) {
+            const facts = [
+              `Rule: ${rule.type}`,
+              `time ${rule.timeOfDay ?? missing}`,
+              `dose ${amount(rule.doseAmount, rule.doseUnit)}`,
+              `${rule.startDate ?? missing} to ${rule.endDate ?? missing}`,
+              rule.daysOfWeek === null
+                ? null
+                : `weekdays ${rule.daysOfWeek.map((day) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day] ?? String(day)).join(', ')}`,
+              rule.intervalDays === null
+                ? null
+                : `interval ${rule.intervalDays} days`,
+              rule.dayOfMonth === null
+                ? null
+                : `day of month ${rule.dayOfMonth}`,
+              rule.cycleOnDays === null
+                ? null
+                : `cycle on ${rule.cycleOnDays} days`,
+              rule.cycleOffDays === null
+                ? null
+                : `cycle off ${rule.cycleOffDays} days`,
+              rule.withMeal === null ? null : `meal ${rule.withMeal}`,
+              rule.prnReason === null
+                ? null
+                : `as-needed reason ${rule.prnReason}`,
+              rule.prnMaxPerDay === null
+                ? null
+                : `as-needed maximum ${rule.prnMaxPerDay} per day`,
+            ].filter((fact): fact is string => fact !== null);
+            paragraph(facts.join('; '));
+          }
+          for (const [index, step] of plan.steps.entries())
+            paragraph(
+              `Authored step ${index + 1}: ${amount(step.doseAmount, step.doseUnit)}; duration ${step.durationDays === null ? 'open-ended' : `${step.durationDays} days`}.`
+            );
+          for (const activity of plan.activity)
+            paragraph(
+              `Enabled interval (${data.range.timezone}): ${dateTime(activity.fromAt)} to ${activity.untilAt ? dateTime(activity.untilAt) : 'open'}.`
+            );
+        }
       }
       const timing = (row: AppointmentReportData['doseLog'][number]) => {
         const minutes = row.timingDeltaMinutes;
