@@ -185,3 +185,9 @@ The **Table** tab gives you the raw data behind everything above:
 The selected extension is implemented and source-tested on the existing Prescriber-Ready Data Export card. A direct PDF download has its own labelled From/To controls, initially today minus 90 calendar days through today. The current Print/Save PDF and CSV actions remain distinct. The new PDF is available only in the signed-in owner context; delegated Print behavior remains unchanged.
 
 The report uses recorded medication/schedule facts, all selected-range dose and symptom records and available weight, nutrition and water facts. The latest three explicit lab panels are separately labelled because their dates can fall outside the selected interval. It preserves units and qualified results and adds no clinical interpretation or inferred measurements. Output is generated for the download without storing the PDF. Focused source/client and synthetic PDF/font checks passed; actual-build and live release evidence are recorded separately.
+
+### Selected appointment PDF follow-up
+
+The bounded follow-up adds hydration target/percentage context and derived schedule-timing offsets where recorded facts support them. Missing or ambiguous context remains unknown. The existing PDF dates, owner-only access, Print/CSV and report sections stay intact. Focused tests and consuming-type checks pass; actual-image and live verification are recorded separately before protocol-history work starts.
+
+The hydration comparison uses the current saved target at report generation, not an assumed historical target. Timing offsets describe the recorded instants only; they are not a clinical adherence judgement, and backdated events can carry an app-default time.

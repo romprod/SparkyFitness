@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { AppointmentReportData } from '@workspace/shared';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { renderAppointmentReportPdf } from '../services/appointmentReportPdf.ts';
 import { appointmentReportFixture } from './fixtures/appointmentReportFixture.ts';
-const parse = async (full = false) => {
+const parse = async (full = false, data?: AppointmentReportData) => {
   const bytes = await renderAppointmentReportPdf(
-    appointmentReportFixture(full)
+    data ?? appointmentReportFixture(full)
   );
   expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
   const result = await extractText(new Uint8Array(bytes), { mergePages: true });
@@ -76,4 +77,104 @@ describe('private appointment PDF renderer', () => {
       `Page ${result.totalPages} of ${result.totalPages}`
     );
   });
+});
+
+describe('bounded appointment hydration and timing facts', () => {
+  it.each([
+    {
+      water: [-100, 0, 1000, null],
+      target: 2000,
+      expected:
+        'Average water: 500 mL/day vs current saved target 2000 mL/day (25%)',
+    },
+    {
+      water: [0],
+      target: 2000,
+      expected:
+        'Average water: 0 mL/day vs current saved target 2000 mL/day (0%)',
+    },
+    {
+      water: [333, 334],
+      target: 1000,
+      expected:
+        'Average water: 334 mL/day vs current saved target 1000 mL/day (33%)',
+    },
+    { water: [250], target: null, expected: 'Average water: 250 mL/day' },
+    {
+      water: [null],
+      target: 1800,
+      expected:
+        'Current saved hydration target: 1800 mL/day (no water logged in range)',
+    },
+    {
+      water: [],
+      target: 1800,
+      expected:
+        'Current saved hydration target: 1800 mL/day (no water logged in range)',
+    },
+  ])(
+    'keeps observed hydration and current goal distinct: $expected',
+    async ({ water, target, expected }) => {
+      const data = appointmentReportFixture();
+      data.wellness.water = water.map((millilitres, index) => ({
+        day: `2026-11-${String(index + 1).padStart(2, '0')}`,
+        millilitres,
+      }));
+      data.wellness.hydrationTargetMl = target;
+      const result = await parse(false, data);
+      expect(result.text).toContain(expected);
+      if (target === null)
+        expect(result.text).not.toContain('vs current saved target');
+    }
+  );
+  it.each([null, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'does not invent hydration goals or missing observations: %s',
+    async (target) => {
+      const data = appointmentReportFixture();
+      data.wellness.hydrationTargetMl = target;
+      const result = await parse(false, data);
+      expect(result.text).not.toContain('Average water:');
+      expect(result.text).not.toContain('hydration target:');
+      expect(result.text).not.toContain('vs current saved target');
+    }
+  );
+  it('prints signed factual timing only for administered events with a known delta', async () => {
+    const data = appointmentReportFixture();
+    const prototype = appointmentReportFixture(true).doseLog[0]!;
+    data.doseLog = [0, 12, -5, null, 12].map((delta, index) => ({
+      ...prototype,
+      id: `timing-${index}`,
+      name: `Synthetic timing event ${index}`,
+      administered: index !== 4,
+      status: index === 4 ? 'skipped' : 'taken',
+      timingDeltaMinutes: delta,
+    }));
+    const result = await parse(false, data);
+    for (const label of [
+      'Recorded timing: on time',
+      'Recorded timing: +12m (late)',
+      'Recorded timing: −5m (early)',
+    ])
+      expect(result.text.replace(/\s+/g, ' ')).toContain(label);
+    expect(result.text.match(/Recorded timing: —/g)).toHaveLength(2);
+    expect(result.text.match(/Recorded timing: \+12m/g)).toHaveLength(1);
+    expect(result.text).toContain('Not administered');
+  });
+});
+
+it('preserves date-only legacy facts without presenting invented midnight timing', async () => {
+  const data = appointmentReportFixture();
+  const prototype = appointmentReportFixture(true).doseLog[0]!;
+  data.doseLog = [
+    {
+      ...prototype,
+      occurredAt: '2026-11-01',
+      scheduledFor: '2026-11-01',
+      timingDeltaMinutes: null,
+    },
+  ];
+  const result = await parse(false, data);
+  expect(result.text).toContain('Scheduled: 2026-11-01');
+  expect(result.text).toContain('Recorded timing: —');
+  expect(result.text).not.toContain('00:00');
 });

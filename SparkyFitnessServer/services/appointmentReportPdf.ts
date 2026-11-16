@@ -234,6 +234,7 @@ export function renderAppointmentReportPdf(
       };
       const dateTime = (value: string | null) => {
         if (!value) return missing;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
         const date = new Date(value);
         if (!Number.isFinite(date.getTime())) return value;
         return new Intl.DateTimeFormat('en-GB', {
@@ -304,9 +305,18 @@ export function renderAppointmentReportPdf(
             `Titration: ${amount(plan.doseAmount, plan.doseUnit)}; start ${plan.startDate ?? missing}; planned weeks ${plan.plannedWeeks ?? missing}; status ${plan.status}`
           );
       }
+      const timing = (row: AppointmentReportData['doseLog'][number]) => {
+        const minutes = row.timingDeltaMinutes;
+        if (!row.administered || minutes === null || !Number.isFinite(minutes))
+          return '—';
+        if (minutes === 0) return 'on time';
+        return minutes > 0
+          ? `+${minutes}m (late)`
+          : `−${Math.abs(minutes)}m (early)`;
+      };
       section('Recorded doses and medication events');
       paragraph(
-        'Includes logged non-administered events with their recorded status. No skipped or planned event is counted as taken. Recorded medication labels are used when available; otherwise current linked labels are identified.'
+        'Includes logged non-administered events with their recorded status. No skipped or planned event is counted as taken. Recorded medication labels are used when available; otherwise current linked labels are identified. Timing compares recorded and scheduled times; backdated records may use an app-default time.'
       );
       if (!data.doseLog.length)
         paragraph('No doses or medication events in this range.');
@@ -322,7 +332,7 @@ export function renderAppointmentReportPdf(
             `${row.trackingDay}\n${dateTime(row.occurredAt)}${row.scheduledFor ? `\nScheduled: ${dateTime(row.scheduledFor)}` : ''}`,
             `${row.name ?? 'Unknown medication'}${row.nameBasis === 'current_link' ? ' (current linked label)' : ''}\n${row.administrationRoute ?? 'Route not recorded'}\n${row.site ?? 'Site not recorded'}`,
             `${amount(row.doseAmount, row.doseUnit)}${row.deliveredMassMg !== null && row.doseUnit !== 'mg' ? `\nDelivered mass: ${row.deliveredMassMg} mg` : ''}`,
-            `${row.status}\n${row.administered ? 'Administered' : 'Not administered'}\n${row.sourceKind === 'injection' ? 'Injection log' : 'Medication event'}`,
+            `${row.status}\n${row.administered ? 'Administered' : 'Not administered'}\n${row.sourceKind === 'injection' ? 'Injection log' : 'Medication event'}\nRecorded timing: ${timing(row)}`,
           ]),
           [0.24, 0.32, 0.2, 0.24]
         );
@@ -420,23 +430,43 @@ export function renderAppointmentReportPdf(
           `Average protein (g): ${average(w.nutrition.map((row) => row.proteinGrams))}`
         );
         paragraph(
-          `Average water (mL): ${average(w.water.map((row) => row.millilitres))}`
-        );
-        paragraph(
           `Average recorded mood: ${average(w.mood.map((row) => row.mood))} | Energy: ${average(w.mood.map((row) => row.energy))}`
         );
       }
+      const waterValues = w.water
+        .map((row) => row.millilitres)
+        .filter(
+          (value): value is number =>
+            value !== null && Number.isFinite(value) && value >= 0
+        );
+      const waterMean = waterValues.length
+        ? waterValues.reduce((sum, value) => sum + value, 0) /
+          waterValues.length
+        : null;
+      const target =
+        w.hydrationTargetMl !== null &&
+        Number.isFinite(w.hydrationTargetMl) &&
+        w.hydrationTargetMl > 0
+          ? w.hydrationTargetMl
+          : null;
+      if (waterMean !== null)
+        paragraph(
+          `Average water: ${Math.round(waterMean)} mL/day${target === null ? '' : ` vs current saved target ${target} mL/day (${Math.round((waterMean / target) * 100)}%)`}`
+        );
+      else if (target !== null)
+        paragraph(
+          `Current saved hydration target: ${target} mL/day (no water logged in range)`
+        );
       section('Bloodwork: latest three explicit panels');
       paragraph(
         'Panel selection is independent of the report period. H/L compare a recorded numeric result with its recorded reference range. Qualified text stays unknown. Reference ranges and assays remain separate; no clinical interpretation is added.'
       );
       if (!data.labPanels.length) paragraph('No bloodwork recorded.');
       for (const panel of data.labPanels) {
-        paragraph(
-          `${panel.collectedOn ?? 'Collection date not recorded'} | ${panel.labName ?? 'Lab not recorded'} | ${panel.origin}`,
-          10,
-          true
-        );
+        const panelTitle = `${panel.collectedOn ?? 'Collection date not recorded'} | ${panel.labName ?? 'Lab not recorded'} | ${panel.origin}`;
+        // Keep the panel identity with the following table or empty-state line.
+        ensure(lines(panelTitle, width, 10, true).length * 14 + 61);
+        paragraph(panelTitle, 10, true);
         if (!panel.results.length) paragraph('No results in this panel.');
         else
           table(
@@ -458,7 +488,7 @@ export function renderAppointmentReportPdf(
                   : row.rangeFlag,
             ]),
             [0.32, 0.28, 0.27, 0.13],
-            `${panel.collectedOn ?? 'Collection date not recorded'} | ${panel.labName ?? 'Lab not recorded'} | ${panel.origin}`
+            panelTitle
           );
       }
       sectionName = '';

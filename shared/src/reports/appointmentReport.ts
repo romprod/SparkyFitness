@@ -45,6 +45,8 @@ export interface AppointmentReportData {
     trackingDay: string;
     occurredAt: string | null;
     scheduledFor: string | null;
+    /** Rounded actual minus scheduled minutes from explicit recorded instants; negative is early. */
+    timingDeltaMinutes: number | null;
     status: string;
     administered: boolean;
     doseAmount: string | null;
@@ -62,6 +64,8 @@ export interface AppointmentReportData {
     severityLabel: string | null;
   }[];
   wellness: {
+    /** Positive saved target in effect at generation time, never a historical range assumption or default. */
+    hydrationTargetMl: number | null;
     weights: { day: string; value: number; unit: 'kg' }[];
     nutrition: {
       day: string;

@@ -8,7 +8,13 @@ export function appointmentReportFixture(full = false): AppointmentReportData {
     currentMedications: [],
     doseLog: [],
     symptoms: [],
-    wellness: { weights: [], nutrition: [], water: [], mood: [] },
+    wellness: {
+      weights: [],
+      nutrition: [],
+      water: [],
+      mood: [],
+      hydrationTargetMl: null,
+    },
     labPanels: [],
   };
   if (!full) return empty;
@@ -61,6 +67,7 @@ export function appointmentReportFixture(full = false): AppointmentReportData {
       trackingDay: '2026-11-01',
       occurredAt: i === 2 ? null : '2026-11-01T12:00:00Z',
       scheduledFor: null,
+      timingDeltaMinutes: null,
       status: i === 2 ? 'skipped' : 'taken',
       administered: i !== 2,
       doseAmount: i === 3 ? '7' : '0.000123456789',
@@ -78,6 +85,7 @@ export function appointmentReportFixture(full = false): AppointmentReportData {
       severityLabel: null,
     })),
     wellness: {
+      hydrationTargetMl: null,
       weights: [
         { day: '2026-09-01', value: 90, unit: 'kg' },
         { day: '2026-11-01', value: 88.5, unit: 'kg' },

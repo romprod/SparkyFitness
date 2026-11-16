@@ -47,6 +47,34 @@ const iso = (value: unknown): string | null => {
   const date = new Date(value as string | Date);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 };
+function recordedInstant(value: unknown): number | null {
+  if (
+    !(value instanceof Date) &&
+    (typeof value !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(
+        value
+      ))
+  )
+    return null;
+  const instant = new Date(value).getTime();
+  return Number.isFinite(instant) ? instant : null;
+}
+const recordedIso = (value: unknown): string | null => {
+  const instant = recordedInstant(value);
+  return instant === null ? null : new Date(instant).toISOString();
+};
+function timingDeltaMinutes(
+  actual: unknown,
+  scheduled: unknown,
+  administered: boolean
+): number | null {
+  if (!administered) return null;
+  const taken = recordedInstant(actual),
+    due = recordedInstant(scheduled);
+  return taken === null || due === null
+    ? null
+    : Math.round((taken - due) / 60_000);
+}
 type Row = Record<string, unknown>;
 function knownDeliveredMass(row: Row): string | null {
   const recorded = text(row.dose_mg);
@@ -64,6 +92,39 @@ function knownDeliveredMass(row: Row): string | null {
   )
     return null;
   return recorded;
+}
+
+/** Match saved explicit / weekday preset / carry-forward facts without app defaults or exercise adjustment. */
+async function currentSavedHydrationTarget(
+  client: PoolClient,
+  owner: string,
+  today: string
+): Promise<number | null> {
+  const explicit = await client.query<{ water_goal_ml: unknown }>(
+    'SELECT water_goal_ml FROM user_goals WHERE user_id=$1 AND goal_date=$2 ORDER BY updated_at DESC,created_at DESC LIMIT 1',
+    [owner, today]
+  );
+  let saved: unknown;
+  if (explicit.rows.length) saved = explicit.rows[0]?.water_goal_ml;
+  else {
+    const weekly = await client.query<{ water_goal: unknown }>(
+      `SELECT p.water_goal FROM (SELECT * FROM weekly_goal_plans WHERE user_id=$1 AND is_active=TRUE AND start_date<=$2 AND (end_date IS NULL OR end_date>=$2) ORDER BY start_date DESC LIMIT 1) w
+       JOIN goal_presets p ON p.user_id=$1 AND p.id=CASE EXTRACT(DOW FROM $2::date)
+         WHEN 0 THEN w.sunday_preset_id WHEN 1 THEN w.monday_preset_id WHEN 2 THEN w.tuesday_preset_id WHEN 3 THEN w.wednesday_preset_id WHEN 4 THEN w.thursday_preset_id WHEN 5 THEN w.friday_preset_id ELSE w.saturday_preset_id END`,
+      [owner, today]
+    );
+    saved = weekly.rows[0]?.water_goal;
+    // Existing weekly presets may omit hydration; carry forward a saved goal, never an invented default.
+    if (saved === null || saved === undefined) {
+      const carried = await client.query<{ water_goal_ml: unknown }>(
+        'SELECT water_goal_ml FROM user_goals WHERE user_id=$1 AND (goal_date<$2 OR goal_date IS NULL) ORDER BY goal_date DESC NULLS LAST LIMIT 1',
+        [owner, today]
+      );
+      saved = carried.rows[0]?.water_goal_ml;
+    }
+  }
+  const target = number(saved);
+  return target !== null && target > 0 ? target : null;
 }
 
 /** Owner-only, ephemeral export; every query shares one coherent read-only snapshot. */
@@ -97,6 +158,11 @@ export async function getAppointmentReportData(
     const from = query.from ?? addDays(to, -90);
     if (from > to) throw problem('from must not be after to', 400);
     const args = [owner, from, to];
+    const hydrationTargetMl = await currentSavedHydrationTarget(
+      client,
+      owner,
+      instantToDay(now, timezone)
+    );
     const profile = await client.query<{ name: string | null }>(
       'SELECT full_name AS name FROM profiles WHERE id=$1',
       [owner]
@@ -163,8 +229,13 @@ export async function getAppointmentReportData(
         name: text(row.med_name_snapshot),
         nameBasis: row.med_name_snapshot ? 'snapshot' : 'unknown',
         trackingDay: String(row.entry_date),
-        occurredAt: iso(row.taken_at),
-        scheduledFor: iso(row.scheduled_for),
+        occurredAt: recordedIso(row.taken_at),
+        scheduledFor: recordedIso(row.scheduled_for),
+        timingDeltaMinutes: timingDeltaMinutes(
+          row.taken_at,
+          row.scheduled_for,
+          row.status === 'taken' || row.status === 'prn_taken'
+        ),
         status: String(row.status),
         administered: row.status === 'taken' || row.status === 'prn_taken',
         doseAmount: text(row.dose_amount_snapshot),
@@ -183,8 +254,9 @@ export async function getAppointmentReportData(
             ? 'current_link'
             : 'unknown',
           trackingDay: String(row.entry_date),
-          occurredAt: iso(row.injected_at),
+          occurredAt: recordedIso(row.injected_at),
           scheduledFor: null,
+          timingDeltaMinutes: null,
           status: 'taken',
           administered: true,
           doseAmount: knownDeliveredMass(row),
@@ -252,6 +324,7 @@ export async function getAppointmentReportData(
         severityLabel: text(s.severity_label),
       })),
       wellness: {
+        hydrationTargetMl,
         weights: weights.rows.flatMap((w) => {
           const value = number(w.weight);
           return value === null
