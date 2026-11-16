@@ -22,6 +22,7 @@ import type { Medication } from '@/types/medications';
 import AddMedicationDialog from './AddMedicationDialog';
 import Glp1InventoryManager from './Glp1InventoryManager';
 import MedicationInventoryForecast from './MedicationInventoryForecast';
+import MedicationPreparationQueue from './MedicationPreparationQueue';
 import { useMedicationInventoryForecast } from '@/hooks/Medications/useMedicationInventoryForecast';
 
 /** Shared stock tools for all injectable peptides; no GLP-1 model or flag is required. */
@@ -103,6 +104,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
         </CardContent>
       </Card>
       <MedicationInventoryForecast />
+      <MedicationPreparationQueue meds={meds} />
       {selected && (
         <div key={selected.id} className="space-y-4">
           <Glp1InventoryManager

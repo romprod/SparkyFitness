@@ -1454,6 +1454,30 @@
         "missing": "Missing device selection",
         "incompatible": "Incompatible device selection"
       }
+    },
+    "stockDashboard": {
+      "supplyReorderNow": "Reorder now",
+      "supplyReorderBy": "Reorder by {{date}}",
+      "supplyCoveredCourse": "Covers committed doses through {{date}}",
+      "supplyCoveredHorizon": "Covers planned doses through {{date}} (forecast window)",
+      "supplyCoveredLimit": "Covers planned doses through {{date}} (forecast limit)",
+      "supplyUnknown": "Coverage unknown",
+      "supplyTitle": "Supply",
+      "supplyUnavailable": "Supply unavailable",
+      "supplyLoading": "Loading supply…",
+      "supplyNoDemand": "No injectable or nasal doses in the forecast window",
+      "supplyWindow": "{{days}}-day forecast window",
+      "queueChanged": "This vial could not be revalidated for preparation. Refresh the queue before trying again.",
+      "retry": "Try again",
+      "checkingVial": "Checking this existing vial…",
+      "medicationUnavailable": "Medication details are unavailable. Refresh this page before preparing the vial.",
+      "expiry": "Expiry",
+      "expired": "Expired",
+      "readOnly": "Preparing stock requires medication edit access.",
+      "prepare": "Prepare",
+      "needsPreparation": "Needs preparation",
+      "queueError": "Could not load the preparation queue. No preparation eligibility is assumed.",
+      "stalePreparation": "This stock record changed. Close this preparation and reopen it from the refreshed queue before saving."
     }
   },
   "nav": {

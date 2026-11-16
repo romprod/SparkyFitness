@@ -1,0 +1,144 @@
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Package } from 'lucide-react';
+import type { MedicationForecastCoverage } from '@workspace/shared';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { usePreferences } from '@/contexts/PreferencesContext';
+import { useMedicationStockDashboard } from '@/hooks/Medications/useMedicationStockDashboard';
+
+/** The server chooses the supply row from the current overall forecast snapshot. */
+export default function MedicationSupplyTile() {
+  const { t } = useTranslation();
+  const { formatDate } = usePreferences();
+  const { scope, query, data } = useMedicationStockDashboard();
+  if (!scope.ready || !scope.isCurrent()) return null;
+
+  const supplyLine = (coverage: MedicationForecastCoverage) => {
+    if (coverage.status === 'reorder_now')
+      return t('medications.stockDashboard.supplyReorderNow', 'Reorder now');
+    if (coverage.status === 'ok' && coverage.reorder_by)
+      return t(
+        'medications.stockDashboard.supplyReorderBy',
+        'Reorder by {{date}}',
+        { date: formatDate(coverage.reorder_by) }
+      );
+    if (coverage.status === 'covered' && coverage.coverage_through) {
+      const date = formatDate(coverage.coverage_through);
+      if (coverage.basis === 'course_end')
+        return t(
+          'medications.stockDashboard.supplyCoveredCourse',
+          'Covers committed doses through {{date}}',
+          { date }
+        );
+      if (coverage.basis === 'horizon')
+        return t(
+          'medications.stockDashboard.supplyCoveredHorizon',
+          'Covers planned doses through {{date}} (forecast window)',
+          { date }
+        );
+      if (coverage.basis === 'slot_cap')
+        return t(
+          'medications.stockDashboard.supplyCoveredLimit',
+          'Covers planned doses through {{date}} (forecast limit)',
+          { date }
+        );
+    }
+    return t('medications.stockDashboard.supplyUnknown', 'Coverage unknown');
+  };
+  const header = (
+    <CardHeader className="pb-2">
+      <CardTitle className="flex items-center gap-2 text-base">
+        <Package className="h-4 w-4" />
+        {t('medications.stockDashboard.supplyTitle', 'Supply')}
+      </CardTitle>
+    </CardHeader>
+  );
+
+  if (query.isError || (!data && !query.isLoading && !query.isFetching))
+    return (
+      <Card>
+        {header}
+        <CardContent>
+          <p role="status" className="text-sm text-muted-foreground">
+            {t(
+              'medications.stockDashboard.supplyUnavailable',
+              'Supply unavailable'
+            )}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  if (!data)
+    return (
+      <Card>
+        {header}
+        <CardContent>
+          <p role="status" className="text-sm text-muted-foreground">
+            {t('medications.stockDashboard.supplyLoading', 'Loading supply…')}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  if (data.supply.state === 'no_demand')
+    return (
+      <Card>
+        {header}
+        <CardContent className="space-y-1">
+          <p className="text-sm">
+            {t(
+              'medications.stockDashboard.supplyNoDemand',
+              'No injectable or nasal doses in the forecast window'
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'medications.stockDashboard.supplyWindow',
+              '{{days}}-day forecast window',
+              { days: data.forecast.horizon_days }
+            )}
+          </p>
+        </CardContent>
+      </Card>
+    );
+
+  const selected =
+    data.supply.medication_id === null
+      ? undefined
+      : data.forecast.medications.find(
+          (item) => item.medication_id === data.supply.medication_id
+        );
+  if (
+    !selected ||
+    (data.supply.state === 'unavailable' && selected.status !== 'unknown')
+  )
+    return (
+      <Card>
+        {header}
+        <CardContent>
+          <p role="status" className="text-sm text-muted-foreground">
+            {t(
+              'medications.stockDashboard.supplyUnavailable',
+              'Supply unavailable'
+            )}
+          </p>
+        </CardContent>
+      </Card>
+    );
+
+  return (
+    <Link
+      to="/medications?tab=stock"
+      className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <Card className="transition-colors hover:bg-muted/20">
+        {header}
+        <CardContent className="space-y-1">
+          <p className="break-words text-sm font-medium">{selected.name}</p>
+          <p className="text-sm text-muted-foreground">
+            {supplyLine(selected)}
+          </p>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+}

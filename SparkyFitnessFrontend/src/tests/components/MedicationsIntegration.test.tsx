@@ -119,6 +119,12 @@ beforeEach(() => {
           authenticatedUserId: mockInvoiceUser.id,
           activeUserId: mockInvoiceUser.activeUserId,
         };
+      if (endpoint === '/v2/medication-inventory/dashboard')
+        return {
+          forecast: { ...inventoryForecastFixture(), medications: [] },
+          supply: { state: 'no_demand', medication_id: null },
+          preparation_queue: [],
+        };
       if (endpoint === '/v2/medication-inventory/forecast')
         return { ...inventoryForecastFixture(), medications: [] };
       if (endpoint === '/v2/medication-courses')

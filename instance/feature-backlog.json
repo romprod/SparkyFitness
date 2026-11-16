@@ -494,15 +494,17 @@
       "area": "Inventory",
       "feature": "Stock dashboard and preparation queue",
       "reference_capability": "Supply tiles, reorder list and needs-preparation group expose upcoming work.",
-      "sparky_baseline": "Partial: stock is available inside medication details.",
+      "sparky_baseline": "I06 prepared-stock forecast and selected-medication stock tools are deployed at25d083bc. Compact Supply selection and cross-medication inline preparation queue are selected next.",
       "proposed_work": "Add a compact supplies view with next depletion, expiring preparations and stock needing preparation.",
       "decision": "Extend",
       "priority": "Next",
       "relative_effort": "S",
-      "dependencies_and_limits": "Depends on I01–I06. No invented coverage if preparation or schedule is missing.",
-      "status": "proposed",
-      "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/components/dashboard/SupplyTile.tsx",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "dependencies_and_limits": "Depends on deployed I01–I06. No new DDL or forecast math; require exact same-owner/stock state proof on queue preparation save and preserve existing nonqueue preparation behavior. Missing quantities, handling dates, devices or demand never become invented coverage.",
+      "status": "implemented_partial",
+      "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/b305c4c95f2118051c0e03f719d9330bfe3f9818/src/components/dashboard/SupplyTile.tsx",
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "implementation_scope": "Implemented and source-tested selected I08: source-current Supply summary in Medications Log and inline Needs preparation section in Preparation & stock. Reuse unchanged authoritative I06 forecast; preserve urgency/date/name ordering, explicit unknown and no-demand states. Queue entries bind existing stock IDs and open the existing preparation form inline without writes on expansion. Preparation save includes a fresh queue-state assertion checked under locks; no automatic creation/preparation. Sparky adaptation admits only raw sealed, never-used, physical-unset supported-route vial rows without prior preparation; prepared/legacy physical/used/ambiguous/terminal rows are not blindly called needs preparation. No optional source metrics/count pills/sealed yields, P07/I07/R01, native UI, orders or notifications.",
+      "verification": "Final immutable2183-file backend/shared snapshot passes31 PostgreSQL cases (raw dashboard12, existingI06snapshot13, guarded preparation lifecycle6) after fresh full migrations. Web231focused cases/fullstatics, backend49focused/shared16schema checks and independent review pass. I06 forecaster/helpers/API remain byte-identical to25d083bc. Exact built App/image/privacy and live operational readback are separately recorded; no native distribution."
     },
     {
       "id": "C01",

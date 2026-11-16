@@ -1,5 +1,6 @@
 import {
   calculatedDrawInputSchema,
+  medicationPreparationQueueStateSchema,
   medicationCourseAttributionInputSchema,
 } from '@workspace/shared';
 import {
@@ -161,6 +162,12 @@ const PenFieldsSchema = z.object({
 });
 export const CreatePenBodySchema = PenFieldsSchema.loose().superRefine(
   (data, context) => {
+    if (data.expected_preparation_queue_state !== undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['expected_preparation_queue_state'],
+        message: 'Queued preparation applies only to an existing stock item.',
+      });
     if (
       data.label_mass_mg !== null &&
       data.label_mass_mg !== undefined &&
@@ -174,7 +181,24 @@ export const CreatePenBodySchema = PenFieldsSchema.loose().superRefine(
   }
 );
 export type CreatePenBody = z.infer<typeof CreatePenBodySchema>;
-export const UpdatePenBodySchema = PenFieldsSchema.partial().loose();
+export const UpdatePenBodySchema = PenFieldsSchema.partial()
+  .extend({
+    expected_preparation_queue_state:
+      medicationPreparationQueueStateSchema.optional(),
+  })
+  .loose()
+  .superRefine((data, context) => {
+    if (
+      data.expected_preparation_queue_state !== undefined &&
+      !data.preparation
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['preparation'],
+        message:
+          'A queued preparation confirmation requires a preparation payload.',
+      });
+  });
 export type UpdatePenBody = z.infer<typeof UpdatePenBodySchema>;
 
 // --------------------------------------------------------------------------

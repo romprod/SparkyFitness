@@ -36,6 +36,7 @@ function snapshot(): InventoryForecastSnapshot {
   const course = medicationCourseFixture();
   return {
     today: '2026-11-16',
+    dashboard_stock: [],
     timezone: 'Europe/London',
     defaults: { lead_days: 14, buffer_days: 3 },
     devices: [device],

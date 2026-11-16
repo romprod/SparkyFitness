@@ -55,6 +55,7 @@ import AddMedicationDialog, { MedTypeIcon } from './AddMedicationDialog';
 import { countMedicationNutrients } from './medicationUtils';
 import ScheduleManager from './ScheduleManager';
 import TodayMedications from './TodayMedications';
+import MedicationSupplyTile from './MedicationSupplyTile';
 import SymptomsHub from '../Symptoms/SymptomsHub';
 import MedicationDisclaimer from './MedicationDisclaimer';
 import { formatScheduleDescription } from './medicationUtils';
@@ -386,23 +387,26 @@ export default function Medications() {
       {activeTab === 'costs' && purchaseScope.ready && <MedicationCosts />}
 
       {activeTab === 'today' && (
-        <TodayMedications
-          selectedDate={selectedDate}
-          today={today}
-          meds={visibleMeds}
-          entries={visibleEntries}
-          recentEntries={visibleRecentEntries}
-          loadingMeds={loadingMeds}
-          loadingEntries={loadingEntries}
-          subtype={subtype}
-          onSelectDate={(d) =>
-            setSearchParams((previous) => {
-              const next = new URLSearchParams(previous);
-              next.set('date', d);
-              return next;
-            })
-          }
-        />
+        <>
+          <MedicationSupplyTile />
+          <TodayMedications
+            selectedDate={selectedDate}
+            today={today}
+            meds={visibleMeds}
+            entries={visibleEntries}
+            recentEntries={visibleRecentEntries}
+            loadingMeds={loadingMeds}
+            loadingEntries={loadingEntries}
+            subtype={subtype}
+            onSelectDate={(d) =>
+              setSearchParams((previous) => {
+                const next = new URLSearchParams(previous);
+                next.set('date', d);
+                return next;
+              })
+            }
+          />
+        </>
       )}
 
       {activeTab === 'cabinet' && (

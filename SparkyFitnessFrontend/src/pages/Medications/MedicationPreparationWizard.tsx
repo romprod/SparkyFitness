@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   addDays,
@@ -55,17 +55,60 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+function PreparationSurface({
+  inline,
+  title,
+  pending,
+  onClose,
+  children,
+}: {
+  inline: boolean;
+  title: string;
+  pending: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (inline)
+    return (
+      <section aria-label={title} className="min-w-0 space-y-4 border-t pt-4">
+        <h3 className="font-semibold">{title}</h3>
+        {children}
+      </section>
+    );
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !pending) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Preparation input is separate from editable inventory metadata and recorded draws. */
 export default function MedicationPreparationWizard({
   med,
   pen,
   onClose,
+  inline = false,
+  queueContext,
 }: {
   med: Medication;
   pen?: MedicationPen;
   onClose: () => void;
+  inline?: boolean;
+  queueContext?: { state: string; isCurrent: () => boolean };
 }) {
   const { t } = useTranslation();
+  const instanceId = useId();
+  const fieldPrefix = inline ? `preparation-${instanceId}` : 'preparation';
   const { timezone } = usePreferences();
   const saved = pen?.preparation;
   const pensQ = useMedicationPens(med.id);
@@ -84,7 +127,7 @@ export default function MedicationPreparationWizard({
     med.dose_amount != null &&
     med.dose_amount > 0;
   const [targetValue, setTargetValue] = useState(
-    compatibleDefault ? String(med.dose_amount) : ''
+    !queueContext && compatibleDefault ? String(med.dose_amount) : ''
   );
   const [targetUnit, setTargetUnit] = useState<DeviceDose['unit']>(
     compatibleDefault
@@ -118,6 +161,9 @@ export default function MedicationPreparationWizard({
   }
   const correcting = !!saved;
   const [step, setStep] = useState(correcting ? 2 : 1);
+  const [queueStale, setQueueStale] = useState(false);
+  const [queueState] = useState(queueContext?.state);
+  const queueChanged = queueStale || queueState !== queueContext?.state;
   const [mode, setMode] = useState<'reconstituted' | 'premixed'>(
     saved?.mode ?? 'reconstituted'
   );
@@ -130,7 +176,9 @@ export default function MedicationPreparationWizard({
   const [dryVolume, setDryVolume] = useState(
     saved?.mode === 'reconstituted'
       ? (saved.exact?.final_volume_ml ?? String(saved.final_volume_ml))
-      : '2'
+      : queueContext
+        ? ''
+        : '2'
   );
   const [premixVolume, setPremixVolume] = useState(
     saved?.mode === 'premixed'
@@ -286,7 +334,15 @@ export default function MedicationPreparationWizard({
     setStep(3);
   };
   const save = () => {
-    if (pending || !preparationValid || !budValid || !labelMassValid) return;
+    if (
+      pending ||
+      !preparationValid ||
+      !budValid ||
+      !labelMassValid ||
+      queueChanged ||
+      (queueContext && !queueContext.isCurrent())
+    )
+      return;
     if (correcting) {
       if (!reviewInput || !review?.can_confirm) return;
       if (
@@ -330,7 +386,17 @@ export default function MedicationPreparationWizard({
           body.status = 'in_use';
           body.lifecycle_intent = true;
         }
-        attach.mutate({ id: pen.id, body }, { onSuccess: onClose });
+        if (queueContext) body.expected_preparation_queue_state = queueState;
+        attach.mutate(
+          { id: pen.id, body },
+          {
+            onSuccess: onClose,
+            onError: (error) => {
+              if (queueContext && 'status' in error && error.status === 409)
+                setQueueStale(true);
+            },
+          }
+        );
       } else {
         body.status = 'in_use';
         if (labelMass.trim()) body.label_mass_mg = labelMass.trim();
@@ -349,9 +415,9 @@ export default function MedicationPreparationWizard({
     type = 'text'
   ) => (
     <div className="space-y-1">
-      <Label htmlFor={`preparation-${name}`}>{title}</Label>
+      <Label htmlFor={`${fieldPrefix}-${name}`}>{title}</Label>
       <Input
-        id={`preparation-${name}`}
+        id={`${fieldPrefix}-${name}`}
         type={type}
         value={value}
         onChange={(event) => set(event.target.value)}
@@ -359,530 +425,530 @@ export default function MedicationPreparationWizard({
     </div>
   );
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !pending) onClose();
-      }}
+    <PreparationSurface
+      inline={inline}
+      pending={pending}
+      onClose={onClose}
+      title={
+        correcting
+          ? t('medications.preparationFlow.edit', 'Edit preparation')
+          : t('medications.stock.prepare', 'Prepare a vial')
+      }
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {correcting
-              ? t('medications.preparationFlow.edit', 'Edit preparation')
-              : t('medications.stock.prepare', 'Prepare a vial')}
-          </DialogTitle>
-        </DialogHeader>
-        <div
-          className="flex gap-2"
-          aria-label={t(
-            'medications.preparationFlow.progress',
-            'Preparation steps'
-          )}
-        >
-          {(correcting ? [2, 3] : [1, 2, 3]).map((number) => (
-            <span
-              key={number}
-              className={`h-1 flex-1 rounded-full ${number <= step ? 'bg-primary' : 'bg-muted'}`}
-            />
+      <div
+        className="flex gap-2"
+        aria-label={t(
+          'medications.preparationFlow.progress',
+          'Preparation steps'
+        )}
+      >
+        {(correcting ? [2, 3] : [1, 2, 3]).map((number) => (
+          <span
+            key={number}
+            className={`h-1 flex-1 rounded-full ${number <= step ? 'bg-primary' : 'bg-muted'}`}
+          />
+        ))}
+      </div>
+      {step === 1 && (
+        <div className="space-y-3">
+          <h3 className="font-medium">
+            {t(
+              'medications.preparationFlow.typeQuestion',
+              'How does this vial come?'
+            )}
+          </h3>
+          {(['reconstituted', 'premixed'] as const).map((option) => (
+            <Button
+              key={option}
+              className="h-auto w-full justify-start whitespace-normal py-4 text-left"
+              variant={mode === option ? 'default' : 'outline'}
+              onClick={() => {
+                setMode(option);
+                setStep(2);
+              }}
+            >
+              {option === 'reconstituted'
+                ? t(
+                    'medications.preparationFlow.dry',
+                    'Dry powder — add diluent to mix'
+                  )
+                : t(
+                    'medications.preparationFlow.premixed',
+                    'Premixed — ready to use, known concentration'
+                  )}
+            </Button>
           ))}
         </div>
-        {step === 1 && (
-          <div className="space-y-3">
-            <h3 className="font-medium">
-              {t(
-                'medications.preparationFlow.typeQuestion',
-                'How does this vial come?'
+      )}
+      {step === 2 && (
+        <div className="space-y-4">
+          {correcting && (
+            <div className="flex gap-2">
+              {(['reconstituted', 'premixed'] as const).map((option) => (
+                <Button
+                  key={option}
+                  className="flex-1"
+                  variant={mode === option ? 'default' : 'outline'}
+                  onClick={() => setMode(option)}
+                >
+                  {option === 'reconstituted'
+                    ? t('medications.preparationFlow.dryShort', 'Dry powder')
+                    : t('medications.preparation.premixed', 'Premixed')}
+                </Button>
+              ))}
+            </div>
+          )}
+          {!pen &&
+            field(
+              'label',
+              t('medications.preparationFlow.label', 'Vial label (optional)'),
+              label,
+              setLabel
+            )}
+          {!pen && (
+            <VialLabelMassField
+              id={`${fieldPrefix}-label-mass`}
+              value={labelMass}
+              onChange={setLabelMass}
+            />
+          )}
+          {mode === 'reconstituted' ? (
+            <>
+              {field(
+                'mass',
+                t('medications.preparationFlow.powder', 'Powder in the vial'),
+                mass,
+                setMass
               )}
-            </h3>
-            {(['reconstituted', 'premixed'] as const).map((option) => (
-              <Button
-                key={option}
-                className="h-auto w-full justify-start whitespace-normal py-4 text-left"
-                variant={mode === option ? 'default' : 'outline'}
-                onClick={() => {
-                  setMode(option);
-                  setStep(2);
-                }}
-              >
-                {option === 'reconstituted'
-                  ? t(
-                      'medications.preparationFlow.dry',
-                      'Dry powder — add diluent to mix'
-                    )
-                  : t(
-                      'medications.preparationFlow.premixed',
-                      'Premixed — ready to use, known concentration'
-                    )}
-              </Button>
-            ))}
-          </div>
-        )}
-        {step === 2 && (
-          <div className="space-y-4">
-            {correcting && (
-              <div className="flex gap-2">
-                {(['reconstituted', 'premixed'] as const).map((option) => (
+              <div className="space-y-1">
+                <Label htmlFor={`${fieldPrefix}-mass-unit`}>
+                  {t('medications.preparation.massUnit', 'Mass unit')}
+                </Label>
+                <Select
+                  value={massUnit}
+                  onValueChange={(unit) => setMassUnit(unit as 'mg' | 'mcg')}
+                >
+                  <SelectTrigger id={`${fieldPrefix}-mass-unit`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mg">mg</SelectItem>
+                    <SelectItem value="mcg">mcg</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {field(
+                'volume',
+                t(
+                  'medications.preparationFlow.diluentVolume',
+                  'Diluent added (mL)'
+                ),
+                volume,
+                setVolume
+              )}
+              <div className="flex flex-wrap gap-2">
+                {['1', '2', '3', '5'].map((amount) => (
                   <Button
-                    key={option}
-                    className="flex-1"
-                    variant={mode === option ? 'default' : 'outline'}
-                    onClick={() => setMode(option)}
+                    type="button"
+                    key={amount}
+                    size="sm"
+                    variant={volume === amount ? 'default' : 'outline'}
+                    onClick={() => setVolume(amount)}
                   >
-                    {option === 'reconstituted'
-                      ? t('medications.preparationFlow.dryShort', 'Dry powder')
-                      : t('medications.preparation.premixed', 'Premixed')}
+                    {amount} mL
                   </Button>
                 ))}
               </div>
-            )}
-            {!pen &&
-              field(
-                'label',
-                t('medications.preparationFlow.label', 'Vial label (optional)'),
-                label,
-                setLabel
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {t(
+                  'medications.preparationFlow.copyLabel',
+                  'Copy the concentration and fill volume from the label.'
+                )}
+              </p>
+              {field(
+                'concentration',
+                t(
+                  'medications.preparationFlow.labelConcentration',
+                  'Label concentration (mg/mL)'
+                ),
+                labelConcentration,
+                setLabelConcentration
               )}
-            {!pen && (
-              <VialLabelMassField
-                id="preparation-label-mass"
-                value={labelMass}
-                onChange={setLabelMass}
-              />
-            )}
-            {mode === 'reconstituted' ? (
-              <>
-                {field(
-                  'mass',
-                  t('medications.preparationFlow.powder', 'Powder in the vial'),
-                  mass,
-                  setMass
-                )}
-                <div className="space-y-1">
-                  <Label htmlFor="preparation-mass-unit">
-                    {t('medications.preparation.massUnit', 'Mass unit')}
-                  </Label>
-                  <Select
-                    value={massUnit}
-                    onValueChange={(unit) => setMassUnit(unit as 'mg' | 'mcg')}
-                  >
-                    <SelectTrigger id="preparation-mass-unit">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="mg">mg</SelectItem>
-                      <SelectItem value="mcg">mcg</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {field(
-                  'volume',
-                  t(
-                    'medications.preparationFlow.diluentVolume',
-                    'Diluent added (mL)'
-                  ),
-                  volume,
-                  setVolume
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {['1', '2', '3', '5'].map((amount) => (
-                    <Button
-                      type="button"
-                      key={amount}
-                      size="sm"
-                      variant={volume === amount ? 'default' : 'outline'}
-                      onClick={() => setVolume(amount)}
-                    >
-                      {amount} mL
-                    </Button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
+              {field(
+                'volume',
+                t(
+                  'medications.preparationFlow.fillVolume',
+                  'Volume in the vial (mL)'
+                ),
+                volume,
+                setVolume
+              )}
+            </>
+          )}
+          {field(
+            'date',
+            t('medications.preparation.preparedDate', 'Prepared date'),
+            preparedDate,
+            setPreparedDate,
+            'date'
+          )}
+          {field(
+            'diluent',
+            t('medications.preparation.diluent', 'Diluent (optional)'),
+            diluent,
+            setDiluent
+          )}
+          <div className="space-y-1">
+            <Label htmlFor={`${fieldPrefix}-bud-mode`}>
+              {t('medications.preparation.bud', 'Beyond-use date (BUD)')}
+            </Label>
+            <Select
+              value={budMode}
+              onValueChange={(value) => setBudMode(value as typeof budMode)}
+            >
+              <SelectTrigger id={`${fieldPrefix}-bud-mode`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  {t('medications.preparationFlow.notRecorded', 'Not recorded')}
+                </SelectItem>
+                <SelectItem value="date">
+                  {t('medications.preparationFlow.explicitDate', 'Date')}
+                </SelectItem>
+                <SelectItem value="interval">
                   {t(
-                    'medications.preparationFlow.copyLabel',
-                    'Copy the concentration and fill volume from the label.'
+                    'medications.preparationFlow.interval',
+                    'Interval and source'
                   )}
-                </p>
-                {field(
-                  'concentration',
-                  t(
-                    'medications.preparationFlow.labelConcentration',
-                    'Label concentration (mg/mL)'
-                  ),
-                  labelConcentration,
-                  setLabelConcentration
-                )}
-                {field(
-                  'volume',
-                  t(
-                    'medications.preparationFlow.fillVolume',
-                    'Volume in the vial (mL)'
-                  ),
-                  volume,
-                  setVolume
-                )}
-              </>
-            )}
-            {field(
-              'date',
-              t('medications.preparation.preparedDate', 'Prepared date'),
-              preparedDate,
-              setPreparedDate,
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {budMode === 'date' &&
+            field(
+              'bud-date',
+              t('medications.preparationFlow.useBy', 'Use by'),
+              budDate,
+              setBudDate,
               'date'
             )}
-            {field(
-              'diluent',
-              t('medications.preparation.diluent', 'Diluent (optional)'),
-              diluent,
-              setDiluent
-            )}
-            <div className="space-y-1">
-              <Label htmlFor="preparation-bud-mode">
-                {t('medications.preparation.bud', 'Beyond-use date (BUD)')}
-              </Label>
-              <Select
-                value={budMode}
-                onValueChange={(value) => setBudMode(value as typeof budMode)}
-              >
-                <SelectTrigger id="preparation-bud-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">
-                    {t(
-                      'medications.preparationFlow.notRecorded',
-                      'Not recorded'
-                    )}
-                  </SelectItem>
-                  <SelectItem value="date">
-                    {t('medications.preparationFlow.explicitDate', 'Date')}
-                  </SelectItem>
-                  <SelectItem value="interval">
-                    {t(
-                      'medications.preparationFlow.interval',
-                      'Interval and source'
-                    )}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {budMode === 'date' &&
-              field(
-                'bud-date',
-                t('medications.preparationFlow.useBy', 'Use by'),
-                budDate,
-                setBudDate,
+          {budMode === 'interval' && (
+            <>
+              {field(
+                'bud-days',
+                t('medications.preparationFlow.days', 'Days'),
+                budDays,
+                setBudDays
+              )}
+              {field(
+                'bud-base',
+                t('medications.preparationFlow.base', 'From date'),
+                budBaseDate,
+                setBudBaseDate,
                 'date'
               )}
-            {budMode === 'interval' && (
-              <>
-                {field(
-                  'bud-days',
-                  t('medications.preparationFlow.days', 'Days'),
-                  budDays,
-                  setBudDays
-                )}
-                {field(
-                  'bud-base',
-                  t('medications.preparationFlow.base', 'From date'),
-                  budBaseDate,
-                  setBudBaseDate,
-                  'date'
-                )}
-              </>
+            </>
+          )}
+          {budMode !== 'none' &&
+            field(
+              'bud-source',
+              t('medications.preparation.budSource', 'BUD source'),
+              budSource,
+              setBudSource
             )}
-            {budMode !== 'none' &&
-              field(
-                'bud-source',
-                t('medications.preparation.budSource', 'BUD source'),
-                budSource,
-                setBudSource
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'medications.preparationFlow.noAssumption',
+              'Use the date or interval from your product or clinician guidance. No interval is assumed.'
+            )}
+          </p>
+        </div>
+      )}
+      {step === 3 && (
+        <div className="space-y-3">
+          <h3 className="font-medium">
+            {t('medications.preparationFlow.review', 'Review preparation')}
+          </h3>
+          {correcting ? (
+            <>
+              {!attempted && reviewQ.isFetching && (
+                <p>
+                  {t(
+                    'medications.preparationFlow.reviewing',
+                    'Checking preparation and recorded draws…'
+                  )}
+                </p>
               )}
-            <p className="text-xs text-muted-foreground">
-              {t(
-                'medications.preparationFlow.noAssumption',
-                'Use the date or interval from your product or clinician guidance. No interval is assumed.'
+              {!attempted && reviewQ.isError && (
+                <Badge
+                  variant="destructive"
+                  className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+                >
+                  {t(
+                    'medications.preparationFlow.reviewError',
+                    'Could not review these changes. Go back and review again.'
+                  )}
+                </Badge>
               )}
-            </p>
-          </div>
-        )}
-        {step === 3 && (
-          <div className="space-y-3">
-            <h3 className="font-medium">
-              {t('medications.preparationFlow.review', 'Review preparation')}
-            </h3>
-            {correcting ? (
-              <>
-                {!attempted && reviewQ.isFetching && (
-                  <p>
-                    {t(
-                      'medications.preparationFlow.reviewing',
-                      'Checking preparation and recorded draws…'
-                    )}
-                  </p>
-                )}
-                {!attempted && reviewQ.isError && (
+              {!attempted &&
+                review &&
+                currentRevision !== review.expected_revision && (
                   <Badge
                     variant="destructive"
                     className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
                   >
                     {t(
-                      'medications.preparationFlow.reviewError',
-                      'Could not review these changes. Go back and review again.'
+                      'medications.preparationFlow.changed',
+                      'This preparation changed. Go back and review again.'
                     )}
                   </Badge>
                 )}
-                {!attempted &&
-                  review &&
-                  currentRevision !== review.expected_revision && (
+              {review && (
+                <>
+                  <dl className="grid grid-cols-1 gap-2 rounded-md border p-3 text-sm sm:grid-cols-2">
+                    <dt>
+                      {t(
+                        'medications.preparation.concentration',
+                        'Concentration'
+                      )}
+                    </dt>
+                    <dd className="min-w-0 break-words">
+                      {review.before.concentration_mg_ml} →{' '}
+                      {review.after.concentration_mg_ml} mg/mL
+                    </dd>
+                    <dt>
+                      {t(
+                        'medications.preparationFlow.remaining',
+                        'Remaining in vial'
+                      )}
+                    </dt>
+                    <dd className="min-w-0 break-words">
+                      {review.before.remaining_ml ?? '—'} →{' '}
+                      {review.after.remaining_ml ?? '—'} mL
+                    </dd>
+                    <dt>
+                      {t(
+                        'medications.preparationFlow.affected',
+                        'Logged doses affected'
+                      )}
+                    </dt>
+                    <dd className="min-w-0 break-words">
+                      {review.affected_dose_count}
+                    </dd>
+                  </dl>
+                  {review.stock_unknown && (
+                    <p className="text-muted-foreground">
+                      {t(
+                        'medications.preparationFlow.unknown',
+                        'Available stock remains unknown because physical draw history is incomplete.'
+                      )}
+                    </p>
+                  )}
+                  {review.overdraw_warning && (
                     <Badge
                       variant="destructive"
                       className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
                     >
                       {t(
-                        'medications.preparationFlow.changed',
-                        'This preparation changed. Go back and review again.'
+                        'medications.preparationFlow.deficit',
+                        'Recorded draws exceed the corrected fill. Available stock will be zero.'
                       )}
                     </Badge>
                   )}
-                {review && (
-                  <>
-                    <dl className="grid grid-cols-1 gap-2 rounded-md border p-3 text-sm sm:grid-cols-2">
-                      <dt>
-                        {t(
-                          'medications.preparation.concentration',
-                          'Concentration'
-                        )}
-                      </dt>
-                      <dd className="min-w-0 break-words">
-                        {review.before.concentration_mg_ml} →{' '}
-                        {review.after.concentration_mg_ml} mg/mL
-                      </dd>
-                      <dt>
-                        {t(
-                          'medications.preparationFlow.remaining',
-                          'Remaining in vial'
-                        )}
-                      </dt>
-                      <dd className="min-w-0 break-words">
-                        {review.before.remaining_ml ?? '—'} →{' '}
-                        {review.after.remaining_ml ?? '—'} mL
-                      </dd>
-                      <dt>
-                        {t(
-                          'medications.preparationFlow.affected',
-                          'Logged doses affected'
-                        )}
-                      </dt>
-                      <dd className="min-w-0 break-words">
-                        {review.affected_dose_count}
-                      </dd>
-                    </dl>
-                    {review.stock_unknown && (
-                      <p className="text-muted-foreground">
-                        {t(
-                          'medications.preparationFlow.unknown',
-                          'Available stock remains unknown because physical draw history is incomplete.'
-                        )}
-                      </p>
-                    )}
-                    {review.overdraw_warning && (
-                      <Badge
-                        variant="destructive"
-                        className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
-                      >
-                        {t(
-                          'medications.preparationFlow.deficit',
-                          'Recorded draws exceed the corrected fill. Available stock will be zero.'
-                        )}
-                      </Badge>
-                    )}
-                    {!review.can_confirm && (
-                      <Badge
-                        variant="destructive"
-                        className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
-                      >
-                        {t(
-                          'medications.preparationFlow.incomplete',
-                          'These changes cannot be confirmed with incomplete physical draw history.'
-                        )}
-                      </Badge>
-                    )}
-                  </>
-                )}
-              </>
-            ) : (
-              values && (
-                <dl className="grid grid-cols-1 gap-2 rounded-md border p-3 text-sm sm:grid-cols-2">
-                  <dt>
-                    {t(
-                      'medications.preparation.concentration',
-                      'Concentration'
-                    )}
-                  </dt>
-                  <dd className="min-w-0 break-words">
-                    {estimate?.values.concentration_mg_ml ??
-                      values.concentration_mg_ml}{' '}
-                    mg/mL
-                  </dd>
-                  <dt>{t('medications.preparation.mass', 'Vial content')}</dt>
-                  <dd className="min-w-0 break-words">
-                    {estimate?.values.mass_mg ?? values.mass_mg} mg
-                  </dd>
-                  <dt>
-                    {t('medications.preparation.finalVolume', 'Final volume')}
-                  </dt>
-                  <dd className="min-w-0 break-words">{volume} mL</dd>
-                </dl>
-              )
-            )}
-            {!correcting && (
-              <div className="space-y-3 rounded-md border p-3">
-                <p className="text-sm font-medium">
-                  {t('medications.preparationFlow.estimate', 'Draw estimate')}
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {field(
-                    'target',
-                    t('medications.preparationFlow.target', 'Target amount'),
-                    targetDeviceChanged ? '' : targetValue,
-                    setTargetValue
-                  )}
-                  <div className="space-y-1">
-                    <Label htmlFor="preparation-target-unit">
-                      {t('medications.syringes.doseUnit', 'Amount unit')}
-                    </Label>
-                    <Select
-                      value={targetUnit}
-                      onValueChange={(unit) =>
-                        setTargetUnit(unit as DeviceDose['unit'])
-                      }
+                  {!review.can_confirm && (
+                    <Badge
+                      variant="destructive"
+                      className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
                     >
-                      <SelectTrigger id="preparation-target-unit">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {targetUnits.map((unit) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit === 'ml' ? 'mL' : unit}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {device?.name ??
-                    t(
-                      'medications.preparationFlow.noDevice',
-                      'No eligible saved device. Add one in Cabinet to calculate a marking.'
-                    )}
-                </p>
-                <MedicationDrawPreview
-                  preview={estimate?.draw ?? undefined}
-                  deviceType={
-                    device?.device_type ?? (nasal ? 'pump' : 'syringe')
-                  }
-                  isFetching={false}
-                  isError={false}
-                />
-                {estimate?.doses_in_vial != null && (
-                  <p className="text-sm">
-                    {t(
-                      'medications.preparationFlow.yield',
-                      'Estimated doses in vial: {{doses}}',
-                      { doses: estimate.doses_in_vial }
-                    )}
-                  </p>
+                      {t(
+                        'medications.preparationFlow.incomplete',
+                        'These changes cannot be confirmed with incomplete physical draw history.'
+                      )}
+                    </Badge>
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            values && (
+              <dl className="grid grid-cols-1 gap-2 rounded-md border p-3 text-sm sm:grid-cols-2">
+                <dt>
+                  {t('medications.preparation.concentration', 'Concentration')}
+                </dt>
+                <dd className="min-w-0 break-words">
+                  {estimate?.values.concentration_mg_ml ??
+                    values.concentration_mg_ml}{' '}
+                  mg/mL
+                </dd>
+                <dt>{t('medications.preparation.mass', 'Vial content')}</dt>
+                <dd className="min-w-0 break-words">
+                  {estimate?.values.mass_mg ?? values.mass_mg} mg
+                </dd>
+                <dt>
+                  {t('medications.preparation.finalVolume', 'Final volume')}
+                </dt>
+                <dd className="min-w-0 break-words">{volume} mL</dd>
+              </dl>
+            )
+          )}
+          {!correcting && (
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">
+                {t('medications.preparationFlow.estimate', 'Draw estimate')}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {field(
+                  'target',
+                  t('medications.preparationFlow.target', 'Target amount'),
+                  targetDeviceChanged ? '' : targetValue,
+                  setTargetValue
                 )}
-                <p className="text-xs text-muted-foreground">
+                <div className="space-y-1">
+                  <Label htmlFor={`${fieldPrefix}-target-unit`}>
+                    {t('medications.syringes.doseUnit', 'Amount unit')}
+                  </Label>
+                  <Select
+                    value={targetUnit}
+                    onValueChange={(unit) =>
+                      setTargetUnit(unit as DeviceDose['unit'])
+                    }
+                  >
+                    <SelectTrigger id={`${fieldPrefix}-target-unit`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {targetUnits.map((unit) => (
+                        <SelectItem key={unit} value={unit}>
+                          {unit === 'ml' ? 'mL' : unit}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {device?.name ??
+                  t(
+                    'medications.preparationFlow.noDevice',
+                    'No eligible saved device. Add one in Cabinet to calculate a marking.'
+                  )}
+              </p>
+              <MedicationDrawPreview
+                preview={estimate?.draw ?? undefined}
+                deviceType={device?.device_type ?? (nasal ? 'pump' : 'syringe')}
+                isFetching={false}
+                isError={false}
+              />
+              {estimate?.doses_in_vial != null && (
+                <p className="text-sm">
                   {t(
-                    'medications.preparationFlow.estimateOnly',
-                    'This estimates a draw and does not log a dose.'
+                    'medications.preparationFlow.yield',
+                    'Estimated doses in vial: {{doses}}',
+                    { doses: estimate.doses_in_vial }
                   )}
                 </p>
-              </div>
-            )}
-            {!pen && (
-              <p className="text-sm break-words">
-                {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
-                {labelMass.trim() ||
-                  t('medications.preparation.notRecorded', 'Not recorded')}
+              )}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'medications.preparationFlow.estimateOnly',
+                  'This estimates a draw and does not log a dose.'
+                )}
               </p>
-            )}
-            <p className="text-sm">
-              {t('medications.preparation.preparedDate', 'Prepared date')}:{' '}
-              {preparedDate}
+            </div>
+          )}
+          {!pen && (
+            <p className="text-sm break-words">
+              {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
+              {labelMass.trim() ||
+                t('medications.preparation.notRecorded', 'Not recorded')}
             </p>
-            {budMode !== 'none' && (
-              <p className="text-sm">
-                {t('medications.preparationFlow.useBy', 'Use by')}: {derivedBud}
-                {budSource && ` · ${budSource}`}
-              </p>
-            )}
-            {error && (
-              <Badge
-                variant="destructive"
-                className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
-              >
-                {error.message}
-              </Badge>
-            )}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={pending}>
-            {t('common.cancel', 'Cancel')}
+          )}
+          <p className="text-sm">
+            {t('medications.preparation.preparedDate', 'Prepared date')}:{' '}
+            {preparedDate}
+          </p>
+          {budMode !== 'none' && (
+            <p className="text-sm">
+              {t('medications.preparationFlow.useBy', 'Use by')}: {derivedBud}
+              {budSource && ` · ${budSource}`}
+            </p>
+          )}
+          {queueChanged && (
+            <p
+              role="status"
+              className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-foreground"
+            >
+              {t(
+                'medications.stockDashboard.stalePreparation',
+                'This stock record changed. Close this preparation and reopen it from the refreshed queue before saving.'
+              )}
+            </p>
+          )}
+          {error && (
+            <Badge
+              variant="destructive"
+              className="whitespace-normal border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+            >
+              {error.message}
+            </Badge>
+          )}
+        </div>
+      )}
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose} disabled={pending}>
+          {t('common.cancel', 'Cancel')}
+        </Button>
+        {step > (correcting ? 2 : 1) && (
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              setStep(step - 1);
+              setReviewInput(null);
+              setAttempted(null);
+            }}
+          >
+            {t('common.back', 'Back')}
           </Button>
-          {step > (correcting ? 2 : 1) && (
-            <Button
-              variant="outline"
-              disabled={pending}
-              onClick={() => {
-                setStep(step - 1);
-                setReviewInput(null);
-                setAttempted(null);
-              }}
-            >
-              {t('common.back', 'Back')}
-            </Button>
-          )}
-          {step === 2 && (
-            <Button
-              disabled={
-                !preparationValid ||
-                !budValid ||
-                !labelMassValid ||
-                (correcting && pensQ.isFetching)
-              }
-              onClick={openReview}
-            >
-              {t('medications.preparationFlow.review', 'Review preparation')}
-            </Button>
-          )}
-          {step === 3 && (
-            <Button
-              disabled={
-                pending ||
-                (correcting &&
-                  !attempted &&
-                  (!review?.can_confirm ||
-                    currentRevision !== review.expected_revision ||
-                    reviewQ.isFetching ||
-                    reviewQ.isError))
-              }
-              onClick={save}
-            >
-              {pending
-                ? t('common.saving', 'Saving…')
-                : t('medications.preparationFlow.confirm', 'Confirm and save')}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        )}
+        {step === 2 && (
+          <Button
+            disabled={
+              !preparationValid ||
+              !budValid ||
+              !labelMassValid ||
+              (correcting && pensQ.isFetching)
+            }
+            onClick={openReview}
+          >
+            {t('medications.preparationFlow.review', 'Review preparation')}
+          </Button>
+        )}
+        {step === 3 && (
+          <Button
+            disabled={
+              pending ||
+              queueChanged ||
+              (queueContext !== undefined && !queueContext.isCurrent()) ||
+              (correcting &&
+                !attempted &&
+                (!review?.can_confirm ||
+                  currentRevision !== review.expected_revision ||
+                  reviewQ.isFetching ||
+                  reviewQ.isError))
+            }
+            onClick={save}
+          >
+            {pending
+              ? t('common.saving', 'Saving…')
+              : t('medications.preparationFlow.confirm', 'Confirm and save')}
+          </Button>
+        )}
+      </DialogFooter>
+    </PreparationSurface>
   );
 }

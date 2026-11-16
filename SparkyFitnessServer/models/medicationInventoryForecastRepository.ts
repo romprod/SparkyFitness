@@ -90,6 +90,34 @@ export interface InventoryForecastMedicationSnapshot {
   containers: InventoryPreparedContainer[];
   stock_limitations: InventoryForecastLimitationCode[];
 }
+/** Current storage facts for display/classification; no inferred preparation state. */
+export interface InventoryDashboardStockRow {
+  id: string;
+  medication_id: string;
+  name: string;
+  type_id: string | null;
+  route_id: string | null;
+  kind: string;
+  label: string | null;
+  label_mass_mg: string | null;
+  dose_mg: string | null;
+  doses_total: number | null;
+  status: string;
+  finished_at: string | null;
+  opened_at: string | null;
+  expiry_date: string | null;
+  bud_date: string | null;
+  doses_used: number;
+  concentration_mg_ml: string | null;
+  volume_ml: string | null;
+  current_preparation_id: string | null;
+  /** Retained correction audits remain evidence even when a current projection is absent. */
+  prior_preparation: boolean;
+  /** All linked actuals, including unknown/zero mass and historic administrations. */
+  linked_actual_count: string;
+  updated_at: string | null;
+  created_at: string;
+}
 export interface InventoryForecastSnapshot {
   today: string;
   timezone: string;
@@ -97,6 +125,7 @@ export interface InventoryForecastSnapshot {
   medications: InventoryForecastMedicationSnapshot[];
   devices: MedicationSyringe[];
   preferred_device_id: string | null;
+  dashboard_stock: InventoryDashboardStockRow[];
 }
 type MedicationRow = Pick<
   InventoryForecastMedicationSnapshot,
@@ -259,6 +288,51 @@ function preparedStock(
   return { containers, stock_limitations: [...limitations] };
 }
 
+/** Explicit ID reads include a newly closed/retired row so a write guard can reject stale queue facts. */
+export async function loadInventoryDashboardStock(
+  client: PoolClient,
+  owner: string,
+  stockId?: string
+): Promise<InventoryDashboardStockRow[]> {
+  type Stored = Omit<
+    InventoryDashboardStockRow,
+    'finished_at' | 'updated_at' | 'created_at'
+  > & {
+    finished_at: Date | string | null;
+    updated_at: Date | string | null;
+    created_at: Date | string;
+  };
+  const result = await client.query<Stored>(
+    `SELECT v.id,v.medication_id,COALESCE(NULLIF(m.display_name,''),m.name) AS name,m.type_id,m.route_id,
+      v.kind,v.label,v.label_mass_mg::text,v.dose_mg::text,v.doses_total,v.status,v.finished_at::text,
+      v.opened_at::text,v.expiry_date::text,v.bud_date::text,v.doses_used,v.concentration_mg_ml::text,v.volume_ml::text,
+      p.id AS current_preparation_id,
+      EXISTS(SELECT 1 FROM medication_preparation_corrections a WHERE a.user_id=v.user_id AND a.pen_id=v.id) AS prior_preparation,
+      (SELECT COUNT(*)::text FROM injection_entries i WHERE i.user_id=v.user_id AND i.pen_id=v.id) AS linked_actual_count,
+      v.updated_at,v.created_at
+     FROM medication_pens v JOIN medications m ON m.id=v.medication_id AND m.user_id=v.user_id
+     LEFT JOIN medication_preparations p ON p.pen_id=v.id AND p.user_id=v.user_id AND p.medication_id=v.medication_id
+     WHERE v.user_id=$1 AND ($2::uuid IS NULL OR v.id=$2)
+       AND ($2::uuid IS NOT NULL OR (v.status IN ('sealed','in_use') AND v.finished_at IS NULL))
+     ORDER BY v.id`,
+    [owner, stockId ?? null]
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    finished_at:
+      row.finished_at === null
+        ? null
+        : validInstant(row.finished_at)
+          ? iso(row.finished_at)
+          : String(row.finished_at),
+    updated_at:
+      row.updated_at !== null && validInstant(row.updated_at)
+        ? iso(row.updated_at)
+        : null,
+    created_at: validInstant(row.created_at) ? iso(row.created_at) : '',
+  }));
+}
+
 /** All reads share the caller's repeatable-read snapshot. No transaction or pool ownership here. */
 export async function loadInventoryForecastSnapshot(
   client: PoolClient,
@@ -335,6 +409,7 @@ export async function loadInventoryForecastSnapshot(
     'SELECT default_syringe_id FROM medication_device_preferences WHERE user_id=$1',
     [owner]
   );
+  const dashboardStock = await loadInventoryDashboardStock(client, owner);
   const loaded = new Map<
     string,
     { courses: MedicationCourse[]; actuals: CourseActual[] }
@@ -350,6 +425,7 @@ export async function loadInventoryForecastSnapshot(
   }
   const preferredId = preferred.rows[0]?.default_syringe_id ?? null;
   return {
+    dashboard_stock: dashboardStock,
     today: instantToDay(now, timezone),
     timezone,
     defaults,

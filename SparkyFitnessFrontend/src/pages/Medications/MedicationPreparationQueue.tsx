@@ -1,0 +1,231 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  resolvePreparedMedicationRoute,
+  type MedicationPreparationQueueItem,
+} from '@workspace/shared';
+import type { Medication } from '@/types/medications';
+import { usePreferences } from '@/contexts/PreferencesContext';
+import {
+  useMedicationStockDashboard,
+  usePreparationQueueStock,
+} from '@/hooks/Medications/useMedicationStockDashboard';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import MedicationPreparationWizard from './MedicationPreparationWizard';
+
+function QueuePreparation({
+  row,
+  med,
+  onClose,
+}: {
+  row: MedicationPreparationQueueItem;
+  med: Medication;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const { scope, query, data } = usePreparationQueueStock(
+    row.medication_id,
+    row.stock_id,
+    true
+  );
+  if (!scope.ready || !scope.canWrite || !scope.isCurrent()) return null;
+  if (query.isError)
+    return (
+      <div
+        role="alert"
+        className="mt-3 space-y-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-foreground"
+      >
+        <p>
+          {t(
+            'medications.stockDashboard.queueChanged',
+            'This vial could not be revalidated for preparation. Refresh the queue before trying again.'
+          )}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void query.refetch()}
+        >
+          {t('medications.stockDashboard.retry', 'Try again')}
+        </Button>
+      </div>
+    );
+  if (!data || !query.isFetchedAfterMount)
+    return (
+      <p role="status" className="mt-3 text-sm text-muted-foreground">
+        {t(
+          'medications.stockDashboard.checkingVial',
+          'Checking this existing vial…'
+        )}
+      </p>
+    );
+  if (data.row.route !== resolvePreparedMedicationRoute(med))
+    return (
+      <p role="status" className="mt-3 text-sm text-muted-foreground">
+        {t(
+          'medications.stockDashboard.medicationUnavailable',
+          'Medication details are unavailable. Refresh this page before preparing the vial.'
+        )}
+      </p>
+    );
+  return (
+    <MedicationPreparationWizard
+      inline
+      med={med}
+      pen={data.pen}
+      onClose={onClose}
+      queueContext={{
+        state: data.row.preparation_queue_state,
+        isCurrent: () =>
+          scope.isCurrent() &&
+          scope.canWrite &&
+          !query.isFetching &&
+          !query.isError &&
+          data.pen.id === row.stock_id &&
+          data.pen.medication_id === med.id,
+      }}
+    />
+  );
+}
+
+function QueueEntry({
+  row,
+  med,
+  canWrite,
+}: {
+  row: MedicationPreparationQueueItem;
+  med: Medication | undefined;
+  canWrite: boolean;
+}) {
+  const { t } = useTranslation();
+  const { formatDate } = usePreferences();
+  const [open, setOpen] = useState(false);
+  const identity = (
+    <span className="block min-w-0 space-y-1">
+      <span className="block break-words font-medium">
+        {row.medication_name}
+        {row.label ? ` · ${row.label}` : ''}
+      </span>
+      {row.label_mass_mg !== null && (
+        <span className="block text-sm text-muted-foreground">
+          {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
+          {row.label_mass_mg}
+        </span>
+      )}
+      {row.expiry_date && (
+        <span className="block text-sm text-muted-foreground">
+          {t('medications.stockDashboard.expiry', 'Expiry')}:{' '}
+          {formatDate(row.expiry_date)}{' '}
+          {row.expired && (
+            <Badge
+              variant="outline"
+              className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+            >
+              {t('medications.stockDashboard.expired', 'Expired')}
+            </Badge>
+          )}
+        </span>
+      )}
+    </span>
+  );
+  if (!canWrite)
+    return (
+      <div className="space-y-2 rounded-md border p-3">
+        {identity}
+        <p className="text-sm text-muted-foreground">
+          {t(
+            'medications.stockDashboard.readOnly',
+            'Preparing stock requires medication edit access.'
+          )}
+        </p>
+      </div>
+    );
+  return (
+    <details
+      className="min-w-0 rounded-md border p-3"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer">
+        <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-start justify-between gap-2 align-top">
+          {identity}
+          <span className="text-sm font-medium">
+            {t('medications.stockDashboard.prepare', 'Prepare')} ›
+          </span>
+        </span>
+      </summary>
+      {open &&
+        (med ? (
+          <QueuePreparation
+            row={row}
+            med={med}
+            onClose={() => setOpen(false)}
+          />
+        ) : (
+          <p role="status" className="mt-3 text-sm text-muted-foreground">
+            {t(
+              'medications.stockDashboard.medicationUnavailable',
+              'Medication details are unavailable. Refresh this page before preparing the vial.'
+            )}
+          </p>
+        ))}
+    </details>
+  );
+}
+
+export default function MedicationPreparationQueue({
+  meds,
+}: {
+  meds: Medication[];
+}) {
+  const { t } = useTranslation();
+  const { scope, query, data } = useMedicationStockDashboard();
+  if (!scope.ready || !scope.isCurrent()) return null;
+  if (!query.isError && (!data || data.preparation_queue.length === 0))
+    return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {t(
+            'medications.stockDashboard.needsPreparation',
+            'Needs preparation'
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {query.isError ? (
+          <div
+            role="alert"
+            className="space-y-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-foreground"
+          >
+            <p>
+              {t(
+                'medications.stockDashboard.queueError',
+                'Could not load the preparation queue. No preparation eligibility is assumed.'
+              )}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void query.refetch()}
+            >
+              {t('medications.stockDashboard.retry', 'Try again')}
+            </Button>
+          </div>
+        ) : (
+          data?.preparation_queue.map((row) => (
+            <QueueEntry
+              key={`${scope.key}:${row.stock_id}`}
+              row={row}
+              med={meds.find((med) => med.id === row.medication_id)}
+              canWrite={scope.canWrite}
+            />
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}

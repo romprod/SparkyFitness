@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type {
   MedicationPreparationReview,
@@ -431,5 +431,163 @@ it('does not write or edit independent label metadata during preparation correct
   expect(mockCorrect.mock.calls[0][0].body).not.toHaveProperty('label_mass_mg');
   expect(mockCorrect.mock.calls[0][0].body.preparation).not.toHaveProperty(
     'label_mass_mg'
+  );
+});
+
+const queuedPen = {
+  ...pen,
+  status: 'sealed' as const,
+  doses_used: 0,
+  preparation: null,
+};
+const queueToken = 'c'.repeat(64);
+it('prepares a queued existing vial inline with blank volume/target and same-ID guarded PUT only', () => {
+  render(
+    <MedicationPreparationWizard
+      inline
+      med={medication}
+      pen={queuedPen}
+      onClose={jest.fn()}
+      queueContext={{ state: queueToken, isCurrent: () => true }}
+    />
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  expect(screen.getByLabelText('Diluent added (mL)')).toHaveValue('');
+  change('Powder in the vial', '8');
+  change('Diluent added (mL)', '1.5');
+  review();
+  expect(screen.getByLabelText('Target amount')).toHaveValue('');
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  expect(mockCreate).not.toHaveBeenCalled();
+  expect(mockCorrect).not.toHaveBeenCalled();
+  expect(mockAttach).toHaveBeenCalledWith(
+    {
+      id: 'vial',
+      body: expect.objectContaining({
+        expected_preparation_queue_state: queueToken,
+        preparation: expect.objectContaining({
+          mass_value: '8',
+          final_volume_ml: '1.5',
+        }),
+      }),
+    },
+    expect.anything()
+  );
+});
+it('stops a queue save when live profile authority is lost without erasing the draft', () => {
+  let current = true;
+  render(
+    <MedicationPreparationWizard
+      inline
+      med={medication}
+      pen={queuedPen}
+      onClose={jest.fn()}
+      queueContext={{ state: queueToken, isCurrent: () => current }}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  change('Powder in the vial', '8');
+  change('Diluent added (mL)', '1.5');
+  review();
+  current = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  expect(mockAttach).not.toHaveBeenCalled();
+  expect(mockCreate).not.toHaveBeenCalled();
+  expect(screen.getByText('1.5 mL')).toBeInTheDocument();
+});
+it('pins the reviewed queue token across refresh and stops stale409 retries until reopened', () => {
+  const props = {
+    inline: true,
+    med: medication,
+    pen: queuedPen,
+    onClose: jest.fn(),
+    queueContext: { state: queueToken, isCurrent: () => true },
+  };
+  const view = render(<MedicationPreparationWizard {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  change('Powder in the vial', '8');
+  change('Diluent added (mL)', '1.5');
+  review();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  act(() => mockAttach.mock.calls[0][1].onError({ status: 409 }));
+  expect(screen.getByRole('status')).toHaveTextContent('stock record changed');
+  expect(
+    screen.getByRole('button', { name: 'Confirm and save' })
+  ).toBeDisabled();
+  view.rerender(
+    <MedicationPreparationWizard
+      {...props}
+      queueContext={{ state: 'd'.repeat(64), isCurrent: () => true }}
+    />
+  );
+  expect(
+    screen.getByRole('button', { name: 'Confirm and save' })
+  ).toBeDisabled();
+  expect(screen.getByText('1.5 mL')).toBeInTheDocument();
+  expect(mockAttach).toHaveBeenCalledTimes(1);
+});
+it('does not adopt a refreshed queue token into an already reviewed preparation', () => {
+  const props = {
+    inline: true,
+    med: medication,
+    pen: queuedPen,
+    onClose: jest.fn(),
+    queueContext: { state: queueToken, isCurrent: () => true },
+  };
+  const view = render(<MedicationPreparationWizard {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  change('Powder in the vial', '8');
+  change('Diluent added (mL)', '1.5');
+  review();
+  view.rerender(
+    <MedicationPreparationWizard
+      {...props}
+      queueContext={{ state: 'd'.repeat(64), isCurrent: () => true }}
+    />
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('stock record changed');
+  expect(
+    screen.getByRole('button', { name: 'Confirm and save' })
+  ).toBeDisabled();
+  expect(screen.getByText('1.5 mL')).toBeInTheDocument();
+  expect(mockAttach).not.toHaveBeenCalled();
+});
+
+it('keeps labels and inputs distinct when two inline queue preparations are open', () => {
+  render(
+    <>
+      <MedicationPreparationWizard
+        inline
+        med={medication}
+        pen={queuedPen}
+        onClose={jest.fn()}
+        queueContext={{ state: queueToken, isCurrent: () => true }}
+      />
+      <MedicationPreparationWizard
+        inline
+        med={medication}
+        pen={{ ...queuedPen, id: 'other-vial' }}
+        onClose={jest.fn()}
+        queueContext={{ state: queueToken, isCurrent: () => true }}
+      />
+    </>
+  );
+  const sections = screen.getAllByRole('region', { name: 'Prepare a vial' });
+  fireEvent.click(
+    within(sections[0]!).getByRole('button', { name: /Dry powder —/ })
+  );
+  fireEvent.click(
+    within(sections[1]!).getByRole('button', { name: /Dry powder —/ })
+  );
+  const first = within(sections[0]!).getByLabelText('Powder in the vial');
+  const second = within(sections[1]!).getByLabelText('Powder in the vial');
+  expect(first.id).not.toEqual(second.id);
+  fireEvent.change(first, { target: { value: '8' } });
+  fireEvent.change(second, { target: { value: '9' } });
+  expect(first).toHaveValue('8');
+  expect(second).toHaveValue('9');
+  expect(within(sections[0]!).getByLabelText('Prepared date').id).not.toEqual(
+    within(sections[1]!).getByLabelText('Prepared date').id
   );
 });

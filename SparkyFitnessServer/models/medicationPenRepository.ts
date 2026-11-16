@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import {
   badPreparation,
   preparationValues,
@@ -8,6 +9,12 @@ import {
   preparationCreationValues,
   type MedicationPen,
 } from '@workspace/shared';
+import { loadInventoryDashboardStock } from './medicationInventoryForecastRepository.js';
+import {
+  classifyInventoryPreparation,
+  inventoryPreparationQueueState,
+} from '../services/medicationInventoryDashboardClassification.js';
+import { courseProblem } from './medicationCourseRepository.js';
 import { getClient } from '../db/poolManager.js';
 import type {
   CreatePenBody,
@@ -226,9 +233,29 @@ async function listPens(userId: string, medicationId?: string) {
 }
 
 async function updatePen(userId: string, id: string, data: UpdatePenBody) {
-  const client = await getClient(userId);
+  const client: PoolClient = await getClient(userId);
   try {
     await client.query('BEGIN');
+    let queueMedicationId: string | null = null;
+    if (data.expected_preparation_queue_state !== undefined) {
+      const selected = await client.query<{ medication_id: string }>(
+        'SELECT medication_id FROM medication_pens WHERE user_id=$1 AND id=$2',
+        [userId, id]
+      );
+      queueMedicationId = selected.rows[0]?.medication_id ?? null;
+      if (!queueMedicationId)
+        throw courseProblem(
+          'This queued vial changed. Refresh the stock and review preparation again.'
+        );
+      const medication = await client.query(
+        'SELECT id FROM medications WHERE user_id=$1 AND id=$2 FOR SHARE',
+        [userId, queueMedicationId]
+      );
+      if (!medication.rows.length)
+        throw courseProblem(
+          'This queued vial changed. Refresh the stock and review preparation again.'
+        );
+    }
     const exact = data.preparation
       ? preparationCreationValues(data.preparation)
       : null;
@@ -237,6 +264,20 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
       [id, userId]
     );
     const existing = locked.rows[0];
+    if (data.expected_preparation_queue_state !== undefined) {
+      const row = (await loadInventoryDashboardStock(client, userId, id))[0];
+      if (
+        !data.preparation ||
+        !row ||
+        row.medication_id !== queueMedicationId ||
+        classifyInventoryPreparation(row) !== 'needs_preparation' ||
+        inventoryPreparationQueueState(row, userId) !==
+          data.expected_preparation_queue_state
+      )
+        throw courseProblem(
+          'This queued vial changed. Refresh the stock and review preparation again.'
+        );
+    }
     if (data.lifecycle_intent && data.status === undefined)
       throw badPreparation('A deliberate lifecycle change requires a status.');
     if (

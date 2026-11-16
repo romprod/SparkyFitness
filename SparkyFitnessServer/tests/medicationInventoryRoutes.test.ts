@@ -4,11 +4,15 @@ import request from 'supertest';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   forecast: vi.fn(),
+  dashboard: vi.fn(),
   get: vi.fn(),
   save: vi.fn(),
 }));
 vi.mock('../services/medicationInventoryForecastService.js', () => ({
   getMedicationInventoryForecast: mocks.forecast,
+}));
+vi.mock('../services/medicationInventoryDashboardService.js', () => ({
+  getMedicationInventoryDashboard: mocks.dashboard,
 }));
 vi.mock('../services/medicationReorderService.js', () => ({
   getMedicationReorderDefaults: mocks.get,
@@ -63,6 +67,7 @@ describe('inventory forecast and reorder request boundary', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.forecast.mockResolvedValue({ medications: [] });
+    mocks.dashboard.mockResolvedValue({ preparation_queue: [] });
     mocks.get.mockResolvedValue({ lead_days: 14, buffer_days: 3 });
     mocks.save.mockImplementation(async (_owner, input) => input);
   });
@@ -134,5 +139,34 @@ describe('inventory forecast and reorder request boundary', () => {
           .status
       ).toBe(400);
     expect(mocks.save).toHaveBeenCalledOnce();
+  });
+  it('protects dashboard with the same GET auth/profile assertion and private headers', async () => {
+    expect(
+      (
+        await request(app)
+          .get('/inventory/dashboard')
+          .set('x-test-auth', 'missing')
+      ).status
+    ).toBe(401);
+    expect(
+      (await request(app).get('/inventory/dashboard?as_of=2020-01-01')).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app).get(
+          '/inventory/dashboard?expected_owner_id=00000000-0000-4000-a000-000000000099'
+        )
+      ).status
+    ).toBe(409);
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+    const result = await request(app)
+      .get('/inventory/dashboard')
+      .set('x-test-readonly', '1');
+    expect(result.status).toBe(200);
+    expect(result.headers['cache-control']).toBe('no-store');
+    expect(result.headers['x-content-type-options']).toBe('nosniff');
+    expect(mocks.dashboard).toHaveBeenCalledWith(
+      '00000000-0000-4000-a000-000000000001'
+    );
   });
 });

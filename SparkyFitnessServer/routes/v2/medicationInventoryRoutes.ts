@@ -4,6 +4,7 @@ import { medicationReorderDefaultsInputSchema } from '@workspace/shared';
 import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
+import { getMedicationInventoryDashboard } from '../../services/medicationInventoryDashboardService.js';
 import { getMedicationInventoryForecast } from '../../services/medicationInventoryForecastService.js';
 import {
   getMedicationReorderDefaults,
@@ -47,6 +48,12 @@ medicationInventoryRoutes.get(
   '/forecast',
   run(async (req, res) => {
     res.json(await getMedicationInventoryForecast(req.userId));
+  })
+);
+medicationInventoryRoutes.get(
+  '/dashboard',
+  run(async (req, res) => {
+    res.json(await getMedicationInventoryDashboard(req.userId));
   })
 );
 export const medicationReorderRoutes = express.Router();

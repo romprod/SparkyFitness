@@ -82,8 +82,11 @@ export const deleteSchedule = (id: string): Promise<void> =>
 
 // --- Pens / vials ----------------------------------------------------------
 
-export const listPens = (medicationId: string): Promise<MedicationPen[]> =>
-  apiCall(`/v2/medications/${medicationId}/pens`, { method: 'GET' });
+export const listPens = (
+  medicationId: string,
+  signal?: AbortSignal
+): Promise<MedicationPen[]> =>
+  apiCall(`/v2/medications/${medicationId}/pens`, { method: 'GET', signal });
 
 export const createPen = (
   medicationId: string,
