@@ -203,9 +203,23 @@ describe.runIf(process.env.MEDICATION_COURSE_COMPAT_INTEGRATION === '1')(
           ),
           'utf8'
         );
-        await client.query(migration);
-        await client.query(migration);
-        expect(await snapshot()).toEqual(before);
+        try {
+          await client.query(migration);
+          await client.query(migration);
+          expect(await snapshot()).toEqual(before);
+        } finally {
+          // A historical replay replaces its functions. Restore the current phase
+          // guard before subsequent suites exercise current logging semantics.
+          await client.query(
+            await readFile(
+              new URL(
+                '../db/migrations/20261117010000_medication_course_cycles.sql',
+                import.meta.url
+              ),
+              'utf8'
+            )
+          );
+        }
       });
     });
     it('keeps old-client ordinary and injection logs unassigned with unchanged physical values', async () => {

@@ -493,3 +493,5 @@ WHERE tablename = 'table_name';
 Migration `20261115233000_medication_vial_label_mass.sql` adds nullable `medication_pens.label_mass_mg`, with no default or backfill. A known value belongs to a vial and is positive/finite. This is explicit label metadata for cost-rate attribution, independent of preparation/physical-balance fields. No new table is introduced.
 
 Medication inventory forecasts add no tables. `medication_course_revisions` stores a nullable real-device FK plus the preferred/explicit choice marker; existing actual, stock and provenance tables remain unchanged. `user_preferences` stores owner reorder lead/buffer defaults (14/3 whole days, zero valid). Forecast results are computed on reads and are not stock adjustments.
+
+Manual weekly cycles add nullable on/off weeks, a separate weekly anchor, phase-family identity and strict original authored-window context to `medication_course_revisions`. Both actual-log tables retain nullable server-owned phase-family provenance. No historical links, durations or numerical dose-count offsets are backfilled. Existing operation receipts record explicit cycle boundary changes; no scheduler or new table is added.

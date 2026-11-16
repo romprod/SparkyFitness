@@ -57,6 +57,7 @@ export interface CourseAdherenceSummary {
 export function computeCourseAdherence(input: {
   course: MedicationCourse;
   entries: CourseDeliveredDose[];
+  phaseEntries?: CourseDeliveredDose[];
   fromDay: string;
   toDay: string;
   today: string;
@@ -80,6 +81,7 @@ export function computeCourseAdherence(input: {
         nowInstant: input.now,
         medicationActive: input.medicationActive,
         delivered: input.entries,
+        phaseDelivered: input.phaseEntries,
       })
     );
   const start = (slot: CourseExpectedSlot) =>

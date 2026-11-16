@@ -105,6 +105,7 @@ export function forecastInventorySnapshot(
       route,
       courses: med.courses,
       actuals: deliveredCourseInputs(med.actuals),
+      phase_actuals: deliveredCourseInputs(med.phase_actuals),
       devices,
       legacy_plans,
       legacy_actuals: med.legacy_entries.map((row) => ({

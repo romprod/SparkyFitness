@@ -144,3 +144,5 @@ Manage Medications also covers explicitly created courses, reviewed revisions, l
 Medication inventory forecasts follow medication read access for the selected profile. The selected owner's reorder defaults can be used for that read; only the authenticated owner can change their own defaults through the dedicated settings API. Forecasts do not change recorded stock or doses.
 
 The stock dashboard and preparation queue use the same medication read access for the selected profile. Reading or expanding an item performs no preparation or stock change. Preparing it requires the existing medication write permission and an unchanged, freshly checked stock identity; delegates receive no additional permissions from the queue.
+
+Manual weekly cycle plans and cycle previews follow medication read access; confirming End cycle or Start next cycle requires the existing medication write permission. Cycle dates alone do not pause or restart scheduled doses. Actual corrections and cycle actions remain scoped to the same owner and retain their history; family-only phase context never credits another revision's scheduled slot.

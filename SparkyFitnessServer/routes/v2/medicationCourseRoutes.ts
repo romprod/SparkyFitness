@@ -8,11 +8,14 @@ import {
   medicationCourseEditInputSchema,
   medicationCourseStatusInputSchema,
   medicationCourseDeleteInputSchema,
+  medicationCourseCycleReviewInputSchema,
+  medicationCourseCycleActionInputSchema,
 } from '@workspace/shared';
 import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
 import * as service from '../../services/medicationCourseService.js';
+import * as cycles from '../../services/medicationCourseCycleService.js';
 const router = express.Router();
 router.use(
   authenticate,
@@ -98,6 +101,53 @@ router.post(
           medicationCourseCreateInputSchema.parse(req.body)
         )
       );
+  })
+);
+router.get(
+  '/:id/cycle',
+  run(async (req, res) => {
+    res.json(
+      await cycles.getMedicationCourseCycle(
+        req.userId,
+        idSchema.parse(req.params.id)
+      )
+    );
+  })
+);
+router.post(
+  '/:id/cycle-review',
+  run(async (req, res) => {
+    res.json(
+      await cycles.reviewMedicationCourseCycle(
+        req.userId,
+        idSchema.parse(req.params.id),
+        medicationCourseCycleReviewInputSchema.parse(req.body)
+      )
+    );
+  })
+);
+router.post(
+  '/:id/cycle-end',
+  run(async (req, res) => {
+    res.json(
+      await cycles.endMedicationCourseCycle(
+        req.userId,
+        idSchema.parse(req.params.id),
+        medicationCourseCycleActionInputSchema.parse(req.body)
+      )
+    );
+  })
+);
+router.post(
+  '/:id/cycle-start',
+  run(async (req, res) => {
+    res.json(
+      await cycles.startMedicationCourseCycle(
+        req.userId,
+        idSchema.parse(req.params.id),
+        medicationCourseCycleActionInputSchema.parse(req.body)
+      )
+    );
   })
 );
 router.get(

@@ -61,6 +61,13 @@ export const medicationCourseDoseBasisSchema = z.enum([
 const uuid = z.string().uuid();
 const nullableDay = medicationCourseDaySchema.nullable();
 const nullableInstant = medicationCourseInstantSchema.nullable();
+export const medicationCourseCycleWeekSchema = z.number().int().min(1).max(104);
+export const medicationCoursePhaseOriginContextSchema = z
+  .object({
+    start_date: medicationCourseDaySchema,
+    end_date: nullableDay,
+  })
+  .strict();
 
 /** The existing recurrence vocabulary, including distinct authored daily slots. */
 export const medicationCourseRuleInputSchema = z
@@ -123,6 +130,12 @@ export const medicationCourseStepInputSchema = z
   .strict();
 export const medicationCoursePlanInputSchema = z
   .object({
+    course_cycle_on_weeks: medicationCourseCycleWeekSchema
+      .nullable()
+      .optional(),
+    course_cycle_off_weeks: medicationCourseCycleWeekSchema
+      .nullable()
+      .optional(),
     device_id: z.string().uuid().nullable().optional(),
     name: z.string().trim().min(1),
     notes: z.string().nullable().optional(),
@@ -165,6 +178,15 @@ export const medicationCourseCreateInputSchema = medicationCoursePlanInputSchema
   })
   .strict()
   .superRefine((value, context) => {
+    if (
+      value.course_cycle_off_weeks != null &&
+      value.course_cycle_on_weeks === undefined
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['course_cycle_on_weeks'],
+        message: 'Set an on-cycle length before a break length',
+      });
     if (value.handoff && !value.review_fingerprint)
       context.addIssue({
         code: 'custom',
@@ -266,6 +288,11 @@ export const medicationCourseRevisionSchema = z.object({
   user_id: uuid,
   course_id: uuid,
   predecessor_id: uuid.nullable(),
+  phase_family_id: uuid.nullable(),
+  phase_origin_context: medicationCoursePhaseOriginContextSchema.nullable(),
+  course_cycle_on_weeks: medicationCourseCycleWeekSchema.nullable(),
+  course_cycle_off_weeks: medicationCourseCycleWeekSchema.nullable(),
+  course_cycle_anchor_date: nullableDay,
   device_id: uuid.nullable(),
   device_choice: medicationCourseDeviceChoiceSchema,
   revision_no: z.number().int().positive(),
@@ -336,7 +363,17 @@ export const medicationCourseDeviceBindingSchema = z
       });
     }
   });
+export const medicationCourseCyclePlanPreviewSchema = z.object({
+  on_weeks: medicationCourseCycleWeekSchema,
+  off_weeks: medicationCourseCycleWeekSchema.nullable(),
+  anchor_date: medicationCourseDaySchema,
+  planned_stop_date: medicationCourseDaySchema,
+  next_restart_date: medicationCourseDaySchema.nullable(),
+  timezone: z.string().min(1),
+  advisory: z.literal(true),
+});
 export const medicationCourseReviewSchema = z.object({
+  cycle_plan_preview: medicationCourseCyclePlanPreviewSchema.nullable(),
   device_binding: medicationCourseDeviceBindingSchema,
   timezone: z.string().min(1),
   expected_version: z.number().int().nonnegative(),
@@ -538,4 +575,12 @@ export type MedicationCourseDeviceChoice = z.infer<
 >;
 export type MedicationCourseDeviceBinding = z.infer<
   typeof medicationCourseDeviceBindingSchema
+>;
+
+export type MedicationCoursePhaseOriginContext = z.infer<
+  typeof medicationCoursePhaseOriginContextSchema
+>;
+
+export type MedicationCourseCyclePlanPreview = z.infer<
+  typeof medicationCourseCyclePlanPreviewSchema
 >;

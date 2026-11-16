@@ -43,6 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import MedicationCourseRules from './MedicationCourseRules';
+import MedicationCourseCycleDates from './MedicationCourseCycleDates';
 import { formatScheduleDescription } from './medicationUtils';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationForecastDevices } from '@/hooks/Medications/useMedicationInventoryForecast';
@@ -76,6 +77,8 @@ function initialPlan(
     start_date: revision.start_date,
     end_date: revision.end_date,
     cycle_anchor_date: revision.cycle_anchor_date,
+    course_cycle_on_weeks: revision.course_cycle_on_weeks,
+    course_cycle_off_weeks: revision.course_cycle_off_weeks,
     target_dose: revision.target_dose,
     dose_unit: revision.dose_unit,
     dose_basis: revision.dose_basis,
@@ -137,6 +140,16 @@ export default function MedicationCourseEditor({
     (device) => device.id === devicesQuery.data?.default_syringe_id
   );
   const { timeFormat, formatDate } = usePreferences();
+  const [onWeeks, setOnWeeks] = useState(
+    revision?.course_cycle_on_weeks != null
+      ? String(revision.course_cycle_on_weeks)
+      : ''
+  );
+  const [offWeeks, setOffWeeks] = useState(
+    revision?.course_cycle_off_weeks != null
+      ? String(revision.course_cycle_off_weeks)
+      : ''
+  );
   const client = useQueryClient();
   const [mode, setMode] = useState(initialMode);
   const [draft, setDraft] = useState(() => ({
@@ -187,8 +200,23 @@ export default function MedicationCourseEditor({
           })),
         }
       : undefined;
-  const parsed = medicationCoursePlanInputSchema.safeParse(draft);
-  const valid = parsed.success && (mode !== 'handoff' || selected.length > 0);
+  const parseWeeks = (raw: string) =>
+    raw === '' ? null : /^\d+$/.test(raw) ? Number(raw) : NaN;
+  const parsed = medicationCoursePlanInputSchema.safeParse({
+    ...draft,
+    course_cycle_on_weeks: parseWeeks(onWeeks),
+    course_cycle_off_weeks: parseWeeks(offWeeks),
+  });
+  const weeksValid = (raw: string) =>
+    raw === '' || (/^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 104);
+  const cycleFieldsValid =
+    weeksValid(onWeeks) &&
+    weeksValid(offWeeks) &&
+    (offWeeks === '' || onWeeks !== '');
+  const valid =
+    parsed.success &&
+    cycleFieldsValid &&
+    (mode !== 'handoff' || selected.length > 0);
   const refresh = async () => {
     if (!live() || locked) return;
     try {
@@ -558,7 +586,7 @@ export default function MedicationCourseEditor({
                 <Label htmlFor="course-anchor">
                   {t(
                     'medications.courses.cycleAnchor',
-                    'Cycle anchor (optional)'
+                    'Schedule cycle anchor (optional)'
                   )}
                 </Label>
                 <Input
@@ -680,6 +708,79 @@ export default function MedicationCourseEditor({
               disabled={locked}
               onChange={(rules) => change({ rules })}
             />
+            <div className="space-y-3 rounded-md border p-3">
+              <h4 className="font-medium">
+                {t(
+                  'medications.courseCycles.planTitle',
+                  'Weekly cycle plan (optional)'
+                )}
+              </h4>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="course-cycle-on-weeks">
+                    {t('medications.courseCycles.onWeeks', 'Run for (weeks)')}
+                  </Label>
+                  <Input
+                    id="course-cycle-on-weeks"
+                    inputMode="numeric"
+                    value={onWeeks}
+                    aria-invalid={!cycleFieldsValid}
+                    onChange={(event) => {
+                      if (!locked) {
+                        setOnWeeks(event.target.value);
+                        change({});
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="course-cycle-off-weeks">
+                    {t(
+                      'medications.courseCycles.offWeeks',
+                      'Then break (weeks)'
+                    )}
+                  </Label>
+                  <Input
+                    id="course-cycle-off-weeks"
+                    inputMode="numeric"
+                    value={offWeeks}
+                    aria-invalid={!cycleFieldsValid}
+                    onChange={(event) => {
+                      if (!locked) {
+                        setOffWeeks(event.target.value);
+                        change({});
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              {!cycleFieldsValid && (
+                <p
+                  role="status"
+                  className="rounded-md border border-destructive bg-destructive/10 p-2 text-sm text-foreground"
+                >
+                  {t(
+                    'medications.courseCycles.invalidWeeks',
+                    'Use whole weeks from 1 to 104. Enter Run for before adding a break, or leave both fields blank.'
+                  )}
+                </p>
+              )}
+              {revision?.course_cycle_anchor_date && (
+                <p className="text-sm">
+                  {t(
+                    'medications.courseCycles.anchor',
+                    'Recorded weekly cycle anchor'
+                  )}
+                  : {formatDate(revision.course_cycle_anchor_date)}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'medications.courseCycles.advisory',
+                  'Cycle dates are planned only. Saving them does not stop scheduled doses or start another cycle. Use the reviewed End cycle or Start next cycle actions explicitly.'
+                )}
+              </p>
+            </div>
             <div className="space-y-2">
               <h4 className="font-medium">
                 {t('medications.courses.phases', 'Authored phases (optional)')}
@@ -933,6 +1034,29 @@ export default function MedicationCourseEditor({
                 )}
               </p>
             ))}
+            {review.plan.course_cycle_on_weeks != null && (
+              <div className="space-y-1 rounded-md border p-3">
+                <p>
+                  {t(
+                    'medications.courseCycles.onSummary',
+                    'Run for {{weeks}} weeks',
+                    { weeks: review.plan.course_cycle_on_weeks }
+                  )}
+                  {review.plan.course_cycle_off_weeks != null
+                    ? ` · ${t('medications.courseCycles.offSummary', 'Then break {{weeks}} weeks', { weeks: review.plan.course_cycle_off_weeks })}`
+                    : ''}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'medications.courseCycles.advisory',
+                    'Cycle dates are planned only. Saving them does not stop scheduled doses or start another cycle. Use the reviewed End cycle or Start next cycle actions explicitly.'
+                  )}
+                </p>
+              </div>
+            )}
+            {review.cycle_plan_preview && (
+              <MedicationCourseCycleDates dates={review.cycle_plan_preview} />
+            )}
             {review.plan.steps.map((step, index) => (
               <p key={index}>
                 {t('medications.courses.phaseNumber', 'Phase {{number}}', {

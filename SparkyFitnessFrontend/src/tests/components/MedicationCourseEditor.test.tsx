@@ -511,3 +511,111 @@ it('offers only route-compatible devices and preserves an explicitly chosen real
     courseIds.step
   );
 });
+
+it('leaves weekly duration fields blank and keeps the daily schedule anchor distinct from the read-only weekly anchor', () => {
+  setup();
+  expect(screen.getByLabelText('Run for (weeks)')).toHaveValue('');
+  expect(screen.getByLabelText('Then break (weeks)')).toHaveValue('');
+  expect(
+    screen.getByLabelText('Schedule cycle anchor (optional)')
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText('Weekly cycle anchor')
+  ).not.toBeInTheDocument();
+});
+it.each(['0', '-1', '1.5', '2weeks', '1e1', '105'])(
+  'rejects invalid weekly duration %s without truncating or posting',
+  (value) => {
+    setup();
+    fireEvent.change(screen.getByLabelText('Run for (weeks)'), {
+      target: { value },
+    });
+    expect(screen.getByLabelText('Run for (weeks)')).toHaveValue(value);
+    expect(
+      screen.getByRole('button', { name: 'Review changes' })
+    ).toBeDisabled();
+    expect(mockReview).not.toHaveBeenCalled();
+  }
+);
+it('requires an on-duration for a break and reviews only server-derived weekly dates', async () => {
+  mockReview.mockImplementation(async (_med, _id, input) =>
+    courseReview(input, {
+      cycle_plan_preview: {
+        on_weeks: 1,
+        off_weeks: 2,
+        anchor_date: '2026-10-01',
+        planned_stop_date: '2026-10-07',
+        next_restart_date: '2026-10-22',
+        timezone: 'Pacific/Auckland',
+        advisory: true,
+      },
+    })
+  );
+  setup();
+  fireEvent.change(screen.getByLabelText('Then break (weeks)'), {
+    target: { value: '2' },
+  });
+  expect(screen.getByRole('button', { name: 'Review changes' })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText('Run for (weeks)'), {
+    target: { value: '1' },
+  });
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(mockReview.mock.calls[0]![2]).toMatchObject({
+    course_cycle_on_weeks: 1,
+    course_cycle_off_weeks: 2,
+  });
+  expect(screen.getByText('Formatted 2026-10-07')).toBeInTheDocument();
+  expect(screen.getByText('Formatted 2026-10-22')).toBeInTheDocument();
+  expect(screen.getByText(/Pacific\/Auckland/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Saving them does not stop scheduled doses/)
+  ).toBeInTheDocument();
+});
+it('preserves authored weekly metadata on revise while never submitting managed weekly anchor or family state', async () => {
+  const course = courseFixture();
+  Object.assign(course.revisions[0]!, {
+    course_cycle_on_weeks: 3,
+    course_cycle_off_weeks: 2,
+    course_cycle_anchor_date: '2026-10-01',
+    cycle_anchor_date: '2025-01-01',
+    phase_family_id: courseIds.revision,
+  });
+  setup('revise', course);
+  expect(screen.getByLabelText('Run for (weeks)')).toHaveValue('3');
+  expect(screen.getByLabelText('Then break (weeks)')).toHaveValue('2');
+  expect(screen.getByText(/Formatted 2026-10-01/)).toBeInTheDocument();
+  expect(screen.getByLabelText('Schedule cycle anchor (optional)')).toHaveValue(
+    '2025-01-01'
+  );
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  const body = mockReview.mock.calls[0]![2];
+  expect(body).toMatchObject({
+    course_cycle_on_weeks: 3,
+    course_cycle_off_weeks: 2,
+    cycle_anchor_date: '2025-01-01',
+  });
+  expect(body).not.toHaveProperty('course_cycle_anchor_date');
+  expect(body).not.toHaveProperty('phase_family_id');
+});
+it('clears weekly metadata only through explicit blank fields', async () => {
+  const course = courseFixture();
+  Object.assign(course.revisions[0]!, {
+    course_cycle_on_weeks: 3,
+    course_cycle_off_weeks: 2,
+  });
+  setup('edit', course);
+  fireEvent.change(screen.getByLabelText('Run for (weeks)'), {
+    target: { value: '' },
+  });
+  fireEvent.change(screen.getByLabelText('Then break (weeks)'), {
+    target: { value: '' },
+  });
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(mockReview.mock.calls[0]![2]).toMatchObject({
+    course_cycle_on_weeks: null,
+    course_cycle_off_weeks: null,
+  });
+});

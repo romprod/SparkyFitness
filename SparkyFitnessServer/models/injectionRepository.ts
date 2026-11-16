@@ -576,14 +576,20 @@ async function deleteInjection(userId: string, id: string) {
     );
     if (
       original.rows[0]?.medication_id ||
-      original.rows[0]?.course_revision_id
+      original.rows[0]?.course_revision_id ||
+      original.rows[0]?.phase_family_id
     ) {
       const refreshed = await client.query<StoredCourseLog>(
         'SELECT * FROM injection_entries WHERE id=$1 AND user_id=$2',
         [id, userId]
       );
       if (refreshed.rows[0])
-        await lockStoredCourseLog(client, userId, refreshed.rows[0]);
+        await lockStoredCourseLog(
+          client,
+          userId,
+          refreshed.rows[0],
+          'injection'
+        );
     }
     if (original.rows[0]?.pen_id)
       await client.query(

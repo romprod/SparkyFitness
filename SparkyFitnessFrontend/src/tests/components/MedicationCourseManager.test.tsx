@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MedicationCourseManager from '@/pages/Medications/MedicationCourseManager';
+import { cycleStateFixture } from '@/tests/fixtures/medicationCourseCycles';
 import {
   courseFixture,
   courseRevision,
@@ -15,6 +16,7 @@ import {
   courseIds,
 } from '@/tests/fixtures/medicationCourses';
 let mockCourses = [courseFixture()];
+let mockCycleState = cycleStateFixture();
 let mockWrite = true;
 let mockReady = true;
 const mockStatus = jest.fn(),
@@ -36,11 +38,23 @@ jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
       timezone: 'Europe/London',
     },
   }),
+  useMedicationCourseCycle: () => ({
+    scope: { canWrite: mockWrite, isCurrent: () => true },
+    data: mockCycleState,
+    query: { isError: false, isFetching: false, refetch: jest.fn() },
+  }),
   useMedicationCourseActions: () => ({
     status: mockStatus,
     remove: mockRemove,
   }),
   invalidateMedicationCourses: jest.fn(),
+}));
+jest.mock('@/contexts/PreferencesContext', () => ({
+  usePreferences: () => ({ formatDate: (day: string) => day }),
+}));
+jest.mock('@/pages/Medications/MedicationCourseCycleAction', () => ({
+  __esModule: true,
+  default: ({ action }: { action: string }) => <p>Cycle action {action}</p>,
 }));
 jest.mock('@/pages/Medications/MedicationCourseEditor', () => () => (
   <p>Course editor</p>
@@ -57,6 +71,7 @@ function setup() {
 }
 beforeEach(() => {
   mockCourses = [courseFixture()];
+  mockCycleState = cycleStateFixture();
   mockWrite = true;
   mockReady = true;
   mockStatus.mockReset();
@@ -190,4 +205,49 @@ it('confirms deletion with preserved actuals/stock and the selected revision ide
       { expected_version: 1, operation_id: expect.any(String) }
     )
   );
+});
+
+it('offers server-allowed Start for a completed current tip without requiring a generic reopen or End action', () => {
+  mockCourses = [
+    courseFixture({
+      revisions: [
+        courseRevision({
+          status: 'completed',
+          course_cycle_on_weeks: 1,
+          course_cycle_off_weeks: null,
+        }),
+      ],
+    }),
+  ];
+  mockCycleState = cycleStateFixture({
+    phase: 'on',
+    off_weeks: null,
+    next_restart_date: null,
+    end_cycle: { allowed: false, reasons: [] },
+    start_next_cycle: { allowed: true, reasons: [] },
+  });
+  const view = setup();
+  fireEvent.click(screen.getByRole('button', { name: 'Start next cycle' }));
+  expect(screen.getByText('Cycle action start')).toBeInTheDocument();
+  const old = mockCourses[0]!.revisions[0]!;
+  const next = courseRevision({
+    id: courseIds.revision2,
+    predecessor_id: old.id,
+    revision_no: 2,
+    course_cycle_on_weeks: 1,
+  });
+  mockCourses = [
+    courseFixture({
+      version: 2,
+      current_revision_id: next.id,
+      revisions: [old, next],
+    }),
+  ];
+  mockCycleState = cycleStateFixture({ revision_id: next.id, version: 2 });
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <MedicationCourseManager med={courseMedication} />
+    </QueryClientProvider>
+  );
+  expect(screen.getByText('Cycle action start')).toBeInTheDocument();
 });

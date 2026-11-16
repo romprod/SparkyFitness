@@ -59,6 +59,11 @@ export function medicationCourseFixture(): MedicationCourse {
         dose_basis: 'per_injection',
         device_id: null,
         device_choice: 'preferred',
+        phase_family_id: null,
+        phase_origin_context: null,
+        course_cycle_on_weeks: null,
+        course_cycle_off_weeks: null,
+        course_cycle_anchor_date: null,
         created_at: '2026-11-01T00:00:00.000Z',
         deleted_at: null,
         rules: [

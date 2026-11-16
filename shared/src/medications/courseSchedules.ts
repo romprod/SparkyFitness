@@ -14,11 +14,17 @@ import {
   type SharedScheduleRule,
 } from './schedules.ts';
 import { courseActivityContains } from './courseLifecycle.ts';
-import { courseCurrentPhase, coursePerDoseAmount } from './courseRevisions.ts';
+import { coursePerDoseAmount } from './courseRevisions.ts';
+import {
+  coursePhaseDeliveredBeforeSlot,
+  coursePhaseForRevision,
+} from './coursePhaseContext.ts';
 
 export interface CourseDeliveredDose {
   id: string;
   course_revision_id: string | null;
+  phase_family_id?: string | null;
+  source_kind?: 'entry' | 'injection';
   course_rule_id?: string | null;
   course_step_id?: string | null;
   course_slot_key?: string | null;
@@ -46,8 +52,6 @@ export interface CourseExpectedSlot {
   dose_basis: 'per_injection' | 'per_week';
   phase_progress_known: boolean;
 }
-const isDelivered = (entry: CourseDeliveredDose) =>
-  entry.status === 'taken' || entry.status === 'prn_taken';
 export const courseSlotKey = (
   revisionId: string,
   ruleId: string,
@@ -99,6 +103,7 @@ export function courseSlotsForDay(input: {
   nowInstant: string;
   medicationActive: boolean;
   delivered?: CourseDeliveredDose[];
+  phaseDelivered?: CourseDeliveredDose[];
 }): CourseExpectedSlot[] {
   const { course, day } = input;
   if (
@@ -167,37 +172,24 @@ export function courseSlotsForDay(input: {
       )
         continue;
       const key = courseSlotKey(revision.id, rule.id, day, time);
+      const phaseDelivered = input.phaseDelivered ?? input.delivered;
       const prior =
-        input.delivered === undefined
+        phaseDelivered === undefined
           ? null
-          : new Set(
-              input.delivered
-                .filter((entry) => {
-                  if (
-                    entry.course_revision_id !== revision.id ||
-                    !isDelivered(entry) ||
-                    entry.course_slot_key === key
-                  )
-                    return false;
-                  const entryDay = entry.entry_date.slice(0, 10);
-                  if (entryDay !== day) return entryDay < day;
-                  if (entry.scheduled_for && at)
-                    return Date.parse(entry.scheduled_for) < Date.parse(at);
-                  if (entry.course_rule_id) {
-                    const other = revision.rules.find(
-                      (item) => item.id === entry.course_rule_id
-                    );
-                    if (other) return other.rule_index < rule.rule_index;
-                  }
-                  return (
-                    at !== null &&
-                    entry.occurred_at != null &&
-                    Date.parse(entry.occurred_at) < Date.parse(at)
-                  );
-                })
-                .map((entry) => entry.id)
-            ).size;
-      const phase = courseCurrentPhase({ revision, deliveredCount: prior });
+          : coursePhaseDeliveredBeforeSlot({
+              course,
+              revision,
+              rule,
+              day,
+              at,
+              key,
+              delivered: phaseDelivered,
+            });
+      const phase = coursePhaseForRevision({
+        course,
+        revision,
+        deliveredCount: prior,
+      });
       const authored = rule.dose_amount ?? phase.authored_dose;
       result.push({
         course_id: course.id,
@@ -245,6 +237,7 @@ export function courseDueDosesForDay<M extends SharedMedication>(input: {
   today: string;
   nowInstant: string;
   delivered?: CourseDeliveredDose[];
+  phaseDelivered?: CourseDeliveredDose[];
 }): { medication: M; schedule: CourseDueSchedule }[] {
   return input.courses.flatMap((course) => {
     const medication = input.medications.find(
@@ -258,6 +251,7 @@ export function courseDueDosesForDay<M extends SharedMedication>(input: {
       nowInstant: input.nowInstant,
       medicationActive: medication.is_active,
       delivered: input.delivered,
+      phaseDelivered: input.phaseDelivered,
     }).map((slot) => ({
       medication,
       schedule: {

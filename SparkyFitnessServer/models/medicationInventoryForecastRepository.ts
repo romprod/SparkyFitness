@@ -18,7 +18,9 @@ import {
 import {
   loadMedicationCourse,
   loadCourseActuals,
+  loadCoursePhaseActuals,
   type CourseActual,
+  type CoursePhaseActual,
 } from './medicationCourseRepository.js';
 
 export interface InventoryForecastLegacyScheduleRow {
@@ -84,6 +86,8 @@ export interface InventoryForecastMedicationSnapshot {
   is_glp1: boolean;
   courses: MedicationCourse[];
   actuals: CourseActual[];
+  /** Phase-only provenance can survive detachment; never use it for slot or stock attribution. */
+  phase_actuals: CoursePhaseActual[];
   legacy_schedules: InventoryForecastLegacyScheduleRow[];
   legacy_entries: InventoryForecastLegacyEntryRow[];
   legacy_titration: InventoryForecastLegacyTitrationRow[];
@@ -412,15 +416,26 @@ export async function loadInventoryForecastSnapshot(
   const dashboardStock = await loadInventoryDashboardStock(client, owner);
   const loaded = new Map<
     string,
-    { courses: MedicationCourse[]; actuals: CourseActual[] }
+    {
+      courses: MedicationCourse[];
+      actuals: CourseActual[];
+      phase_actuals: CoursePhaseActual[];
+    }
   >();
   for (const row of courseIds.rows) {
     if (row.medication_id === null) continue;
     const course = await loadMedicationCourse(client, owner, row.id);
     if (!course) continue;
-    const value = loaded.get(row.medication_id) ?? { courses: [], actuals: [] };
+    const value = loaded.get(row.medication_id) ?? {
+      courses: [],
+      actuals: [],
+      phase_actuals: [],
+    };
     value.courses.push(course);
     value.actuals.push(...(await loadCourseActuals(client, owner, row.id)));
+    value.phase_actuals.push(
+      ...(await loadCoursePhaseActuals(client, owner, row.id))
+    );
     loaded.set(row.medication_id, value);
   }
   const preferredId = preferred.rows[0]?.default_syringe_id ?? null;
@@ -439,6 +454,7 @@ export async function loadInventoryForecastSnapshot(
       ...medication,
       courses: loaded.get(medication.id)?.courses ?? [],
       actuals: loaded.get(medication.id)?.actuals ?? [],
+      phase_actuals: loaded.get(medication.id)?.phase_actuals ?? [],
       legacy_schedules: schedules.rows
         .filter((row) => row.medication_id === medication.id)
         .map((row) => ({ ...row, created_at: iso(row.created_at) })),

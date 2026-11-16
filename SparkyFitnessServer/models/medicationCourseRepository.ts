@@ -16,6 +16,8 @@ import {
   type MedicationCourseAttributionInput,
   type MedicationCourseMutationResult,
   type MedicationCourseActual,
+  type CourseDeliveredDose,
+  type MedicationCoursePhaseOriginContext,
 } from '@workspace/shared';
 import { dbContextStorage } from '../db/poolManager.js';
 
@@ -150,8 +152,11 @@ export async function loadCourseActuals(
     };
   });
 }
-export const deliveredCourseInputs = (rows: CourseActual[]) =>
-  rows.map((row) => ({ ...row, id: `${row.source_kind}:${row.id}` }));
+export const deliveredCourseInputs = <
+  T extends { id: string; source_kind: string },
+>(
+  rows: T[]
+) => rows.map((row) => ({ ...row, id: `${row.source_kind}:${row.id}` }));
 export const courseAdministered = (actual: CourseActual) =>
   actual.status === 'taken' || actual.status === 'prn_taken';
 export function coursePlan(
@@ -166,6 +171,8 @@ export function coursePlan(
     target_dose: revision.target_dose,
     dose_unit: revision.dose_unit,
     dose_basis: revision.dose_basis,
+    course_cycle_on_weeks: revision.course_cycle_on_weeks,
+    course_cycle_off_weeks: revision.course_cycle_off_weeks,
     rules: revision.rules.map(
       ({
         id: _id,
@@ -225,6 +232,71 @@ export async function lockMedicationCourse(
   const course = await loadMedicationCourse(client, owner, courseId);
   if (!course) throw courseProblem('Course not found.', 404);
   return course;
+}
+
+/** Count-only phase provenance; these rows never replace the original actual-history or slot-credit list. */
+export interface CoursePhaseActual extends CourseDeliveredDose {
+  source_kind: 'entry' | 'injection';
+  phase_family_id: string | null;
+  occurred_at: string;
+}
+export async function loadCoursePhaseActuals(
+  client: PoolClient,
+  owner: string,
+  courseId: string
+): Promise<CoursePhaseActual[]> {
+  type Stored = Omit<CoursePhaseActual, 'occurred_at' | 'scheduled_for'> & {
+    occurred_at: Date | string;
+    scheduled_for: Date | string | null;
+  };
+  const result = await client.query<Stored>(
+    `WITH families AS (
+    SELECT DISTINCT COALESCE(r.phase_family_id,r.id) AS id FROM medication_course_revisions r
+    JOIN medication_course_revisions origin ON origin.id=COALESCE(r.phase_family_id,r.id) AND origin.user_id=r.user_id AND origin.course_id=r.course_id
+    WHERE r.user_id=$2 AND r.course_id=$1
+  )
+  SELECT 'entry' AS source_kind,e.id,e.course_revision_id,e.course_rule_id,e.course_step_id,e.course_slot_key,e.scheduled_day::text,e.scheduled_for,e.entry_date::text,e.taken_at AS occurred_at,e.status,COALESCE(e.phase_family_id,r.phase_family_id,r.id) AS phase_family_id
+  FROM medication_entries e LEFT JOIN medication_course_revisions r ON r.id=e.course_revision_id AND r.user_id=e.user_id
+  WHERE e.user_id=$2 AND COALESCE(e.phase_family_id,r.phase_family_id,r.id) IN (SELECT id FROM families)
+  UNION ALL SELECT 'injection',e.id,e.course_revision_id,e.course_rule_id,e.course_step_id,e.course_slot_key,e.scheduled_day::text,e.scheduled_for,e.entry_date::text,e.injected_at,'taken',COALESCE(e.phase_family_id,r.phase_family_id,r.id)
+  FROM injection_entries e LEFT JOIN medication_course_revisions r ON r.id=e.course_revision_id AND r.user_id=e.user_id
+  WHERE e.user_id=$2 AND COALESCE(e.phase_family_id,r.phase_family_id,r.id) IN (SELECT id FROM families)
+  ORDER BY entry_date,source_kind,id`,
+    [courseId, owner]
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    occurred_at: iso(row.occurred_at),
+    scheduled_for: row.scheduled_for ? iso(row.scheduled_for) : null,
+  }));
+}
+export async function findCoursePhaseFamily(
+  client: PoolClient,
+  owner: string,
+  familyId: string | null
+): Promise<{ course_id: string; medication_id: string | null } | null> {
+  if (!familyId) return null;
+  const result = await client.query<{
+    course_id: string;
+    medication_id: string | null;
+  }>(
+    'SELECT DISTINCT r.course_id,c.medication_id FROM medication_course_revisions r JOIN medication_courses c ON c.id=r.course_id AND c.user_id=r.user_id WHERE r.user_id=$1 AND COALESCE(r.phase_family_id,r.id)=$2 ORDER BY r.course_id',
+    [owner, familyId]
+  );
+  if (result.rows.length > 1)
+    throw courseProblem('Phase provenance belongs to conflicting courses.');
+  return result.rows[0] ?? null;
+}
+/** Historical phase-only actuals still serialize with cycle commands after relational attribution is detached. */
+export async function lockCoursePhaseFamily(
+  client: PoolClient,
+  owner: string,
+  familyId: string | null
+): Promise<{ course_id: string; medication_id: string | null } | null> {
+  const target = await findCoursePhaseFamily(client, owner, familyId);
+  if (!target) return null;
+  const course = await lockMedicationCourse(client, owner, target.course_id);
+  return { course_id: course.id, medication_id: course.medication_id };
 }
 
 export async function loadCourseOwnerContext(
@@ -533,19 +605,21 @@ export async function guardLegacyScheduleMutation(
     );
 }
 
-export async function courseOperationReceipt(
+export async function courseOperationReceipt<
+  T extends MedicationCourseMutationResult = MedicationCourseMutationResult,
+>(
   client: PoolClient,
   owner: string,
   operationId: string,
   hash: string
-): Promise<MedicationCourseMutationResult | null> {
+): Promise<T | null> {
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
     `${owner}:${operationId}`,
   ]);
   const old = await client.query<{
     request_hash: string;
     actor_id: string;
-    result: MedicationCourseMutationResult;
+    result: T;
   }>(
     'SELECT request_hash,actor_id,result FROM medication_course_operations WHERE user_id=$1 AND operation_id=$2',
     [owner, operationId]
@@ -694,10 +768,15 @@ export async function insertCourseRevision(
   device: Pick<MedicationCourseRevision, 'device_id' | 'device_choice'> = {
     device_id: plan.device_id ?? null,
     device_choice: plan.device_id ? 'explicit' : 'preferred',
+  },
+  continuity?: {
+    weekly_anchor_date: string | null;
+    phase_family_id: string | null;
+    phase_origin_context: MedicationCoursePhaseOriginContext | null;
   }
 ): Promise<void> {
   await client.query(
-    'INSERT INTO medication_course_revisions(id,user_id,course_id,predecessor_id,revision_no,name,notes,start_date,end_date,cycle_anchor_date,target_dose,dose_unit,dose_basis,created_at,device_id,device_choice) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)',
+    'INSERT INTO medication_course_revisions(id,user_id,course_id,predecessor_id,revision_no,name,notes,start_date,end_date,cycle_anchor_date,target_dose,dose_unit,dose_basis,created_at,device_id,device_choice,course_cycle_on_weeks,course_cycle_off_weeks,course_cycle_anchor_date,phase_family_id,phase_origin_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb)',
     [
       revisionId,
       owner,
@@ -715,6 +794,22 @@ export async function insertCourseRevision(
       now,
       device.device_id,
       device.device_choice,
+      plan.course_cycle_on_weeks ?? null,
+      plan.course_cycle_off_weeks ?? null,
+      continuity
+        ? continuity.weekly_anchor_date
+        : plan.course_cycle_on_weeks !== null &&
+            plan.course_cycle_on_weeks !== undefined
+          ? plan.start_date
+          : null,
+      continuity?.phase_family_id ?? null,
+      continuity?.phase_origin_context === null
+        ? null
+        : JSON.stringify(
+            continuity
+              ? continuity.phase_origin_context
+              : { start_date: plan.start_date, end_date: plan.end_date ?? null }
+          ),
     ]
   );
   await storeCourseChildren(client, owner, revisionId, plan);

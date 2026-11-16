@@ -29,6 +29,8 @@ import {
 } from '@/components/ui/dialog';
 import MedicationCourseEditor from './MedicationCourseEditor';
 import MedicationCourseHistory from './MedicationCourseHistory';
+import MedicationCourseCycles from './MedicationCourseCycles';
+import MedicationCourseCycleAction from './MedicationCourseCycleAction';
 
 type CourseScope = ReturnType<typeof useMedicationCourses>['scope'];
 type Selection = {
@@ -277,6 +279,9 @@ function CourseManagerContent({
   >(null);
   const [history, setHistory] = useState<Selection | null>(null);
   const [action, setAction] = useState<Action | null>(null);
+  const [cycleAction, setCycleAction] = useState<
+    (Selection & { kind: 'end' | 'start' }) | null
+  >(null);
   if (!scope.ready) return null;
   const rows =
     data?.courses.flatMap((course) =>
@@ -424,6 +429,17 @@ function CourseManagerContent({
                             'Per administration'
                           )}
                     </p>
+                    <MedicationCourseCycles
+                      course={course}
+                      revision={revision}
+                      tip={tip}
+                      canWrite={scope.canWrite}
+                      onAction={(kind) => {
+                        if (scope.canWrite && scope.isCurrent())
+                          setCycleAction({ course, revision, kind });
+                      }}
+                      onRefresh={() => refresh(course.id)}
+                    />
                     {predecessor && (
                       <Button
                         size="sm"
@@ -599,6 +615,17 @@ function CourseManagerContent({
           key={`${scope.key}:${history.revision.id}`}
           {...history}
           onClose={() => setHistory(null)}
+        />
+      )}
+      {cycleAction && (
+        <MedicationCourseCycleAction
+          key={`${scope.key}:${cycleAction.revision.id}:${cycleAction.kind}`}
+          course={cycleAction.course}
+          revision={cycleAction.revision}
+          action={cycleAction.kind}
+          scope={scope}
+          onClose={() => setCycleAction(null)}
+          onRefresh={() => refresh(cycleAction.course.id)}
         />
       )}
       {action && (

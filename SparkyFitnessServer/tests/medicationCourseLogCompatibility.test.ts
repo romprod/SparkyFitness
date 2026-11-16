@@ -96,3 +96,19 @@ describe('additive course log API compatibility', () => {
     ).toBe(false);
   });
 });
+
+it('rejects client-authored phase provenance on all actual create and update schemas', () => {
+  for (const schema of [
+    CreateMedicationEntryBodySchema,
+    UpdateMedicationEntryBodySchema,
+    CreateInjectionBodySchema,
+    UpdateInjectionBodySchema,
+  ])
+    expect(
+      schema.safeParse({
+        medication_id,
+        phase_family_id: randomUUID(),
+        course_revision_id,
+      }).success
+    ).toBe(false);
+});

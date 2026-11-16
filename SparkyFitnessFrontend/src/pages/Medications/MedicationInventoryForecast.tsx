@@ -179,7 +179,7 @@ export default function MedicationInventoryForecast() {
         <CardDescription>
           {t(
             'medications.forecasts.description',
-            'Current stock against committed versioned plans. Estimates are not orders or notifications; unknown details can prevent a reliable run-out date.'
+            'Current stock against committed versioned plans. Estimates are not orders or notifications; unknown details can prevent a reliable run-out date. Cycle dates alone do not stop scheduled doses, and no next cycle is assumed.'
           )}
         </CardDescription>
         {scope.actorId === scope.ownerId && (

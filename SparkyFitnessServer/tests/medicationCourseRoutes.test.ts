@@ -20,6 +20,13 @@ const mocks = vi.hoisted(() => ({
   setMedicationCourseStatus: vi.fn(),
   deleteMedicationCourseRevision: vi.fn(),
 }));
+const cycleMocks = vi.hoisted(() => ({
+  getMedicationCourseCycle: vi.fn(),
+  reviewMedicationCourseCycle: vi.fn(),
+  endMedicationCourseCycle: vi.fn(),
+  startMedicationCourseCycle: vi.fn(),
+}));
+vi.mock('../services/medicationCourseCycleService.js', () => cycleMocks);
 vi.mock('../services/medicationCourseService.js', () => mocks);
 vi.mock('../middleware/authMiddleware.js', () => ({
   authenticate: (
@@ -79,6 +86,7 @@ describe('managed course route contracts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     for (const fn of Object.values(mocks)) fn.mockResolvedValue(receipt);
+    for (const fn of Object.values(cycleMocks)) fn.mockResolvedValue(receipt);
   });
   it('allows medication/report readers to read existing facts but rejects their management actions', async () => {
     mocks.listMedicationCourses.mockResolvedValue({
@@ -217,5 +225,89 @@ describe('managed course route contracts', () => {
       });
     expect(response.status).toBe(409);
     expect(mocks.reviseMedicationCourse).toHaveBeenCalledOnce();
+  });
+  it('reads cycle state under the existing report/read-only permission boundary and rejects writes', async () => {
+    expect(
+      (
+        await request(app)
+          .get(`${path}/${id.course}/cycle`)
+          .set('x-test-permission', 'reports')
+      ).status
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .post(`${path}/${id.course}/cycle-start`)
+          .set('x-test-permission', 'reports')
+          .send({
+            expected_version: 1,
+            operation_id: id.activity,
+            review_fingerprint: 'review',
+          })
+      ).status
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .post(`${path}/${id.course}/cycle-end`)
+          .set('x-test-readonly', '1')
+          .send({
+            expected_version: 1,
+            operation_id: id.activity,
+            review_fingerprint: 'review',
+          })
+      ).status
+    ).toBe(403);
+    expect(cycleMocks.startMedicationCourseCycle).not.toHaveBeenCalled();
+    expect(cycleMocks.endMedicationCourseCycle).not.toHaveBeenCalled();
+  });
+  it('accepts only the versioned cycle review/action contract, never client dates or provenance', async () => {
+    expect(
+      (
+        await request(app)
+          .post(`${path}/${id.course}/cycle-review`)
+          .send({ action: 'start', expected_version: 1, today: '2026-11-01' })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app).post(`${path}/${id.course}/cycle-start`).send({
+          expected_version: 1,
+          operation_id: id.activity,
+          review_fingerprint: 'review',
+          phase_family_id: id.rule,
+        })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .post(`${path}/${id.course}/cycle-review`)
+          .send({ action: 'start', expected_version: 1 })
+      ).status
+    ).toBe(200);
+    expect(cycleMocks.reviewMedicationCourseCycle).toHaveBeenCalledWith(
+      id.owner,
+      id.course,
+      { action: 'start', expected_version: 1 }
+    );
+    expect(
+      (
+        await request(app).post(`${path}/${id.course}/cycle-end`).send({
+          expected_version: 1,
+          operation_id: id.activity,
+          review_fingerprint: 'review',
+        })
+      ).status
+    ).toBe(200);
+    expect(cycleMocks.endMedicationCourseCycle).toHaveBeenCalledWith(
+      id.owner,
+      id.course,
+      {
+        expected_version: 1,
+        operation_id: id.activity,
+        review_fingerprint: 'review',
+      }
+    );
   });
 });

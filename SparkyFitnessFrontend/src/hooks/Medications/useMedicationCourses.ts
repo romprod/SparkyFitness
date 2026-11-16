@@ -163,6 +163,13 @@ export function useMedicationCourseActions(
       guard(() => api.setMedicationCourseStatus(...args)),
     remove: (...args: Parameters<typeof api.deleteMedicationCourse>) =>
       guard(() => api.deleteMedicationCourse(...args)),
+    cycleReview: (
+      ...args: Parameters<typeof api.reviewMedicationCourseCycle>
+    ) => guard(() => api.reviewMedicationCourseCycle(...args)),
+    cycleEnd: (...args: Parameters<typeof api.endMedicationCourseCycle>) =>
+      guard(() => api.endMedicationCourseCycle(...args)),
+    cycleStart: (...args: Parameters<typeof api.startMedicationCourseCycle>) =>
+      guard(() => api.startMedicationCourseCycle(...args)),
   };
 }
 export function useMedicationCourseHistory(id: string, enabled: boolean) {
@@ -234,5 +241,36 @@ export function useMedicationCourseDue(date: string, enabled = true) {
           ),
         }
       : undefined,
+  };
+}
+
+/** Current server-cycle context only; this read never advances a phase or activates a cycle. */
+export function useMedicationCourseCycle(id: string, enabled = true) {
+  const scope = useMedicationCourseScope();
+  const query = useQuery({
+    queryKey: [
+      ...medicationCourseKeys.all,
+      scope.actorId,
+      scope.ownerId,
+      scope.generation,
+      'cycle',
+      id,
+    ],
+    queryFn: ({ signal }) => {
+      if (!id || !scope.ready || !scope.isCurrent())
+        throw new Error('The active profile changed.');
+      return api.getMedicationCourseCycle(id, signal);
+    },
+    enabled: scope.ready && enabled && !!id,
+    gcTime: Infinity,
+    retry: false,
+  });
+  return {
+    scope,
+    query,
+    data:
+      scope.ready && scope.isCurrent() && query.data?.course_id === id
+        ? query.data
+        : undefined,
   };
 }

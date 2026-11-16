@@ -226,7 +226,11 @@ export const CreateInjectionBodySchema = z
   })
   .loose()
   .superRefine((data, context) => {
-    for (const field of ['course_origin', 'medication_name_snapshot'])
+    for (const field of [
+      'course_origin',
+      'medication_name_snapshot',
+      'phase_family_id',
+    ])
       if (Object.prototype.hasOwnProperty.call(data, field))
         context.addIssue({
           code: 'custom',
@@ -276,7 +280,11 @@ export const UpdateInjectionBodySchema = z
   })
   .loose()
   .superRefine((data, context) => {
-    for (const field of ['course_origin', 'medication_name_snapshot'])
+    for (const field of [
+      'course_origin',
+      'medication_name_snapshot',
+      'phase_family_id',
+    ])
       if (Object.prototype.hasOwnProperty.call(data, field))
         context.addIssue({
           code: 'custom',
@@ -377,6 +385,12 @@ export const CreateMedicationEntryBodySchema = z
   })
   .loose()
   .superRefine((data, context) => {
+    if (Object.prototype.hasOwnProperty.call(data, 'phase_family_id'))
+      context.addIssue({
+        code: 'custom',
+        path: ['phase_family_id'],
+        message: 'Phase provenance is set by the server.',
+      });
     if (Object.prototype.hasOwnProperty.call(data, 'course_origin'))
       context.addIssue({
         code: 'custom',
@@ -426,6 +440,12 @@ export const UpdateMedicationEntryBodySchema = z
   })
   .loose()
   .superRefine((data, context) => {
+    if (Object.prototype.hasOwnProperty.call(data, 'phase_family_id'))
+      context.addIssue({
+        code: 'custom',
+        path: ['phase_family_id'],
+        message: 'Phase provenance is set by the server.',
+      });
     if (Object.prototype.hasOwnProperty.call(data, 'course_origin'))
       context.addIssue({
         code: 'custom',

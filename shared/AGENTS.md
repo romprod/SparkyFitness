@@ -122,3 +122,7 @@ Inventory projections advance only their separate authored-phase cursor when pen
 ## Stock dashboard and preparation queue
 
 `schemas/api/MedicationInventoryDashboard.api.zod.ts` wraps the unchanged I06 forecast snapshot with an authoritative Supply selection and minimal preparation-queue display facts. Known Supply references use `forecast`; named unknown references use `unavailable`; `no_demand` is a server proof about the injectable/nasal forecast window, not a client guess that no plans exist. No full writable stock object is reconstructed from queue data. Expansion loads the exact stock ID freshly; the optional queue-state proof is accepted only on the existing same-ID preparation update, never on creation.
+
+## Manual weekly course cycles
+
+Weekly course on/off metadata is separate from the existing daily `cycle_anchor_date` and per-rule rhythm. Saved metadata is advisory; explicit reviewed commands alone commit boundaries. New weekly input omission preserves existing values, explicit on=null clears on/off, and no client can write the weekly anchor or phase provenance. `MedicationCourseCycles.api.zod.ts` defines authoritative state/review/action responses in captured course timezone. `coursePhaseContext.ts` dynamically counts phase-only family actuals without changing exact slot matching. Retained origin window facts preserve frequency semantics through tombstones and new cycle revisions; no numeric delivered baseline or future clinical restart is inferred.

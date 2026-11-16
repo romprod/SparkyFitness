@@ -410,3 +410,5 @@ export * from './schemas/api/MedicationInventoryForecast.api.zod.ts';
 export * from './medications/inventoryForecastPlan.ts';
 export * from './medications/inventoryForecast.ts';
 export * from './schemas/api/MedicationInventoryDashboard.api.zod.ts';
+export * from './medications/coursePhaseContext.ts';
+export * from './schemas/api/MedicationCourseCycles.api.zod.ts';

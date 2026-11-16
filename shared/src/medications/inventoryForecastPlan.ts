@@ -50,6 +50,7 @@ export interface InventoryForecastPlanInput {
   route: 'injection' | 'nasal' | null;
   courses: MedicationCourse[];
   actuals: CourseDeliveredDose[];
+  phase_actuals?: CourseDeliveredDose[];
   /** Keys are revision IDs; values are real saved devices, never an invented fallback. */
   devices: Readonly<Record<string, InventoryForecastDevice | null>>;
   legacy_plans?: InventoryForecastLegacyPlan[];
@@ -93,7 +94,13 @@ import {
   courseSlotsForDay,
   type CourseExpectedSlot,
 } from './courseSchedules.ts';
-import { courseCurrentPhase, coursePerDoseAmount } from './courseRevisions.ts';
+import { coursePerDoseAmount } from './courseRevisions.ts';
+import {
+  coursePhaseActualKey,
+  coursePhaseActuals,
+  coursePhaseFamilyId,
+  coursePhaseForRevision,
+} from './coursePhaseContext.ts';
 import { isScheduleDueOnDate } from './schedules.ts';
 const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 interface RawForecastSlot {
@@ -110,8 +117,10 @@ interface RawForecastSlot {
   status: 'taken' | 'skipped' | 'missed' | 'pending' | 'projected';
 }
 const taken = (status: string) => status === 'taken' || status === 'prn_taken';
-const unique = <T extends { id: string }>(rows: T[]): T[] => [
-  ...new Map(rows.map((row) => [row.id, row])).values(),
+const unique = <T extends { id: string; source_kind?: 'entry' | 'injection' }>(
+  rows: T[]
+): T[] => [
+  ...new Map(rows.map((row) => [coursePhaseActualKey(row), row])).values(),
 ];
 function positive(value: string | null): boolean {
   try {
@@ -261,6 +270,7 @@ export function buildInventoryForecastPlan(
           nowInstant: input.now,
           medicationActive: true,
           delivered: actuals,
+          phaseDelivered: input.phase_actuals ?? actuals,
         })) {
           if (!eligible.has(slot.course_revision_id)) continue;
           const revision = revisions.get(slot.course_revision_id)!;
@@ -340,13 +350,13 @@ export function buildInventoryForecastPlan(
     const candidates = slot.managed
       ? actuals.filter(
           (entry) =>
-            !consumed.has(entry.id) &&
+            !consumed.has(coursePhaseActualKey(entry)) &&
             courseEntryMatchesSlot(entry, slot.managed!)
         )
       : legacyActuals.filter(
           (entry) =>
             !entry.course_origin &&
-            !consumed.has(entry.id) &&
+            !consumed.has(coursePhaseActualKey(entry)) &&
             legacyMatches(entry, slot)
         );
     const match =
@@ -358,7 +368,7 @@ export function buildInventoryForecastPlan(
       null;
     if (match) {
       slot.match = match;
-      consumed.add(match.id);
+      consumed.add(coursePhaseActualKey(match));
       slot.status = match.status === 'skipped' ? 'skipped' : 'taken';
     }
   }
@@ -404,7 +414,7 @@ export function buildInventoryForecastPlan(
     legacyActuals.some(
       (entry) =>
         !entry.course_origin &&
-        !consumed.has(entry.id) &&
+        !consumed.has(coursePhaseActualKey(entry)) &&
         (entry.status === 'taken' || entry.status === 'skipped') &&
         legacy.some((plan) => plan.id === entry.schedule_id) &&
         (entry.scheduled_day ??
@@ -417,32 +427,44 @@ export function buildInventoryForecastPlan(
   )
     limitations.add('unmodelled_legacy_demand');
   const matchedTaken = new Set(
-    raw.filter((slot) => slot.status === 'taken').map((slot) => slot.match!.id)
+    raw
+      .filter((slot) => slot.status === 'taken')
+      .map((slot) => coursePhaseActualKey(slot.match!))
   );
-  const adHoc = actuals.filter(
-    (entry) => taken(entry.status) && !matchedTaken.has(entry.id)
+  const adHoc = (input.phase_actuals ?? actuals).filter(
+    (entry) =>
+      taken(entry.status) && !matchedTaken.has(coursePhaseActualKey(entry))
   );
   const prior = new Map<string, number>();
   const projected: InventoryForecastSlot[] = [];
   const targets = new Map<string, InventoryForecastSlot>();
   for (const slot of raw) {
     const revision = revisions.get(slot.revision_id);
-    const cursorKey = (slot.legacy ? 'legacy:' : 'course:') + slot.revision_id;
+    const course = slot.managed
+      ? input.courses.find((row) => row.id === slot.course_id)!
+      : null;
+    const cursorKey = slot.legacy
+      ? `legacy:${slot.revision_id}`
+      : `course:${slot.course_id}:${coursePhaseFamilyId(revision!)}`;
     let value: string | null = null,
       unit: string | null = null,
       step: string | null = null,
       device: InventoryForecastDevice | null = null;
     if (slot.managed && revision) {
-      const adHocBefore = adHoc.filter(
+      const adHocBefore = coursePhaseActuals({
+        course: course!,
+        revision,
+        delivered: adHoc,
+      }).filter(
         (entry) =>
-          entry.course_revision_id === revision.id &&
-          (entry.entry_date.slice(0, 10) < slot.day ||
-            (entry.entry_date.slice(0, 10) === slot.day &&
-              slot.at !== null &&
-              entry.occurred_at != null &&
-              Date.parse(entry.occurred_at) < slot.sort_at))
+          entry.entry_date.slice(0, 10) < slot.day ||
+          (entry.entry_date.slice(0, 10) === slot.day &&
+            slot.at !== null &&
+            entry.occurred_at != null &&
+            Date.parse(entry.occurred_at) < slot.sort_at)
       ).length;
-      const phase = courseCurrentPhase({
+      const phase = coursePhaseForRevision({
+        course: course!,
         revision,
         deliveredCount: adHocBefore + (prior.get(cursorKey) ?? 0),
       });

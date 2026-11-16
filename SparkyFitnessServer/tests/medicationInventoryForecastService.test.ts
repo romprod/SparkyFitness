@@ -53,6 +53,7 @@ function snapshot(): InventoryForecastSnapshot {
         dose_unit: 'mg',
         courses: [course],
         actuals: [],
+        phase_actuals: [],
         legacy_schedules: [],
         legacy_entries: [],
         legacy_titration: [],

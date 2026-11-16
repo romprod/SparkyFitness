@@ -5,7 +5,8 @@ import {
   dayToUtcRange,
   medicationCoursePlanInputSchema,
   courseMaterialChanges,
-  courseInjectionsPerWeek,
+  coursePhaseActuals,
+  coursePhaseFrequency,
   coursePhaseCarry,
   courseRevisionBoundary,
   courseCarryCyclicAnchors,
@@ -29,6 +30,10 @@ import {
   type MedicationCourseHistory,
   type MedicationCourseDue,
 } from '@workspace/shared';
+import {
+  courseWeeklyAnchor,
+  courseCyclePlanPreview,
+} from './medicationCourseCycleCalendar.js';
 import { loadCourseDevice } from './medicationCourseDeviceService.js';
 import { getClient } from '../db/poolManager.js';
 import { canAccessUserData } from '../utils/permissionUtils.js';
@@ -38,6 +43,8 @@ import {
   courseFingerprint,
   loadMedicationCourse,
   loadCourseActuals,
+  loadCoursePhaseActuals,
+  type CoursePhaseActual,
   courseAdministered,
   coursePlan,
   lockCourseMedication,
@@ -79,7 +86,8 @@ async function transaction<T>(
   }
 }
 function authoredPlan(
-  input: MedicationCoursePlanInput
+  input: MedicationCoursePlanInput,
+  previous?: MedicationCourseRevision
 ): MedicationCoursePlanInput {
   const plan = medicationCoursePlanInputSchema.parse({
     name: input.name,
@@ -98,7 +106,27 @@ function authoredPlan(
     })),
     steps: input.steps,
     device_id: input.device_id,
+    course_cycle_on_weeks:
+      input.course_cycle_on_weeks === undefined
+        ? (previous?.course_cycle_on_weeks ?? null)
+        : input.course_cycle_on_weeks,
+    course_cycle_off_weeks:
+      input.course_cycle_on_weeks === null
+        ? null
+        : input.course_cycle_off_weeks === undefined
+          ? (previous?.course_cycle_off_weeks ?? null)
+          : input.course_cycle_off_weeks,
   });
+  if (
+    plan.course_cycle_off_weeks !== null &&
+    plan.course_cycle_off_weeks !== undefined &&
+    (plan.course_cycle_on_weeks === null ||
+      plan.course_cycle_on_weeks === undefined)
+  )
+    throw courseProblem(
+      'A weekly break requires an effective on-cycle duration.',
+      422
+    );
   if (plan.end_date && plan.end_date < plan.start_date)
     throw courseProblem('The authored end must not precede the start.', 422);
   for (const rule of plan.rules)
@@ -106,6 +134,27 @@ function authoredPlan(
       throw courseProblem('A rule end must not precede its start.', 422);
   return plan;
 }
+/** Older non-cycle clients have a strict authored-plan parser. Explicit new clear intent remains visible. */
+export function publicCourseReviewPlan(
+  plan: MedicationCoursePlanInput,
+  input: MedicationCoursePlanInput
+): MedicationCoursePlanInput {
+  if (
+    input.course_cycle_on_weeks === undefined &&
+    input.course_cycle_off_weeks === undefined &&
+    plan.course_cycle_on_weeks === null &&
+    plan.course_cycle_off_weeks === null
+  ) {
+    const {
+      course_cycle_on_weeks: _on,
+      course_cycle_off_weeks: _off,
+      ...legacy
+    } = plan;
+    return legacy;
+  }
+  return plan;
+}
+
 function tip(course: MedicationCourse): MedicationCourseRevision {
   const current = course.revisions.find(
     (r) => r.id === course.current_revision_id && !r.deleted_at
@@ -138,13 +187,15 @@ function reviewFingerprint(
   course: MedicationCourse | null,
   plan: MedicationCoursePlanInput,
   actuals: CourseActual[],
-  handoff: unknown = null
+  handoff: unknown = null,
+  phaseActuals: CoursePhaseActual[] = []
 ) {
   return courseFingerprint({
     course,
     plan,
     actuals: relevantActuals(actuals),
     handoff,
+    phase_actuals: phaseActuals,
   });
 }
 async function revisionReview(
@@ -153,11 +204,15 @@ async function revisionReview(
   course: MedicationCourse,
   input: MedicationCourseReviewInput,
   actuals: CourseActual[],
+  phaseActuals: CoursePhaseActual[],
   today: string
 ): Promise<MedicationCourseReview> {
   expectedVersion(course, input.expected_version);
   const old = tip(course),
-    plan = authoredPlan(courseCarryCyclicAnchors(old, authoredPlan(input)));
+    plan = authoredPlan(
+      courseCarryCyclicAnchors(old, authoredPlan(input, old)),
+      old
+    );
   const device = await loadCourseDevice(
     client,
     owner,
@@ -166,12 +221,14 @@ async function revisionReview(
     old
   );
   const changes = courseMaterialChanges(coursePlan(old), plan);
-  const oldActuals = actuals.filter(
-    (a) => a.course_revision_id === old.id && courseAdministered(a)
-  );
+  const oldActuals = coursePhaseActuals({
+    course,
+    revision: old,
+    delivered: phaseActuals,
+  });
   const carry = coursePhaseCarry({
     steps: old.steps,
-    oldInjectionsPerWeek: courseInjectionsPerWeek(old.rules, old),
+    oldInjectionsPerWeek: coursePhaseFrequency({ course, revision: old }),
     deliveredDayKeys: oldActuals.map((a) => a.entry_date),
     today,
   });
@@ -194,11 +251,24 @@ async function revisionReview(
   return medicationCourseReviewSchema.parse({
     expected_version: course.version,
     timezone: course.timezone,
-    review_fingerprint: reviewFingerprint(course, plan, actuals, device.proof),
+    review_fingerprint: reviewFingerprint(
+      course,
+      plan,
+      actuals,
+      device.proof,
+      phaseActuals
+    ),
     device_binding: device.binding,
+    cycle_plan_preview: courseCyclePlanPreview(
+      plan,
+      courseWeeklyAnchor(plan, old),
+      course.timezone
+    ),
     material_changes: changes,
-    requires_revision: changes.length > 0 && oldActuals.length > 0,
-    plan,
+    requires_revision:
+      changes.length > 0 &&
+      (oldActuals.length > 0 || old.phase_family_id !== null),
+    plan: publicCourseReviewPlan(plan, input),
     warnings,
     resumed_dose: carry.steps[0]?.dose ?? old.target_dose,
     resumed_dose_unit: carry.steps[0]?.dose_unit ?? old.dose_unit,
@@ -313,11 +383,16 @@ async function createReviewState(
     review: medicationCourseReviewSchema.parse({
       expected_version: 0,
       device_binding: device.binding,
+      cycle_plan_preview: courseCyclePlanPreview(
+        plan,
+        courseWeeklyAnchor(plan),
+        context.timezone
+      ),
       timezone: context.timezone,
       review_fingerprint: fingerprint,
       material_changes: [],
       requires_revision: false,
-      plan,
+      plan: publicCourseReviewPlan(plan, input),
       warnings,
       resumed_dose: plan.steps[0]?.dose ?? plan.target_dose ?? null,
       resumed_dose_unit: plan.steps[0]?.dose_unit ?? plan.dose_unit,
@@ -392,17 +467,18 @@ export async function reviewMedicationCourse(
       course,
       input,
       await loadCourseActuals(client, owner, id),
+      await loadCoursePhaseActuals(client, owner, id),
       context.today
     );
   });
 }
-async function operation(
+async function operation<T extends MedicationCourseMutationResult>(
   owner: string,
   action: string,
   input: { operation_id: string },
   context: unknown,
-  work: (client: PoolClient) => Promise<MedicationCourseMutationResult>
-): Promise<MedicationCourseMutationResult> {
+  work: (client: PoolClient) => Promise<T>
+): Promise<T> {
   await assertWrite(owner);
   const hash = courseFingerprint({
     action,
@@ -411,7 +487,7 @@ async function operation(
     actor: courseActor(owner),
   });
   return transaction(owner, async (client) => {
-    const old = await courseOperationReceipt(
+    const old = await courseOperationReceipt<T>(
       client,
       owner,
       input.operation_id,
@@ -533,7 +609,10 @@ export async function editMedicationCourse(
     const course = await lockMedicationCourse(client, owner, id);
     expectedVersion(course, input.expected_version);
     const old = tip(course),
-      plan = authoredPlan(courseCarryCyclicAnchors(old, authoredPlan(input)));
+      plan = authoredPlan(
+        courseCarryCyclicAnchors(old, authoredPlan(input, old)),
+        old
+      );
     const device = await loadCourseDevice(
       client,
       owner,
@@ -541,18 +620,16 @@ export async function editMedicationCourse(
       plan,
       old
     );
-    const actuals = await loadCourseActuals(client, owner, id);
-    if (
-      courseMaterialChanges(coursePlan(old), plan).length &&
-      actuals.some(
-        (a) => a.course_revision_id === old.id && courseAdministered(a)
-      )
-    )
+    const phaseActuals = await loadCoursePhaseActuals(client, owner, id);
+    const hasPhaseHistory =
+      coursePhaseActuals({ course, revision: old, delivered: phaseActuals })
+        .length > 0;
+    if (courseMaterialChanges(coursePlan(old), plan).length && hasPhaseHistory)
       throw courseProblem(
         'This authored history needs a reviewed successor revision; resume or reopen the current tip first if needed.'
       );
     await client.query(
-      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12 WHERE user_id=$1 AND id=$2',
+      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12,course_cycle_on_weeks=$13,course_cycle_off_weeks=$14,course_cycle_anchor_date=$15,phase_origin_context=$16::jsonb WHERE user_id=$1 AND id=$2',
       [
         owner,
         old.id,
@@ -566,6 +643,17 @@ export async function editMedicationCourse(
         plan.dose_basis,
         device.choice.device_id,
         device.choice.device_choice,
+        plan.course_cycle_on_weeks ?? null,
+        plan.course_cycle_off_weeks ?? null,
+        courseWeeklyAnchor(plan, old),
+        !hasPhaseHistory && courseMaterialChanges(coursePlan(old), plan).length
+          ? JSON.stringify({
+              start_date: plan.start_date,
+              end_date: plan.end_date ?? null,
+            })
+          : old.phase_origin_context === null
+            ? null
+            : JSON.stringify(old.phase_origin_context),
       ]
     );
     await storeCourseChildren(client, owner, old.id, plan, old);
@@ -603,6 +691,7 @@ export async function reviseMedicationCourse(
       course,
       input,
       actuals,
+      await loadCoursePhaseActuals(client, owner, id),
       context.today
     );
     if (reviewed.review_fingerprint !== input.review_fingerprint)
@@ -665,7 +754,15 @@ export async function reviseMedicationCourse(
       now,
       med?.rows[0]?.is_active ? cutoff : null,
       (await loadCourseDevice(client, owner, course.medication_id, plan, old))
-        .choice
+        .choice,
+      {
+        weekly_anchor_date: courseWeeklyAnchor(plan, old),
+        phase_family_id: null,
+        phase_origin_context: {
+          start_date: plan.start_date,
+          end_date: plan.end_date ?? null,
+        },
+      }
     );
     await client.query(
       'UPDATE medication_courses SET current_revision_id=$3,version=version+1 WHERE user_id=$1 AND id=$2',
@@ -858,6 +955,9 @@ export async function getMedicationCourseDue(
           nowInstant: now.toISOString(),
           medicationActive: row.is_active,
           delivered: deliveredCourseInputs(actuals),
+          phaseDelivered: deliveredCourseInputs(
+            await loadCoursePhaseActuals(client, owner, course.id)
+          ),
         });
         slots.push(...expected);
         for (const slot of expected) {
@@ -922,6 +1022,9 @@ export async function getMedicationCourseHistory(
         adherence: computeCourseAdherence({
           course,
           entries: deliveredCourseInputs(actuals),
+          phaseEntries: deliveredCourseInputs(
+            await loadCoursePhaseActuals(client, owner, id)
+          ),
           fromDay,
           toDay,
           today: context.today,
@@ -936,3 +1039,11 @@ export async function getMedicationCourseHistory(
     true
   );
 }
+
+export {
+  transaction as courseTransaction,
+  operation as courseOperation,
+  tip as currentCourseTip,
+  expectedVersion as assertCourseVersion,
+  assertWrite as assertCourseWrite,
+};

@@ -272,15 +272,17 @@
       "area": "Protocols",
       "feature": "Course on/off cycles",
       "reference_capability": "Course-level on/off weeks are separate from weekly dose rhythms and have boundary reminders.",
-      "sparky_baseline": "Partial: cyclic daily schedules exist, without the same course-level model.",
+      "sparky_baseline": "P05/P06 opt-in versioned website courses, explicit actual-slot association and lifecycle/history are deployed. Daily rule rhythms are separate; weekly course-cycle metadata/actions are the selected continuation.",
       "proposed_work": "Add recorded course start, planned finish and break/restart dates with user-controlled restart.",
       "decision": "Extend",
       "priority": "Next",
       "relative_effort": "M",
-      "dependencies_and_limits": "Depends on P05–P06. Do not infer a medically appropriate cycle length.",
-      "status": "proposed",
-      "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/src/app/actions/cycle.ts",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/shared/src/medications/schedules.ts"
+      "dependencies_and_limits": "Depends on deployed P05/P06. Keep weekly course cycles separate from daily cyclic rules. Do not infer medical duration, auto-restart or introduce I07 provisional demand, ramp generation, prescriptions, Gantt UI or notification transport. Old f622 backend is unsafe after phase-continuity/cycle use; recovery must retain a cycle-aware backend and additive data, never down-migrate or restore actual records.",
+      "status": "implemented_partial",
+      "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/b305c4c95f2118051c0e03f719d9330bfe3f9818/src/app/actions/cycle.ts",
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/shared/src/medications/schedules.ts",
+      "implementation_scope": "Implemented and source-tested selected P07: optional independent on/off-week metadata (strict integers1–104), advisory planned stop/break/restart context and explicit reviewed End/Start actions in Cabinet. No metadata-only automatic due cap or restart. Preserve original authored window and full delivered-dose progression through server-managed phase-family continuity, retained actual provenance and dynamic correction/deletion counts. Actions require owner/version/review/idempotency locks and same-day stored-fact guards; immutable revision/activity/actual history must remain truthful. Additive schema and guarded recovery are covered by the final source/isolated integration proof; App/image/live verification is recorded separately.",
+      "verification": "Exact frozen2194-file backend/shared snapshot passes83 isolated PostgreSQL cases: cycle commands11, schema7, phase snapshot10, legacy compatibility24, I06snapshot13, I08snapshot12, I08lifecycle6. Fresh full migrations and direct P07 replay twice pass; final P07 function hashes remain installed after historical replay. Includes explicit pre-P07 NULL-provenance row/no-backfill/detachment proof. Actual f622 pre-use stock/history and managed noncycle create/read/due smoke passes only with the official zero-use condition true. Owner web256/math100/backend40 and independent120 critical source checks pass; no global-suite claim. Exact App/image/privacy and live verification are separate operational records; no native distribution."
     },
     {
       "id": "P08",

@@ -7,6 +7,11 @@ import {
   medicationCourseMutationResultSchema,
   medicationCourseHistorySchema,
   medicationCourseDueSchema,
+  medicationCourseCycleStateSchema,
+  medicationCourseCycleReviewSchema,
+  medicationCourseCycleMutationResultSchema,
+  type MedicationCourseCycleReviewInput,
+  type MedicationCourseCycleActionInput,
   type MedicationCourseCreateInput,
   type MedicationCourseEditInput,
   type MedicationCourseReviewInput,
@@ -135,6 +140,54 @@ export const getMedicationCourseDue = async (
       method: 'GET',
       params: { date },
       signal,
+      suppressErrorToast: true,
+    })
+  );
+
+/** Advisory cycle state and explicit reviewed actions; dates remain server-derived. */
+export const getMedicationCourseCycle = async (
+  id: string,
+  signal?: AbortSignal
+) =>
+  medicationCourseCycleStateSchema.parse(
+    await apiCall(`${root}/${id}/cycle`, {
+      method: 'GET',
+      signal,
+      suppressErrorToast: true,
+    })
+  );
+export const reviewMedicationCourseCycle = async (
+  id: string,
+  body: MedicationCourseCycleReviewInput,
+  signal?: AbortSignal
+) =>
+  medicationCourseCycleReviewSchema.parse(
+    await apiCall(`${root}/${id}/cycle-review`, {
+      method: 'POST',
+      body,
+      signal,
+      suppressErrorToast: true,
+    })
+  );
+export const endMedicationCourseCycle = async (
+  id: string,
+  body: MedicationCourseCycleActionInput
+) =>
+  medicationCourseCycleMutationResultSchema.parse(
+    await apiCall(`${root}/${id}/cycle-end`, {
+      method: 'POST',
+      body,
+      suppressErrorToast: true,
+    })
+  );
+export const startMedicationCourseCycle = async (
+  id: string,
+  body: MedicationCourseCycleActionInput
+) =>
+  medicationCourseCycleMutationResultSchema.parse(
+    await apiCall(`${root}/${id}/cycle-start`, {
+      method: 'POST',
+      body,
       suppressErrorToast: true,
     })
   );
