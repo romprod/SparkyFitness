@@ -743,3 +743,37 @@ it('preserves the stock-only read view but closes a write draft when permission 
   ).not.toBeInTheDocument();
   expect(mockSave).not.toHaveBeenCalled();
 });
+
+it('keeps legacy recorded dose, concentration, count and manual reorder warning accessible in stock Details', () => {
+  mockPens = [
+    {
+      id: 'legacy',
+      medication_id: 'medicine',
+      kind: 'vial',
+      status: 'in_use',
+      label: 'Legacy prepared vial',
+      dose_mg: 2,
+      concentration_mg_ml: 4,
+      volume_ml: 2,
+      doses_total: 4,
+      doses_used: 3,
+      reorder_flag: true,
+      reorder_threshold: 1,
+      preparation: null,
+      stock: null,
+    },
+  ];
+  const { container } = render(
+    <Glp1InventoryManager
+      med={{ ...med, name: 'Synthetic medication' }}
+      stockView="active"
+      stockCanWrite
+    />
+  );
+  const details = container.querySelector('article details')!;
+  expect(details).toHaveTextContent('Recorded dose2 mg');
+  expect(details).toHaveTextContent('Concentration (mg/mL)4 mg/mL');
+  expect(details).toHaveTextContent('Stock balance1/4 doses');
+  expect(details).toHaveTextContent('Reorder');
+  expect(details.querySelector('summary')).toHaveTextContent('Details');
+});

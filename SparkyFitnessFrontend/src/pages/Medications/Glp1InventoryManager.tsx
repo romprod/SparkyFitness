@@ -714,7 +714,51 @@ function InventorySession({
           <summary className="cursor-pointer text-sm font-medium">
             {t('medications.stockLayout.details', 'Details')}
           </summary>
-          <div className="mt-3">{content}</div>
+          <div className="mt-3 space-y-3">
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              {p.dose_mg ? (
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    {t('medications.stockLayout.recordedDose', 'Recorded dose')}
+                  </dt>
+                  <dd>{p.dose_mg} mg</dd>
+                </div>
+              ) : null}
+              {p.concentration_mg_ml ? (
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    {t(
+                      'medications.glp1InventoryManager.concentrationMgML',
+                      'Concentration (mg/mL)'
+                    )}
+                  </dt>
+                  <dd>{p.concentration_mg_ml} mg/mL</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt className="text-xs text-muted-foreground">
+                  {t('medications.stockLayout.balance', 'Stock balance')}
+                </dt>
+                <dd>
+                  {p.stock
+                    ? `${p.stock.remainingMg.toFixed(3)} mg`
+                    : `${left}/${total || '?'} ${t('medications.glp1InventoryManager.doses', 'doses')}`}
+                </dd>
+              </div>
+            </dl>
+            {p.reorder_flag &&
+              p.reorder_threshold != null &&
+              left <= p.reorder_threshold && (
+                <Badge
+                  variant="outline"
+                  className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+                >
+                  <AlertTriangle className="mr-1 h-3 w-3" />
+                  {t('medications.glp1InventoryManager.reorder', 'Reorder')}
+                </Badge>
+              )}
+            {content}
+          </div>
         </details>
         {stockFooter(p)}
       </article>
