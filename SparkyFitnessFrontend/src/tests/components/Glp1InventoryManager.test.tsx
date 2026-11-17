@@ -678,3 +678,68 @@ it.each(['medication', 'profile'])(
     );
   }
 );
+
+it('stock-only cards retain Details and exact edit target while Cabinet keeps its original controls', () => {
+  mockPens = [
+    {
+      id: 'used',
+      medication_id: 'medicine',
+      kind: 'vial',
+      status: 'in_use',
+      label: 'Custom used vial',
+      label_mass_mg: '20',
+      doses_used: 2,
+      doses_total: 10,
+      dose_mg: 1,
+      concentration_mg_ml: 5,
+      volume_ml: 2,
+    },
+  ];
+  const medication = { ...med, name: 'Synthetic medication' };
+  const view = render(
+    <Glp1InventoryManager med={medication} stockView="active" stockCanWrite />
+  );
+  const card = screen.getByRole('article', {
+    name: 'Synthetic medication · Custom used vial',
+  });
+  expect(card.querySelector('summary')).toHaveTextContent('Details');
+  expect(card.querySelector('details')).not.toHaveAttribute('open');
+  expect(screen.getByText('In use')).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Add Inventory' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(screen.getByLabelText('Label / Name')).toHaveValue('Custom used vial');
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate).toHaveBeenCalledWith(
+    expect.objectContaining({ id: 'used' }),
+    expect.anything()
+  );
+  view.unmount();
+  render(<Glp1InventoryManager med={medication} />);
+  expect(
+    screen.getByRole('button', { name: 'Add Inventory' })
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Edit pen/vial' })
+  ).toBeInTheDocument();
+});
+it('preserves the stock-only read view but closes a write draft when permission is revoked', () => {
+  const view = render(
+    <Glp1InventoryManager med={med} stockView="controls" stockCanWrite />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  view.rerender(
+    <Glp1InventoryManager
+      med={med}
+      stockView="controls"
+      stockCanWrite={false}
+    />
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Add Inventory' })
+  ).not.toBeInTheDocument();
+  expect(mockSave).not.toHaveBeenCalled();
+});

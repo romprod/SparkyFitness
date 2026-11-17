@@ -1,8 +1,14 @@
 import MedicationPrescriptionLink from './MedicationPrescriptionLink';
 import { useMedicationPrescriptionScope } from '@/hooks/Medications/useMedicationPrescriptions';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Pencil,
+  Trash2,
+  MoreHorizontal,
+  Plus,
+} from 'lucide-react';
 import {
   todayInZone,
   addDays,
@@ -48,13 +54,26 @@ import type {
   MedicationPenWriteInput,
 } from '@/types/medications';
 
-import type { MedicationInventoryPlannedForecast } from '@workspace/shared';
+import type {
+  MedicationInventoryPlannedForecast,
+  MedicationPreparationQueueItem,
+} from '@workspace/shared';
+import { MedicationPreparationQueueEntry } from './MedicationPreparationQueue';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { MedicationContainerForecast } from './MedicationInventoryForecast';
 
 interface Glp1InventoryManagerProps {
   med: Medication;
   forecast?: MedicationInventoryPlannedForecast;
   forecastTimezone?: string;
+  stockView?: 'controls' | 'active' | 'closed' | 'queue';
+  queueItems?: MedicationPreparationQueueItem[];
+  stockCanWrite?: boolean;
 }
 
 export default function Glp1InventoryManager(props: Glp1InventoryManagerProps) {
@@ -72,6 +91,9 @@ function InventorySession({
   forecast,
   forecastTimezone,
   prescriptionScope,
+  stockView,
+  queueItems = [],
+  stockCanWrite = false,
 }: Glp1InventoryManagerProps & {
   prescriptionScope: ReturnType<typeof useMedicationPrescriptionScope>;
 }) {
@@ -94,6 +116,12 @@ function InventorySession({
     setPreparationOpen(true);
   };
   const [editingPen, setEditingPen] = useState<MedicationPen | null>(null);
+  useEffect(() => {
+    if (stockView && !stockCanWrite) {
+      setInventoryOpen(false);
+      setPreparationOpen(false);
+    }
+  }, [stockView, stockCanWrite]);
   const [status, setStatus] = useState<MedicationPen['status']>('sealed');
   const [kind, setKind] = useState<'pen' | 'vial'>('pen');
   const [label, setLabel] = useState('');
@@ -130,6 +158,7 @@ function InventorySession({
   const [notes, setNotes] = useState('');
 
   const preferencesContext = usePreferences();
+  const { formatDate } = preferencesContext;
   const timezone =
     preferencesContext?.timezone ||
     Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -243,6 +272,7 @@ function InventorySession({
   };
 
   const handleSaveInventory = () => {
+    if (stockView && !stockCanWrite) return;
     if (
       !budValid ||
       !labelMassValid ||
@@ -348,6 +378,81 @@ function InventorySession({
   const closedPens = (pensQ.data ?? []).filter(
     (pen) => pen.status === 'finished' || pen.status === 'discarded'
   );
+  const stockActions = (p: MedicationPen) => {
+    if (!stockCanWrite) return null;
+    const canPrepare =
+      p.kind === 'vial' && (p.preparation || p.doses_used === 0);
+    const preparationLabel = p.preparation
+      ? t('medications.preparationFlow.edit', 'Edit preparation')
+      : t('medications.stock.prepare', 'Prepare a vial');
+    return (
+      <>
+        <div className="hidden sm:flex flex-wrap items-center justify-end gap-1">
+          <Button variant="ghost" size="sm" onClick={() => openEditDialog(p)}>
+            {t('common.edit', 'Edit')}
+          </Button>
+          {canPrepare && stockView !== 'queue' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => openPreparation(p)}
+            >
+              {preparationLabel}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={deletePenMutation.isPending}
+            onClick={() => deletePenMutation.mutate(p.id)}
+          >
+            {t('common.delete', 'Delete')}
+          </Button>
+        </div>
+        <div className="sm:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t(
+                  'medications.stockLayout.actions',
+                  'Stock actions for {{name}}',
+                  { name: p.label || med.display_name || med.name }
+                )}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => openEditDialog(p)}>
+                {t('common.edit', 'Edit')}
+              </DropdownMenuItem>
+              {canPrepare && stockView !== 'queue' && (
+                <DropdownMenuItem onSelect={() => openPreparation(p)}>
+                  {preparationLabel}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                disabled={deletePenMutation.isPending}
+                onSelect={() => deletePenMutation.mutate(p.id)}
+              >
+                {t('common.delete', 'Delete')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </>
+    );
+  };
+  const stockFooter = (p: MedicationPen) => (
+    <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
+      <div className="min-w-0">
+        {p.kind === 'vial' && <MedicationVialCostLink penId={p.id} />}
+      </div>
+      {stockActions(p)}
+    </div>
+  );
   const renderPen = (p: MedicationPen) => {
     const total = p.doses_total ?? 0;
     const left =
@@ -363,81 +468,88 @@ function InventorySession({
       ((p.stock !== null && p.stock !== undefined) || total > 0) && pct <= 25;
     const expStatus = getExpiryStatus(p.expiry_date, today);
 
-    return (
-      <div key={p.id} className="rounded-lg border p-3 text-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-medium capitalize">{p.kind}</span>
-            {p.label && (
-              <span className="text-muted-foreground">({p.label})</span>
-            )}
-            {p.dose_mg ? (
-              <span className="text-muted-foreground">{p.dose_mg} mg</span>
-            ) : null}
-            {p.concentration_mg_ml ? (
-              <span className="text-muted-foreground">
-                {t(
-                  'medications.glp1InventoryManager.mgML',
-                  '· {{concentration_mg_ml}} mg/mL',
-                  { concentration_mg_ml: p.concentration_mg_ml }
-                )}
-              </span>
-            ) : null}
-            {p.status === 'in_use' && (
-              <Badge variant="secondary" className="text-[10px]">
-                {t('medications.glp1InventoryManager.inUse', 'in use')}
-              </Badge>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {p.reorder_flag &&
-              p.reorder_threshold != null &&
-              left <= p.reorder_threshold && (
-                <Badge
-                  variant="destructive"
-                  className="flex items-center gap-1 text-[10px]"
-                >
-                  <AlertTriangle className="h-3 w-3" />{' '}
-                  {t('medications.glp1InventoryManager.reorder', 'Reorder')}
+    const content = (
+      <div
+        key={p.id}
+        className={
+          stockView ? 'space-y-2 text-sm' : 'rounded-lg border p-3 text-sm'
+        }
+      >
+        {!stockView && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="font-medium capitalize">{p.kind}</span>
+              {p.label && (
+                <span className="text-muted-foreground">({p.label})</span>
+              )}
+              {p.dose_mg ? (
+                <span className="text-muted-foreground">{p.dose_mg} mg</span>
+              ) : null}
+              {p.concentration_mg_ml ? (
+                <span className="text-muted-foreground">
+                  {t(
+                    'medications.glp1InventoryManager.mgML',
+                    '· {{concentration_mg_ml}} mg/mL',
+                    { concentration_mg_ml: p.concentration_mg_ml }
+                  )}
+                </span>
+              ) : null}
+              {p.status === 'in_use' && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {t('medications.glp1InventoryManager.inUse', 'in use')}
                 </Badge>
               )}
-            <span className="font-medium tabular-nums">
-              {p.stock
-                ? p.stock.remainingMg.toFixed(3)
-                : `${left}/${total || '?'}`}{' '}
-              <span className="font-normal text-muted-foreground">
+            </div>
+            <div className="flex items-center gap-2">
+              {p.reorder_flag &&
+                p.reorder_threshold != null &&
+                left <= p.reorder_threshold && (
+                  <Badge
+                    variant="destructive"
+                    className="flex items-center gap-1 text-[10px]"
+                  >
+                    <AlertTriangle className="h-3 w-3" />{' '}
+                    {t('medications.glp1InventoryManager.reorder', 'Reorder')}
+                  </Badge>
+                )}
+              <span className="font-medium tabular-nums">
                 {p.stock
-                  ? 'mg'
-                  : t('medications.glp1InventoryManager.doses', 'doses')}
+                  ? p.stock.remainingMg.toFixed(3)
+                  : `${left}/${total || '?'}`}{' '}
+                <span className="font-normal text-muted-foreground">
+                  {p.stock
+                    ? 'mg'
+                    : t('medications.glp1InventoryManager.doses', 'doses')}
+                </span>
               </span>
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={() => openEditDialog(p)}
-              aria-label={t(
-                'medications.glp1InventoryManager.editPenVial',
-                'Edit pen/vial'
-              )}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              onClick={() => deletePenMutation.mutate(p.id)}
-              disabled={deletePenMutation.isPending}
-              aria-label={t(
-                'medications.glp1InventoryManager.removePenVial',
-                'Remove pen/vial'
-              )}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground"
+                onClick={() => openEditDialog(p)}
+                aria-label={t(
+                  'medications.glp1InventoryManager.editPenVial',
+                  'Edit pen/vial'
+                )}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={() => deletePenMutation.mutate(p.id)}
+                disabled={deletePenMutation.isPending}
+                aria-label={t(
+                  'medications.glp1InventoryManager.removePenVial',
+                  'Remove pen/vial'
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
         {p.kind === 'vial' && (
           <p className="mt-2 text-xs text-muted-foreground">
             {p.stock
@@ -514,19 +626,23 @@ function InventorySession({
               timezone={forecastTimezone}
             />
           ))}
-        {p.kind === 'vial' && <MedicationVialCostLink penId={p.id} />}
-        {p.kind === 'vial' && (p.preparation || p.doses_used === 0) && (
-          <Button
-            className="mt-2"
-            size="sm"
-            variant="outline"
-            onClick={() => openPreparation(p)}
-          >
-            {p.preparation
-              ? t('medications.preparationFlow.edit', 'Edit preparation')
-              : t('medications.stock.prepare', 'Prepare a vial')}
-          </Button>
+        {!stockView && p.kind === 'vial' && (
+          <MedicationVialCostLink penId={p.id} />
         )}
+        {!stockView &&
+          p.kind === 'vial' &&
+          (p.preparation || p.doses_used === 0) && (
+            <Button
+              className="mt-2"
+              size="sm"
+              variant="outline"
+              onClick={() => openPreparation(p)}
+            >
+              {p.preparation
+                ? t('medications.preparationFlow.edit', 'Edit preparation')
+                : t('medications.stock.prepare', 'Prepare a vial')}
+            </Button>
+          )}
         {(p.lot_number || p.storage_location || p.bud_source) && (
           <p className="mt-2 text-xs text-muted-foreground">
             {[
@@ -555,49 +671,171 @@ function InventorySession({
         )}
       </div>
     );
+    if (!stockView) return content;
+    return (
+      <article
+        key={p.id}
+        className="min-w-0 overflow-hidden rounded-xl border bg-card text-card-foreground"
+        aria-label={`${med.display_name || med.name}${p.label ? ` · ${p.label}` : ''}`}
+      >
+        <header className="flex items-start justify-between gap-3 p-4">
+          <div className="min-w-0 space-y-1">
+            <h3 className="break-words font-medium">
+              {med.display_name || med.name}
+            </h3>
+            {p.label &&
+              p.label !== med.name &&
+              p.label !== med.display_name && (
+                <p className="break-words text-sm text-muted-foreground">
+                  {p.label}
+                </p>
+              )}
+            <p className="break-words text-xs text-muted-foreground">
+              {p.label_mass_mg ? `${p.label_mass_mg} mg · ` : ''}
+              {t(`medications.stockLayout.kind.${p.kind}`, p.kind)}
+              {p.expiry_date
+                ? ` · ${t('medications.stockDashboard.expiry', 'Expiry')} ${formatDate(p.expiry_date)}`
+                : ''}
+            </p>
+          </div>
+          <Badge variant="secondary" className="shrink-0">
+            {t(
+              `medications.stock.status.${p.status}`,
+              {
+                sealed: 'Sealed',
+                in_use: 'In use',
+                finished: 'Finished',
+                discarded: 'Discarded',
+              }[p.status]
+            )}
+          </Badge>
+        </header>
+        <details className="border-t px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            {t('medications.stockLayout.details', 'Details')}
+          </summary>
+          <div className="mt-3">{content}</div>
+        </details>
+        {stockFooter(p)}
+      </article>
+    );
   };
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-col items-start gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
-            <span>{t('medications.stock.title', 'Preparation & stock')}</span>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => openPreparation()}>
-                {t('medications.stock.prepare', 'Prepare a vial')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openAddDialog()}
-              >
+      {stockView ? (
+        <>
+          {stockView === 'controls' && stockCanWrite && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={openAddDialog}>
+                <Plus className="mr-2 h-4 w-4" />
                 {t('medications.glp1.addInventory', 'Add Inventory')}
               </Button>
+              <Button variant="outline" onClick={() => openPreparation()}>
+                {t('medications.stock.prepare', 'Prepare a vial')}
+              </Button>
             </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {(pensQ.data ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              {t('medications.glp1.noPens', 'No pens/vials tracked.')}
+          )}
+          {(stockView === 'active' || stockView === 'closed') &&
+            pensQ.isError && (
+              <p role="alert" className="text-sm text-muted-foreground">
+                {t(
+                  'medications.stockLayout.loadError',
+                  'Could not load stock for {{name}}.',
+                  { name: med.display_name || med.name }
+                )}
+              </p>
+            )}
+          {stockView === 'active' && pensQ.isLoading && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('medications.stockLayout.loading', 'Loading current stock…')}
             </p>
           )}
-          {activePens.map(renderPen)}
-          {closedPens.length > 0 && (
-            <details className="rounded-md border p-3">
-              <summary className="cursor-pointer text-sm font-medium">
+          {stockView === 'active' &&
+            !pensQ.isError &&
+            !pensQ.isLoading &&
+            (pensQ.data?.length ?? 0) === 0 && (
+              <p className="text-sm text-muted-foreground">
                 {t(
-                  'medications.stock.finishedDiscarded',
-                  'Finished / discarded'
-                )}{' '}
-                ({closedPens.length})
-              </summary>
-              <div className="mt-3 space-y-2">{closedPens.map(renderPen)}</div>
-            </details>
-          )}
-        </CardContent>
-      </Card>
+                  'medications.stockLayout.emptyMedication',
+                  'No stock tracked for {{name}}.',
+                  { name: med.display_name || med.name }
+                )}
+              </p>
+            )}
+          {stockView === 'active' &&
+            !pensQ.isError &&
+            activePens
+              .filter((p) => !queueItems.some((row) => row.stock_id === p.id))
+              .map(renderPen)}
+          {stockView === 'closed' &&
+            !pensQ.isError &&
+            closedPens.map(renderPen)}
+          {stockView === 'queue' &&
+            queueItems.map((row) => {
+              const p =
+                !pensQ.isError && !pensQ.isLoading && !pensQ.isFetching
+                  ? pensQ.data?.find(
+                      (p) =>
+                        p.id === row.stock_id &&
+                        p.medication_id === row.medication_id
+                    )
+                  : undefined;
+              return (
+                <MedicationPreparationQueueEntry
+                  key={row.stock_id}
+                  row={row}
+                  med={med}
+                  canWrite={stockCanWrite}
+                  compact
+                  footer={p ? stockFooter(p) : undefined}
+                />
+              );
+            })}
+        </>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex flex-col items-start gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
+              <span>{t('medications.stock.title', 'Preparation & stock')}</span>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => openPreparation()}>
+                  {t('medications.stock.prepare', 'Prepare a vial')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openAddDialog()}
+                >
+                  {t('medications.glp1.addInventory', 'Add Inventory')}
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(pensQ.data ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t('medications.glp1.noPens', 'No pens/vials tracked.')}
+              </p>
+            )}
+            {activePens.map(renderPen)}
+            {closedPens.length > 0 && (
+              <details className="rounded-md border p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {t(
+                    'medications.stock.finishedDiscarded',
+                    'Finished / discarded'
+                  )}{' '}
+                  ({closedPens.length})
+                </summary>
+                <div className="mt-3 space-y-2">
+                  {closedPens.map(renderPen)}
+                </div>
+              </details>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {preparationOpen && (
         <MedicationPreparationWizard

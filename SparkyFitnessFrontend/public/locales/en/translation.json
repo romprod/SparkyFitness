@@ -953,6 +953,20 @@
       "budHelp": "Enter the date or interval from your product or clinician guidance. No stability interval is assumed.",
       "correctError": "Could not update preparation."
     },
+    "stockLayout": {
+      "subtitle": "Vials, preparation and remaining stock across your medications.",
+      "newStockMedication": "Medication for new stock",
+      "loading": "Loading current stock…",
+      "tracked": "Tracked stock",
+      "actions": "Stock actions for {{name}}",
+      "details": "Details",
+      "loadError": "Could not load stock for {{name}}.",
+      "emptyMedication": "No stock tracked for {{name}}.",
+      "kind": {
+        "vial": "Vial",
+        "pen": "Pen"
+      }
+    },
     "stock": {
       "title": "Preparation & stock",
       "description": "Prepare vials, calculate draw volumes and track stock for any injectable peptide or medication. No GLP-1 setting is needed.",

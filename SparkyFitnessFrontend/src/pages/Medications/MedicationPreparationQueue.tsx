@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   resolvePreparedMedicationRoute,
@@ -90,14 +90,18 @@ function QueuePreparation({
   );
 }
 
-function QueueEntry({
+export function MedicationPreparationQueueEntry({
   row,
   med,
   canWrite,
+  compact = false,
+  footer,
 }: {
   row: MedicationPreparationQueueItem;
   med: Medication | undefined;
   canWrite: boolean;
+  compact?: boolean;
+  footer?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { formatDate } = usePreferences();
@@ -108,7 +112,16 @@ function QueueEntry({
         {row.medication_name}
         {row.label ? ` · ${row.label}` : ''}
       </span>
-      {row.label_mass_mg !== null && (
+      {compact && (
+        <span className="block text-xs text-muted-foreground">
+          {row.label_mass_mg ? `${row.label_mass_mg} mg · ` : ''}
+          {t(
+            'medications.stockDashboard.needsPreparation',
+            'Needs preparation'
+          )}
+        </span>
+      )}
+      {!compact && row.label_mass_mg !== null && (
         <span className="block text-sm text-muted-foreground">
           {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
           {row.label_mass_mg}
@@ -143,35 +156,44 @@ function QueueEntry({
       </div>
     );
   return (
-    <details
-      className="min-w-0 rounded-md border p-3"
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
+    <div
+      className={
+        compact
+          ? 'min-w-0 rounded-xl border bg-card text-card-foreground'
+          : undefined
+      }
     >
-      <summary className="cursor-pointer">
-        <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-start justify-between gap-2 align-top">
-          {identity}
-          <span className="text-sm font-medium">
-            {t('medications.stockDashboard.prepare', 'Prepare')} ›
+      <details
+        className={compact ? 'min-w-0 p-4' : 'min-w-0 rounded-md border p-3'}
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer">
+          <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-start justify-between gap-2 align-top">
+            {identity}
+            <span className="text-sm font-medium">
+              {t('medications.stockDashboard.prepare', 'Prepare')} ›
+            </span>
           </span>
-        </span>
-      </summary>
-      {open &&
-        (med ? (
-          <QueuePreparation
-            row={row}
-            med={med}
-            onClose={() => setOpen(false)}
-          />
-        ) : (
-          <p role="status" className="mt-3 text-sm text-muted-foreground">
-            {t(
-              'medications.stockDashboard.medicationUnavailable',
-              'Medication details are unavailable. Refresh this page before preparing the vial.'
-            )}
-          </p>
-        ))}
-    </details>
+        </summary>
+        {open &&
+          (med ? (
+            <QueuePreparation
+              row={row}
+              med={med}
+              onClose={() => setOpen(false)}
+            />
+          ) : (
+            <p role="status" className="mt-3 text-sm text-muted-foreground">
+              {t(
+                'medications.stockDashboard.medicationUnavailable',
+                'Medication details are unavailable. Refresh this page before preparing the vial.'
+              )}
+            </p>
+          ))}
+      </details>
+      {footer}
+    </div>
   );
 }
 
@@ -217,7 +239,7 @@ export default function MedicationPreparationQueue({
           </div>
         ) : (
           data?.preparation_queue.map((row) => (
-            <QueueEntry
+            <MedicationPreparationQueueEntry
               key={`${scope.key}:${row.stock_id}`}
               row={row}
               med={meds.find((med) => med.id === row.medication_id)}

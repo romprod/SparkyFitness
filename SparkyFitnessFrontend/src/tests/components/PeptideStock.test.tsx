@@ -2,9 +2,56 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import PeptideStock from '@/pages/Medications/PeptideStock';
-import type { Medication } from '@/types/medications';
+import {
+  dashboardFixture,
+  dashboardPen,
+  queueItem,
+} from '@/tests/fixtures/medicationInventoryDashboard';
+import type { Medication, MedicationPen } from '@/types/medications';
 const mockSave = jest.fn();
-const mockPens = jest.fn((_id: string) => ({ data: [] }));
+const mockPens = jest.fn(
+  (_id: string): { data: MedicationPen[]; isError?: boolean } => ({ data: [] })
+);
+let mockDashboard = dashboardFixture({ preparation_queue: [] });
+let mockReady = true;
+let mockError = false;
+jest.mock('@/hooks/Medications/useMedicationStockDashboard', () => ({
+  useMedicationStockDashboard: () => ({
+    scope: {
+      ready: mockReady,
+      canWrite: true,
+      key: 'owner:1',
+      isCurrent: () => mockReady,
+    },
+    query: { isError: mockError },
+    data: mockDashboard,
+  }),
+  usePreparationQueueStock: () => ({ scope: { ready: false } }),
+}));
+jest.mock('@/hooks/Medications/useMedicationInventoryForecast', () => ({
+  useMedicationInventoryForecast: () => ({
+    scope: { ready: mockReady, isCurrent: () => mockReady },
+    query: { isError: false },
+    data: undefined,
+  }),
+}));
+jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
+  useMedicationPrescriptionScope: () => ({
+    ready: false,
+    key: 'owner:1',
+    canWrite: false,
+    isCurrent: () => false,
+  }),
+  useMedicationPrescriptions: () => ({
+    scope: { ready: false },
+    query: {},
+    data: undefined,
+  }),
+}));
+jest.mock('@/pages/Medications/MedicationVialCostLink', () => ({
+  __esModule: true,
+  default: () => <p>Existing cost link</p>,
+}));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: (id: string) => mockPens(id),
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),
@@ -39,7 +86,10 @@ jest.mock('@/hooks/useMedicationSyringes', () => ({
   }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
-  usePreferences: () => ({ timezone: 'Europe/London' }),
+  usePreferences: () => ({
+    timezone: 'Europe/London',
+    formatDate: (day: string) => day,
+  }),
 }));
 jest.mock('@/pages/Medications/AddMedicationDialog', () => ({
   __esModule: true,
@@ -68,7 +118,11 @@ const peptide = {
 } as Medication;
 beforeEach(() => {
   mockSave.mockClear();
-  mockPens.mockClear();
+  mockPens.mockReset();
+  mockPens.mockReturnValue({ data: [] });
+  mockDashboard = dashboardFixture({ preparation_queue: [] });
+  mockReady = true;
+  mockError = false;
 });
 it('shows preparation tools without injection logging or history for a non-GLP-1 peptide', () => {
   render(
@@ -78,7 +132,7 @@ it('shows preparation tools without injection logging or history for a non-GLP-1
       <PeptideStock meds={[peptide]} />
     </MemoryRouter>
   );
-  expect(screen.getByLabelText('Peptide / medication')).toHaveTextContent(
+  expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
     'Example peptide'
   );
   expect(screen.queryByText('Log injection: peptide')).not.toBeInTheDocument();
@@ -132,8 +186,119 @@ it('honours a direct link to a different injectable and keeps its stock queries 
       <PeptideStock meds={[peptide, other]} />
     </MemoryRouter>
   );
-  expect(screen.getByLabelText('Peptide / medication')).toHaveTextContent(
+  expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
     'Second peptide'
   );
   expect(mockPens).toHaveBeenCalledWith('second');
+});
+
+it('lists all medications without turning the new-stock picker into an overview filter', () => {
+  const other = {
+    ...peptide,
+    id: 'second',
+    name: 'Inactive blend',
+    is_active: false,
+  };
+  mockDashboard = dashboardFixture({
+    preparation_queue: [
+      queueItem({
+        stock_id: 'raw-one',
+        medication_id: peptide.id,
+        medication_name: peptide.name,
+      }),
+      queueItem({
+        stock_id: 'raw-two',
+        medication_id: other.id,
+        medication_name: other.name,
+      }),
+    ],
+  });
+  mockPens.mockImplementation((id) => ({
+    data:
+      id === peptide.id
+        ? [
+            dashboardPen({
+              id: 'used',
+              medication_id: id,
+              label: 'Used custom label',
+              status: 'in_use',
+              doses_used: 1,
+            }),
+            dashboardPen({ id: 'raw-one', medication_id: id }),
+          ]
+        : [
+            dashboardPen({ id: 'raw-two', medication_id: id }),
+            dashboardPen({
+              id: 'legacy',
+              medication_id: id,
+              label: 'Legacy physical stock',
+              concentration_mg_ml: 5,
+            }),
+            dashboardPen({
+              id: 'closed',
+              medication_id: id,
+              status: 'discarded',
+              label: 'Archived vial',
+            }),
+          ],
+  }));
+  const { container } = render(
+    <MemoryRouter initialEntries={['/medications?tab=stock&medication=second']}>
+      <PeptideStock meds={[peptide, other]} />
+    </MemoryRouter>
+  );
+  expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
+    'Inactive blend'
+  );
+  const tracked = screen.getByRole('region', { name: 'Tracked stock' });
+  expect(tracked).toHaveTextContent('Used custom label');
+  expect(tracked).toHaveTextContent('Legacy physical stock');
+  expect(tracked.querySelectorAll('article')).toHaveLength(2);
+  const queue = screen.getByRole('region', { name: 'Needs preparation' });
+  expect(queue.querySelectorAll('details')).toHaveLength(2);
+  expect(queue).toHaveTextContent('Inactive blend');
+  expect(container.querySelectorAll('details[open]')).toHaveLength(0);
+  expect(screen.getByText('Archived vial')).toBeInTheDocument();
+  const disclosures = Array.from(container.querySelectorAll('summary')).map(
+    (node) => node.textContent
+  );
+  expect(disclosures.at(-1)).toBe('Stock forecasts');
+  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Add Inventory');
+  expect(mockSave).not.toHaveBeenCalled();
+});
+it('does not construct stock cards or actions from stale/failed dashboard classification', () => {
+  mockError = true;
+  mockPens.mockReturnValue({
+    data: [dashboardPen({ medication_id: peptide.id })],
+  });
+  const { container } = render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'No preparation eligibility is assumed'
+  );
+  expect(container.querySelectorAll('article')).toHaveLength(0);
+  expect(mockSave).not.toHaveBeenCalled();
+});
+it('drops overview and stock actions when authoritative profile readiness is lost', () => {
+  const { rerender } = render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  mockReady = false;
+  rerender(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Add Inventory' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('region', { name: 'Tracked stock' })
+  ).not.toBeInTheDocument();
 });

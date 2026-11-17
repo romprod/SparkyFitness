@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
-import MedicationPreparationQueue from '@/pages/Medications/MedicationPreparationQueue';
+import MedicationPreparationQueue, {
+  MedicationPreparationQueueEntry,
+} from '@/pages/Medications/MedicationPreparationQueue';
 import {
   dashboardFixture,
   dashboardPen,
@@ -233,4 +235,41 @@ it('does not mount preparation with stale medication route details', () => {
     'Medication details are unavailable'
   );
   expect(mockWizard).not.toHaveBeenCalled();
+});
+
+it('compact stock cards keep their own preparation body closed and footer accessible independently', () => {
+  const { container } = render(
+    <>
+      <MedicationPreparationQueueEntry
+        compact
+        row={queueItem()}
+        med={meds[0]}
+        canWrite
+        footer={<button>Edit exact vial</button>}
+      />
+      <MedicationPreparationQueueEntry
+        compact
+        row={queueItem({ stock_id: 'another' })}
+        med={meds[0]}
+        canWrite
+        footer={<button>Edit another vial</button>}
+      />
+    </>
+  );
+  const cards = container.querySelectorAll('details');
+  expect(cards).toHaveLength(2);
+  expect(cards[0]).not.toHaveAttribute('open');
+  expect(cards[1]).not.toHaveAttribute('open');
+  expect(
+    screen.getByRole('button', { name: 'Edit exact vial' }).closest('details')
+  ).toBeNull();
+  cards[0]!.open = true;
+  fireEvent(cards[0]!, new Event('toggle'));
+  expect(screen.getAllByTestId('inline-wizard')).toHaveLength(1);
+  expect(cards[1]).not.toHaveAttribute('open');
+  expect(mockWizard.mock.calls.at(-1)![0]).toMatchObject({
+    inline: true,
+    pen: mockStock.pen,
+    queueContext: { state: mockStock.row.preparation_queue_state },
+  });
 });
