@@ -1,9 +1,14 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Package } from 'lucide-react';
-import type { MedicationForecastCoverage } from '@workspace/shared';
+import type { MedicationForecastPlannedCoverage } from '@workspace/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { MedicationForecastProjectionNotice } from './MedicationForecastProjection';
+import {
+  isNextCycleShortage,
+  isConditionalCoverage,
+} from './medicationForecastClaims';
 import { useMedicationStockDashboard } from '@/hooks/Medications/useMedicationStockDashboard';
 
 /** The server chooses the supply row from the current overall forecast snapshot. */
@@ -13,7 +18,32 @@ export default function MedicationSupplyTile() {
   const { scope, query, data } = useMedicationStockDashboard();
   if (!scope.ready || !scope.isCurrent()) return null;
 
-  const supplyLine = (coverage: MedicationForecastCoverage) => {
+  const supplyLine = (coverage: MedicationForecastPlannedCoverage) => {
+    if (coverage.status === 'reorder_now' && isNextCycleShortage(coverage))
+      return t(
+        'medications.forecasts.projection.reorderNow',
+        'Reorder now for next cycle'
+      );
+    if (
+      coverage.status === 'ok' &&
+      coverage.reorder_by &&
+      isNextCycleShortage(coverage)
+    )
+      return t(
+        'medications.forecasts.projection.reorderBy',
+        'Reorder by {{date}} for next cycle',
+        { date: formatDate(coverage.reorder_by) }
+      );
+    if (
+      coverage.status === 'covered' &&
+      coverage.coverage_through &&
+      isConditionalCoverage(coverage.projection)
+    )
+      return t(
+        'medications.forecasts.projection.supplyCovered',
+        'Covers planned doses through {{date}}',
+        { date: formatDate(coverage.coverage_through) }
+      );
     if (coverage.status === 'reorder_now')
       return t('medications.stockDashboard.supplyReorderNow', 'Reorder now');
     if (coverage.status === 'ok' && coverage.reorder_by)
@@ -137,6 +167,19 @@ export default function MedicationSupplyTile() {
           <p className="text-sm text-muted-foreground">
             {supplyLine(selected)}
           </p>
+          <MedicationForecastProjectionNotice
+            projection={selected.projection}
+          />
+          {selected.cycle_assumptions.some(
+            (assumption) => assumption.overdue
+          ) && (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'medications.forecasts.projection.supplyOverdue',
+                'One or more planned restarts are overdue; restarting remains manual.'
+              )}
+            </p>
+          )}
         </CardContent>
       </Card>
     </Link>

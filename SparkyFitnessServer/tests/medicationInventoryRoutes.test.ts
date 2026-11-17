@@ -169,4 +169,66 @@ describe('inventory forecast and reorder request boundary', () => {
       '00000000-0000-4000-a000-000000000001'
     );
   });
+  it('opts only forecast/dashboard into planned mode while explicit committed retains the old call shape', async () => {
+    for (const endpoint of ['forecast', 'dashboard']) {
+      const handler =
+        endpoint === 'forecast' ? mocks.forecast : mocks.dashboard;
+      await request(app)
+        .get(`/inventory/${endpoint}?forecast_mode=planned_cycles`)
+        .set('x-test-readonly', '1')
+        .expect(200);
+      expect(handler).toHaveBeenLastCalledWith(
+        '00000000-0000-4000-a000-000000000001',
+        undefined,
+        'planned_cycles'
+      );
+      await request(app)
+        .get(`/inventory/${endpoint}?forecast_mode=committed`)
+        .expect(200);
+      expect(handler).toHaveBeenLastCalledWith(
+        '00000000-0000-4000-a000-000000000001'
+      );
+      await request(app).get(`/inventory/${endpoint}`).expect(200);
+      expect(handler).toHaveBeenLastCalledWith(
+        '00000000-0000-4000-a000-000000000001'
+      );
+    }
+  });
+  it('rejects invalid/duplicate modes and a changed owner before any read', async () => {
+    for (const query of [
+      'forecast_mode=projected',
+      'forecast_mode=planned_cycles&forecast_mode=committed',
+      'forecast_mode=planned_cycles&as_of=2026-01-01',
+    ])
+      expect(
+        (await request(app).get(`/inventory/forecast?${query}`)).status
+      ).toBe(400);
+    expect(
+      (
+        await request(app).get(
+          '/inventory/dashboard?forecast_mode=planned_cycles&expected_owner_id=00000000-0000-4000-a000-000000000099'
+        )
+      ).status
+    ).toBe(409);
+    expect(mocks.forecast).not.toHaveBeenCalled();
+    expect(mocks.dashboard).not.toHaveBeenCalled();
+  });
+  it('does not accept forecast mode on preferences GET or PUT', async () => {
+    expect(
+      (
+        await request(app).get(
+          '/preferences/medication-reorder?forecast_mode=planned_cycles'
+        )
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .put('/preferences/medication-reorder?forecast_mode=committed')
+          .send({ lead_days: 0, buffer_days: 0 })
+      ).status
+    ).toBe(400);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
 });

@@ -1,9 +1,8 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type {
-  MedicationForecastCoverage,
-  MedicationForecastLimitation,
-  MedicationForecastContainer,
+  MedicationForecastPlannedCoverage,
+  MedicationInventoryPlannedForecast,
 } from '@workspace/shared';
 import {
   Card,
@@ -15,10 +14,23 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import {
+  MedicationForecastProjectionNotice,
+  MedicationForecastCycleAssumptions,
+} from './MedicationForecastProjection';
+import {
+  isNextCycleShortage,
+  isConditionalCoverage,
+} from './medicationForecastClaims';
 import { useMedicationInventoryForecast } from '@/hooks/Medications/useMedicationInventoryForecast';
 
-const limitationCopy: Record<MedicationForecastLimitation, string> = {
+const limitationCopy: Record<
+  MedicationForecastPlannedCoverage['limitations'][number],
+  string
+> = {
   no_managed_plan: 'No committed versioned plan is available.',
+  unknown_projection_date:
+    'A projected administration has no specified time and uses a different calendar, so coverage dates cannot be determined.',
   date_out_of_range: 'Plan dates exceed the supported forecast calendar range.',
   no_forecast_slots: 'No future planned administrations could be evaluated.',
   unmodelled_legacy_demand: 'Legacy schedule demand is not fully modelled.',
@@ -43,15 +55,17 @@ const basisCopy = {
   course_end: 'Committed course end',
   horizon: 'Forecast horizon reached',
   slot_cap: 'Planned-administration limit reached',
-  depleted: 'Stock exhausted within committed demand',
+  depleted: 'Stock exhausted within evaluated demand',
 };
 
 export function MedicationForecastCoverageDetails({
   coverage,
   preparedOnly = false,
+  timezone,
 }: {
-  coverage: MedicationForecastCoverage;
+  coverage: MedicationForecastPlannedCoverage;
   preparedOnly?: boolean;
+  timezone?: string;
 }) {
   const { t } = useTranslation();
   const { formatDate } = usePreferences();
@@ -63,6 +77,12 @@ export function MedicationForecastCoverageDetails({
           basisCopy[coverage.basis]
         )}
       </p>
+      {isNextCycleShortage(coverage) && (
+        <p className="text-sm font-medium">
+          {t('medications.forecasts.projection.forNextCycle', 'For next cycle')}
+        </p>
+      )}
+      <MedicationForecastProjectionNotice projection={coverage.projection} />
       {coverage.status !== 'unknown' && (
         <dl className="grid gap-1 sm:grid-cols-2">
           {coverage.coverage_through && (
@@ -78,7 +98,10 @@ export function MedicationForecastCoverageDetails({
           {coverage.depletion_date && (
             <div>
               <dt className="inline text-muted-foreground">
-                {t('medications.forecasts.depletion', 'Estimated run-out')}
+                {t(
+                  'medications.forecasts.projection.coverageEnd',
+                  'Stock coverage ends'
+                )}
                 :{' '}
               </dt>
               <dd className="inline">{formatDate(coverage.depletion_date)}</dd>
@@ -90,6 +113,20 @@ export function MedicationForecastCoverageDetails({
                 {t('medications.forecasts.reorderBy', 'Order by')}:{' '}
               </dt>
               <dd className="inline">{formatDate(coverage.reorder_by)}</dd>
+            </div>
+          )}
+          {coverage.projection.first_unserved_day && (
+            <div>
+              <dt className="inline text-muted-foreground">
+                {t(
+                  'medications.forecasts.projection.firstUnserved',
+                  'First unserved planned administration'
+                )}
+                :{' '}
+              </dt>
+              <dd className="inline">
+                {formatDate(coverage.projection.first_unserved_day)}
+              </dd>
             </div>
           )}
           {coverage.days_left != null && (
@@ -114,6 +151,12 @@ export function MedicationForecastCoverageDetails({
           </div>
         </dl>
       )}
+      {timezone && (
+        <p className="text-xs text-muted-foreground">
+          {t('medications.forecasts.projection.calendar', 'Forecast calendar')}:{' '}
+          {timezone}
+        </p>
+      )}
       {coverage.limitations.length > 0 && (
         <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
           {coverage.limitations.map((reason) => (
@@ -132,8 +175,10 @@ export function MedicationForecastCoverageDetails({
 
 export function MedicationContainerForecast({
   container,
+  timezone,
 }: {
-  container: MedicationForecastContainer;
+  container: MedicationInventoryPlannedForecast['containers'][number];
+  timezone?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -159,6 +204,7 @@ export function MedicationContainerForecast({
       )}
       <MedicationForecastCoverageDetails
         coverage={container.coverage}
+        timezone={timezone}
         preparedOnly
       />
     </div>
@@ -179,7 +225,7 @@ export default function MedicationInventoryForecast() {
         <CardDescription>
           {t(
             'medications.forecasts.description',
-            'Current stock against committed versioned plans. Estimates are not orders or notifications; unknown details can prevent a reliable run-out date. Cycle dates alone do not stop scheduled doses, and no next cycle is assumed.'
+            'Current stock against committed doses and planned-cycle assumptions. Estimates do not place orders or start cycles; unknown details can prevent a reliable run-out date.'
           )}
         </CardDescription>
         {scope.actorId === scope.ownerId && (
@@ -266,15 +312,21 @@ export default function MedicationInventoryForecast() {
                           : ''
                       }
                     >
-                      {t(
-                        `medications.forecasts.status.${medication.status}`,
-                        {
-                          unknown: 'Unknown',
-                          covered: 'Committed demand covered',
-                          ok: 'Stock available',
-                          reorder_now: 'Reorder window reached',
-                        }[medication.status]
-                      )}
+                      {medication.status === 'covered' &&
+                      isConditionalCoverage(medication.projection)
+                        ? t(
+                            'medications.forecasts.projection.covered',
+                            'Planned demand covered'
+                          )
+                        : t(
+                            `medications.forecasts.status.${medication.status}`,
+                            {
+                              unknown: 'Unknown',
+                              covered: 'Committed demand covered',
+                              ok: 'Stock available',
+                              reorder_now: 'Reorder window reached',
+                            }[medication.status]
+                          )}
                     </Badge>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
@@ -287,6 +339,7 @@ export default function MedicationInventoryForecast() {
                       </h4>
                       <MedicationForecastCoverageDetails
                         coverage={medication}
+                        timezone={data.timezone}
                       />
                     </div>
                     <div className="space-y-2">
@@ -298,6 +351,7 @@ export default function MedicationInventoryForecast() {
                       </h4>
                       <MedicationForecastCoverageDetails
                         coverage={medication.prepared_only}
+                        timezone={data.timezone}
                         preparedOnly
                       />
                       <p className="text-xs text-muted-foreground">
@@ -308,6 +362,10 @@ export default function MedicationInventoryForecast() {
                       </p>
                     </div>
                   </div>
+                  <MedicationForecastCycleAssumptions
+                    assumptions={medication.cycle_assumptions}
+                    forecastTimezone={data.timezone}
+                  />
                   {medication.device_basis.length > 0 && (
                     <div className="space-y-1 text-sm">
                       <h4 className="font-semibold">

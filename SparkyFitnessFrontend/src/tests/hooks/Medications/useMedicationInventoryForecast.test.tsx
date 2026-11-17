@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import { useEffect } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { medicationInventoryForecastResponseSchema } from '@workspace/shared';
 import {
   useMedicationInventoryForecast,
   useMedicationReorderDefaults,
@@ -387,4 +388,68 @@ it('hides a late self-defaults read after switching the same actor to a delegate
   expect(currentDefaults.data).toBeUndefined();
   expect(defaults).toHaveBeenCalledTimes(1);
   expect(saveDefaults).not.toHaveBeenCalled();
+});
+
+it('isolates the planned forecast from a fresh old committed cache while preserving the defaults cache key', async () => {
+  const plannedRead =
+    deferred<Awaited<ReturnType<typeof getMedicationInventoryForecast>>>();
+  const defaultsRead =
+    deferred<Awaited<ReturnType<typeof getMedicationReorderDefaults>>>();
+  forecast.mockReturnValue(plannedRead.promise);
+  defaults.mockReturnValue(defaultsRead.promise);
+  const { client } = setup();
+  const scopeKey = currentForecast.scope.key;
+  const old = medicationInventoryForecastResponseSchema.parse(
+    inventoryForecastFixture()
+  );
+  old.medications[0]!.name = 'Old committed cache';
+  const oldKey = [...medicationInventoryKeys.all, scopeKey, 'forecast'];
+  const defaultKey = [...medicationInventoryKeys.all, scopeKey, 'defaults'];
+  act(() => {
+    client.setQueryData(oldKey, old);
+    client.setQueryData(defaultKey, { lead_days: 20, buffer_days: 0 });
+  });
+  await waitFor(() => expect(forecast).toHaveBeenCalledTimes(1));
+  expect(currentForecast.data).toBeUndefined();
+  expect(screen.getByTestId('forecast')).not.toHaveTextContent(
+    'Old committed cache'
+  );
+  expect(screen.getByTestId('defaults')).toHaveTextContent('20/0');
+  const planned = inventoryForecastFixture();
+  planned.medications[0]!.name = 'Planned current response';
+  await act(async () => plannedRead.resolve(planned));
+  await waitFor(() =>
+    expect(screen.getByTestId('forecast')).toHaveTextContent(
+      'Planned current response'
+    )
+  );
+  expect(
+    client.getQueryData([
+      ...medicationInventoryKeys.all,
+      scopeKey,
+      'forecast',
+      'planned_cycles',
+    ])
+  ).toEqual(planned);
+  expect(client.getQueryData(oldKey)).toEqual(old);
+  expect(client.getQueryData(defaultKey)).toEqual({
+    lead_days: 20,
+    buffer_days: 0,
+  });
+});
+it('does not fall back to a committed cache after the planned request fails', async () => {
+  forecast.mockRejectedValue(new Error('Planned mode is unavailable'));
+  const { client } = setup();
+  const old = medicationInventoryForecastResponseSchema.parse(
+    inventoryForecastFixture()
+  );
+  act(() =>
+    client.setQueryData(
+      [...medicationInventoryKeys.all, currentForecast.scope.key, 'forecast'],
+      old
+    )
+  );
+  await waitFor(() => expect(currentForecast.query.isError).toBe(true));
+  expect(currentForecast.data).toBeUndefined();
+  expect(forecast).toHaveBeenCalledTimes(1);
 });

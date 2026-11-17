@@ -1,5 +1,5 @@
 import type {
-  MedicationInventoryDashboardResponse,
+  MedicationInventoryPlannedDashboardResponse,
   MedicationPreparationQueueItem,
   MedicationPen,
 } from '@workspace/shared';
@@ -25,8 +25,8 @@ export function queueItem(
   };
 }
 export function dashboardFixture(
-  patch: Partial<MedicationInventoryDashboardResponse> = {}
-): MedicationInventoryDashboardResponse {
+  patch: Partial<MedicationInventoryPlannedDashboardResponse> = {}
+): MedicationInventoryPlannedDashboardResponse {
   return {
     forecast: inventoryForecastFixture(),
     supply: { state: 'forecast', medication_id: courseIds.med },

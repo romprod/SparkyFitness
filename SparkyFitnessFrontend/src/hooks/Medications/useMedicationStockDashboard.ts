@@ -7,7 +7,12 @@ import { useMedicationCourseScope } from './useMedicationCourses';
 export const useMedicationStockDashboard = () => {
   const scope = useMedicationCourseScope();
   const query = useQuery({
-    queryKey: [...medicationInventoryKeys.all, scope.key, 'dashboard'],
+    queryKey: [
+      ...medicationInventoryKeys.all,
+      scope.key,
+      'dashboard',
+      'planned_cycles',
+    ],
     queryFn: ({ signal }) => getMedicationStockDashboard(scope.ownerId, signal),
     enabled: scope.ready,
     gcTime: Infinity,
@@ -31,6 +36,7 @@ export const usePreparationQueueStock = (
       ...medicationInventoryKeys.all,
       scope.key,
       'queue-stock',
+      'planned_cycles',
       medicationId,
       stockId,
     ],

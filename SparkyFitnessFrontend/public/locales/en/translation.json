@@ -1391,14 +1391,15 @@
         "sealed_stock_excluded": "Sealed stock is excluded from prepared coverage.",
         "unsupported_route": "This administration route is not supported by the forecast.",
         "blocked_draw": "A planned administration cannot be measured with the available stock and device.",
-        "preferred_device_basis": "The saved preferred device is used where a plan has no explicit selection."
+        "preferred_device_basis": "The saved preferred device is used where a plan has no explicit selection.",
+        "unknown_projection_date": "A projected administration has no specified time and uses a different calendar, so coverage dates cannot be determined."
       },
       "basis": {
         "unknown": "Unknown coverage",
         "course_end": "Committed course end",
         "horizon": "Forecast horizon reached",
         "slot_cap": "Planned-administration limit reached",
-        "depleted": "Stock exhausted within committed demand"
+        "depleted": "Stock exhausted within evaluated demand"
       },
       "through": "Coverage through",
       "depletion": "Estimated run-out",
@@ -1409,7 +1410,7 @@
       "remainingAdministrations": "Remaining measurable administrations",
       "currentAmount": "Current planned amount",
       "title": "Stock forecasts",
-      "description": "Current stock against committed versioned plans. Estimates are not orders or notifications; unknown details can prevent a reliable run-out date. Cycle dates alone do not stop scheduled doses, and no next cycle is assumed.",
+      "description": "Current stock against committed doses and planned-cycle assumptions. Estimates do not place orders or start cycles; unknown details can prevent a reliable run-out date.",
       "defaultsLink": "Reorder defaults",
       "loading": "Loading current stock forecast…",
       "loadError": "Could not load the stock forecast. No run-out estimate is available.",
@@ -1453,6 +1454,26 @@
         "preferred": "Saved preferred device",
         "missing": "Missing device selection",
         "incompatible": "Incompatible device selection"
+      },
+      "projection": {
+        "assumes": "Assumes planned manual restart(s).",
+        "assumptions": "Planned manual restart assumptions",
+        "manualOnly": "Restarting each course requires manual confirmation. This forecast does not start or reopen a course.",
+        "weeks": "Run for {{on}} weeks; break {{off}} weeks",
+        "committedEnd": "Committed through",
+        "plannedRestart": "Planned restart date",
+        "firstProjected": "First projected administration: {{date}} ({{timezone}})",
+        "overdue": "This planned restart date has passed. Restarting still requires manual confirmation.",
+        "forNextCycle": "For next cycle",
+        "coverageEnd": "Stock coverage ends",
+        "firstUnserved": "First unserved planned administration",
+        "calendar": "Forecast calendar",
+        "covered": "Planned demand covered",
+        "reorderNow": "Reorder now for next cycle",
+        "reorderBy": "Reorder by {{date}} for next cycle",
+        "supplyCovered": "Covers planned doses through {{date}}",
+        "supplyOverdue": "One or more planned restarts are overdue; restarting remains manual.",
+        "dateUnavailable": "First projected administration date is unavailable."
       }
     },
     "stockDashboard": {

@@ -18,7 +18,8 @@ export type InventoryForecastLimitationCode =
   | 'unsupported_route'
   | 'blocked_draw'
   | 'preferred_device_basis'
-  | 'date_out_of_range';
+  | 'date_out_of_range'
+  | 'unknown_projection_date';
 export interface InventoryForecastDevice {
   id: string;
   device: MedicationSyringeInput;
@@ -42,7 +43,22 @@ export interface InventoryForecastLegacyActual {
   status: string;
   course_origin?: boolean;
 }
+export interface InventoryForecastCycleAssumption {
+  course_id: string;
+  revision_id: string;
+  plan_name: string;
+  timezone: string;
+  anchor_date: string;
+  committed_end_date: string;
+  on_weeks: number;
+  off_weeks: number;
+  next_restart_date: string;
+  projection_starts_on: string | null;
+  overdue: boolean;
+  manual_restart_required: true;
+}
 export interface InventoryForecastPlanInput {
+  forecast_mode?: 'committed' | 'planned_cycles';
   today: string;
   now: string;
   timezone: string;
@@ -59,6 +75,8 @@ export interface InventoryForecastPlanInput {
   limitations?: InventoryForecastLimitationCode[];
 }
 export interface InventoryForecastSlot {
+  date_basis_unknown?: boolean;
+  demand_kind: 'committed' | 'projected_restart';
   key: string;
   plan_id: string;
   plan_kind: 'course_revision' | 'legacy_schedule';
@@ -74,6 +92,8 @@ export interface InventoryForecastSlot {
   status: 'pending' | 'projected';
 }
 export interface InventoryForecastPlan {
+  forecast_mode?: 'planned_cycles';
+  cycle_assumptions?: InventoryForecastCycleAssumption[];
   slots: InventoryForecastSlot[];
   current_targets?: InventoryForecastSlot[];
   basis: 'course_end' | 'horizon' | 'slot_cap';
@@ -88,6 +108,7 @@ import {
   dayToUtcRange,
   instantToDay,
   localDateTimeToUtc,
+  isDayString,
 } from '../utils/timezone.ts';
 import { courseEntryMatchesSlot } from './courseAdherence.ts';
 import {
@@ -104,6 +125,8 @@ import {
 import { isScheduleDueOnDate } from './schedules.ts';
 const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 interface RawForecastSlot {
+  date_basis_unknown?: boolean;
+  demand_kind: 'committed' | 'projected_restart';
   key: string;
   course_id: string;
   revision_id: string;
@@ -177,6 +200,81 @@ export function buildInventoryForecastPlan(
       course.revisions.map((revision) => [revision.id, revision] as const)
     )
   );
+  const assumptions: InventoryForecastCycleAssumption[] = [];
+  const projectionViews = new Map<string, MedicationCourse>();
+  if (input.forecast_mode === 'planned_cycles' && input.medication_active) {
+    for (const course of input.courses) {
+      const revision = course.revisions.find(
+        (row) => row.id === course.current_revision_id
+      );
+      if (
+        course.deleted_at !== null ||
+        !revision ||
+        revision.deleted_at !== null ||
+        revision.status !== 'active' ||
+        course.revisions.some((row) => row.predecessor_id === revision.id)
+      )
+        continue;
+      const on = revision.course_cycle_on_weeks,
+        off = revision.course_cycle_off_weeks;
+      const anchor = revision.course_cycle_anchor_date;
+      if (
+        !on ||
+        !off ||
+        !Number.isInteger(on) ||
+        !Number.isInteger(off) ||
+        on < 1 ||
+        off < 1 ||
+        on > 104 ||
+        off > 104 ||
+        !anchor
+      )
+        continue;
+      try {
+        const stop = addDays(anchor, on * 7 - 1),
+          restart = addDays(anchor, (on + off) * 7);
+        if (!isDayString(stop) || !isDayString(restart)) {
+          limitations.add('date_out_of_range');
+          continue;
+        }
+        if (revision.end_date !== stop) continue;
+        assumptions.push({
+          course_id: course.id,
+          revision_id: revision.id,
+          plan_name: revision.name,
+          timezone: course.timezone,
+          anchor_date: anchor,
+          committed_end_date: stop,
+          on_weeks: on,
+          off_weeks: off,
+          next_restart_date: restart,
+          projection_starts_on: null,
+          overdue: instantToDay(input.now, course.timezone) > restart,
+          manual_restart_required: true,
+        });
+        projectionViews.set(course.id, {
+          ...course,
+          revisions: course.revisions.map((row) =>
+            row.id === revision.id
+              ? {
+                  ...row,
+                  end_date: null,
+                  // Freeze the original self-family window in this temporary view. Never
+                  // reinterpret a legacy NULL context against the lifted end boundary.
+                  phase_origin_context:
+                    row.phase_origin_context ??
+                    ((row.phase_family_id ?? row.id) === row.id
+                      ? { start_date: row.start_date, end_date: row.end_date }
+                      : null),
+                }
+              : row
+          ),
+        });
+      } catch {
+        limitations.add('date_out_of_range');
+      }
+    }
+  }
   const eligible = new Set<string>();
   for (const course of input.courses) {
     if (course.deleted_at !== null) continue;
@@ -214,7 +312,7 @@ export function buildInventoryForecastPlan(
         plan.rule.end_date >= instantToDay(input.now, plan.timezone))
   );
   let finite = true,
-    hasPlan = false;
+    hasPlan = assumptions.length > 0;
   if (input.medication_active) {
     for (const course of input.courses) {
       for (const revision of course.revisions) {
@@ -283,6 +381,7 @@ export function buildInventoryForecastPlan(
           )
             continue;
           raw.push({
+            demand_kind: 'committed',
             key: slot.course_slot_key,
             course_id: course.id,
             revision_id: revision.id,
@@ -297,6 +396,71 @@ export function buildInventoryForecastPlan(
             legacy: null,
             match: null,
             status: 'pending',
+          });
+        }
+      }
+      for (const assumption of assumptions) {
+        if (day <= assumption.committed_end_date) continue;
+        const elapsed = Math.round(
+          (Date.parse(day + 'T00:00:00Z') -
+            Date.parse(assumption.anchor_date + 'T00:00:00Z')) /
+            86400000
+        );
+        if (
+          elapsed < 0 ||
+          elapsed % ((assumption.on_weeks + assumption.off_weeks) * 7) >=
+            assumption.on_weeks * 7
+        )
+          continue;
+        const view = projectionViews.get(assumption.course_id)!;
+        const localToday = instantToDay(input.now, view.timezone);
+        // Date-only today remains conditional pending with a NULL instant. Only
+        // provably elapsed demand is excluded; no midnight administration is invented.
+        for (const slot of courseSlotsForDay({
+          course: view,
+          day,
+          today: input.today,
+          nowInstant: input.now,
+          medicationActive: true,
+          delivered: actuals,
+          phaseDelivered: input.phase_actuals ?? actuals,
+        })) {
+          if (
+            slot.course_revision_id !== assumption.revision_id ||
+            (slot.scheduled_for === null
+              ? day < localToday
+              : Date.parse(slot.scheduled_for) < now)
+          )
+            continue;
+          const forecastDay =
+            slot.scheduled_for === null
+              ? slot.scheduled_day
+              : instantToDay(slot.scheduled_for, input.timezone);
+          // The provisional bound is expressed in the forecast timezone, even
+          // where the authored course calendar is on the other side of midnight.
+          if (forecastDay > horizon) continue;
+          const revision = revisions.get(assumption.revision_id)!;
+          const rule = revision.rules.find(
+            (row) => row.id === slot.course_rule_id
+          )!;
+          raw.push({
+            date_basis_unknown:
+              slot.scheduled_for === null && view.timezone !== input.timezone,
+            demand_kind: 'projected_restart',
+            key: slot.course_slot_key,
+            course_id: view.id,
+            revision_id: revision.id,
+            rule_index: rule.rule_index,
+            day: slot.scheduled_day,
+            at: slot.scheduled_for,
+            sort_at:
+              slot.scheduled_for === null
+                ? dayToUtcRange(day, view.timezone).start.getTime()
+                : Date.parse(slot.scheduled_for),
+            managed: slot,
+            legacy: null,
+            match: null,
+            status: 'projected',
           });
         }
       }
@@ -320,6 +484,7 @@ export function buildInventoryForecastPlan(
             ).toISOString()
           : null;
         raw.push({
+          demand_kind: 'committed',
           key: JSON.stringify(['legacy', plan.id, day, time ?? null]),
           course_id: `legacy:${plan.id}`,
           revision_id: plan.id,
@@ -387,7 +552,7 @@ export function buildInventoryForecastPlan(
       slot.status =
         slot.sort_at > now
           ? 'projected'
-          : next && next.sort_at <= now
+          : slot.demand_kind === 'committed' && next && next.sort_at <= now
             ? 'missed'
             : 'pending';
     }
@@ -499,6 +664,8 @@ export function buildInventoryForecastPlan(
       const day =
         slot.at === null ? slot.day : instantToDay(slot.at, input.timezone);
       const candidate: InventoryForecastSlot = {
+        ...(slot.date_basis_unknown ? { date_basis_unknown: true } : {}),
+        demand_kind: slot.demand_kind,
         key: slot.key,
         plan_id: slot.revision_id,
         plan_kind: slot.legacy ? 'legacy_schedule' : 'course_revision',
@@ -532,6 +699,23 @@ export function buildInventoryForecastPlan(
   if (!hasPlan) limitations.add('no_managed_plan');
   if (!projected.length) limitations.add('no_forecast_slots');
   const capped = projected.slice(0, INVENTORY_FORECAST_MAX_SLOTS);
+  for (const assumption of assumptions) {
+    const planSlots = capped.filter(
+      (slot) =>
+        slot.plan_id === assumption.revision_id &&
+        slot.demand_kind === 'projected_restart'
+    );
+    assumption.projection_starts_on = planSlots.some(
+      (slot) => slot.date_basis_unknown
+    )
+      ? null
+      : (planSlots[0]?.day ?? null);
+  }
+  if (capped.some((slot) => slot.date_basis_unknown))
+    limitations.add('unknown_projection_date');
+  // A repeating plan is not a finite course merely because its next on-window
+  // falls beyond this bounded walk. Coverage still ends at the last actual slot.
+  if (assumptions.length) finite = false;
   // Unknown late demand after the cap cannot justify inventing a claim beyond it.
   const basis =
     projected.length >= INVENTORY_FORECAST_MAX_SLOTS
@@ -540,6 +724,12 @@ export function buildInventoryForecastPlan(
         ? 'course_end'
         : 'horizon';
   return {
+    ...(input.forecast_mode === 'planned_cycles'
+      ? {
+          forecast_mode: 'planned_cycles' as const,
+          cycle_assumptions: assumptions,
+        }
+      : {}),
     slots: capped,
     current_targets: [...targets.values()],
     basis,

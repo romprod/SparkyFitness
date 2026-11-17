@@ -109,6 +109,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
         <div key={selected.id} className="space-y-4">
           <Glp1InventoryManager
             med={selected}
+            forecastTimezone={forecast.data?.timezone}
             forecast={
               !forecast.query.isError
                 ? forecast.data?.medications.find(

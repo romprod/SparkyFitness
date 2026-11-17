@@ -2,6 +2,8 @@ import {
   buildInventoryForecast,
   buildInventoryForecastPlan,
   medicationInventoryForecastResponseSchema,
+  medicationInventoryPlannedForecastResponseSchema,
+  type MedicationInventoryPlannedForecastResponse,
   resolvePreparedMedicationRoute,
   type InventoryForecastDevice,
   type InventoryForecastLegacyPlan,
@@ -18,9 +20,33 @@ import {
 import { resolveCourseDevice } from './medicationCourseDeviceService.js';
 export function forecastInventorySnapshot(
   snapshot: InventoryForecastSnapshot,
-  now: Date
-): MedicationInventoryForecastResponse {
-  const medications: MedicationInventoryForecast[] = [];
+  now: Date,
+  mode?: 'committed'
+): MedicationInventoryForecastResponse;
+export function forecastInventorySnapshot(
+  snapshot: InventoryForecastSnapshot,
+  now: Date,
+  mode: 'planned_cycles'
+): MedicationInventoryPlannedForecastResponse;
+export function forecastInventorySnapshot(
+  snapshot: InventoryForecastSnapshot,
+  now: Date,
+  mode: 'committed' | 'planned_cycles'
+):
+  | MedicationInventoryForecastResponse
+  | MedicationInventoryPlannedForecastResponse;
+export function forecastInventorySnapshot(
+  snapshot: InventoryForecastSnapshot,
+  now: Date,
+  mode: 'committed' | 'planned_cycles' = 'committed'
+):
+  | MedicationInventoryForecastResponse
+  | MedicationInventoryPlannedForecastResponse {
+  const medications: (ReturnType<typeof buildInventoryForecast> &
+    Pick<
+      MedicationInventoryForecast,
+      'medication_id' | 'name' | 'route' | 'device_basis'
+    >)[] = [];
   for (const med of snapshot.medications) {
     const route = resolvePreparedMedicationRoute(med);
     if (!route) continue;
@@ -98,6 +124,9 @@ export function forecastInventorySnapshot(
       });
     }
     const planInput = {
+      ...(mode === 'planned_cycles'
+        ? { forecast_mode: 'planned_cycles' as const }
+        : {}),
       today: snapshot.today,
       now: now.toISOString(),
       timezone: snapshot.timezone,
@@ -140,7 +169,7 @@ export function forecastInventorySnapshot(
       device_basis,
     });
   }
-  return medicationInventoryForecastResponseSchema.parse({
+  const response = {
     as_of: now.toISOString(),
     today: snapshot.today,
     timezone: snapshot.timezone,
@@ -148,18 +177,47 @@ export function forecastInventorySnapshot(
     max_slots: 800,
     defaults: snapshot.defaults,
     medications,
-  });
+  };
+  return mode === 'planned_cycles'
+    ? medicationInventoryPlannedForecastResponseSchema.parse({
+        ...response,
+        forecast_mode: 'planned_cycles',
+      })
+    : medicationInventoryForecastResponseSchema.parse(response);
 }
+export function getMedicationInventoryForecast(
+  owner: string,
+  now?: Date,
+  mode?: 'committed'
+): Promise<MedicationInventoryForecastResponse>;
+export function getMedicationInventoryForecast(
+  owner: string,
+  now: Date | undefined,
+  mode: 'planned_cycles'
+): Promise<MedicationInventoryPlannedForecastResponse>;
+export function getMedicationInventoryForecast(
+  owner: string,
+  now: Date | undefined,
+  mode: 'committed' | 'planned_cycles'
+): Promise<
+  | MedicationInventoryForecastResponse
+  | MedicationInventoryPlannedForecastResponse
+>;
 export async function getMedicationInventoryForecast(
   owner: string,
-  now = new Date()
-): Promise<MedicationInventoryForecastResponse> {
+  now = new Date(),
+  mode: 'committed' | 'planned_cycles' = 'committed'
+): Promise<
+  | MedicationInventoryForecastResponse
+  | MedicationInventoryPlannedForecastResponse
+> {
   const client = await getClient(owner);
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const result = forecastInventorySnapshot(
       await loadInventoryForecastSnapshot(client, owner, now),
-      now
+      now,
+      mode
     );
     await client.query('COMMIT');
     return result;

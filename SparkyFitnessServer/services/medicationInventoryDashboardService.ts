@@ -1,8 +1,10 @@
 import {
   medicationInventoryDashboardResponseSchema,
+  medicationInventoryPlannedDashboardResponseSchema,
+  type MedicationInventoryPlannedDashboardResponse,
   resolvePreparedMedicationRoute,
   type MedicationInventoryDashboardResponse,
-  type MedicationInventoryForecastResponse,
+  type MedicationInventoryPlannedForecast,
   type MedicationInventorySupply,
 } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
@@ -15,9 +17,19 @@ import {
   classifyInventoryPreparation,
   inventoryPreparationQueueState,
 } from './medicationInventoryDashboardClassification.js';
-export function selectInventorySupply(
-  forecast: MedicationInventoryForecastResponse
-): MedicationInventorySupply {
+export function selectInventorySupply(forecast: {
+  medications: ReadonlyArray<
+    Pick<
+      MedicationInventoryPlannedForecast,
+      | 'medication_id'
+      | 'expected_slots'
+      | 'limitations'
+      | 'status'
+      | 'reorder_by'
+      | 'name'
+    >
+  >;
+}): MedicationInventorySupply {
   const candidates = forecast.medications.filter(
     (row) =>
       row.expected_slots > 0 ||
@@ -43,9 +55,35 @@ export function selectInventorySupply(
 export function buildInventoryDashboard(
   snapshot: InventoryForecastSnapshot,
   owner: string,
-  now: Date
-): MedicationInventoryDashboardResponse {
-  const forecast = forecastInventorySnapshot(snapshot, now);
+  now: Date,
+  mode?: 'committed'
+): MedicationInventoryDashboardResponse;
+export function buildInventoryDashboard(
+  snapshot: InventoryForecastSnapshot,
+  owner: string,
+  now: Date,
+  mode: 'planned_cycles'
+): MedicationInventoryPlannedDashboardResponse;
+export function buildInventoryDashboard(
+  snapshot: InventoryForecastSnapshot,
+  owner: string,
+  now: Date,
+  mode: 'committed' | 'planned_cycles'
+):
+  | MedicationInventoryDashboardResponse
+  | MedicationInventoryPlannedDashboardResponse;
+export function buildInventoryDashboard(
+  snapshot: InventoryForecastSnapshot,
+  owner: string,
+  now: Date,
+  mode: 'committed' | 'planned_cycles' = 'committed'
+):
+  | MedicationInventoryDashboardResponse
+  | MedicationInventoryPlannedDashboardResponse {
+  const forecast =
+    mode === 'planned_cycles'
+      ? forecastInventorySnapshot(snapshot, now, 'planned_cycles')
+      : forecastInventorySnapshot(snapshot, now);
   const preparation_queue = snapshot.dashboard_stock
     .filter((row) => classifyInventoryPreparation(row) === 'needs_preparation')
     .sort(
@@ -66,23 +104,49 @@ export function buildInventoryDashboard(
       expired: row.expiry_date !== null && row.expiry_date < snapshot.today,
       preparation_queue_state: inventoryPreparationQueueState(row, owner),
     }));
-  return medicationInventoryDashboardResponseSchema.parse({
+  const response = {
     forecast,
     supply: selectInventorySupply(forecast),
     preparation_queue,
-  });
+  };
+  return mode === 'planned_cycles'
+    ? medicationInventoryPlannedDashboardResponseSchema.parse(response)
+    : medicationInventoryDashboardResponseSchema.parse(response);
 }
+export function getMedicationInventoryDashboard(
+  owner: string,
+  now?: Date,
+  mode?: 'committed'
+): Promise<MedicationInventoryDashboardResponse>;
+export function getMedicationInventoryDashboard(
+  owner: string,
+  now: Date | undefined,
+  mode: 'planned_cycles'
+): Promise<MedicationInventoryPlannedDashboardResponse>;
+export function getMedicationInventoryDashboard(
+  owner: string,
+  now: Date | undefined,
+  mode: 'committed' | 'planned_cycles'
+): Promise<
+  | MedicationInventoryDashboardResponse
+  | MedicationInventoryPlannedDashboardResponse
+>;
 export async function getMedicationInventoryDashboard(
   owner: string,
-  now = new Date()
-): Promise<MedicationInventoryDashboardResponse> {
+  now = new Date(),
+  mode: 'committed' | 'planned_cycles' = 'committed'
+): Promise<
+  | MedicationInventoryDashboardResponse
+  | MedicationInventoryPlannedDashboardResponse
+> {
   const client = await getClient(owner);
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const value = buildInventoryDashboard(
       await loadInventoryForecastSnapshot(client, owner, now),
       owner,
-      now
+      now,
+      mode
     );
     await client.query('COMMIT');
     return value;

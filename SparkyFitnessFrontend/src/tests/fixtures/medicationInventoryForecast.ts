@@ -1,11 +1,11 @@
 import type {
-  MedicationForecastCoverage,
-  MedicationInventoryForecastResponse,
+  MedicationForecastPlannedCoverage,
+  MedicationInventoryPlannedForecastResponse,
 } from '@workspace/shared';
 import { courseIds } from './medicationCourses';
 export const forecastCoverage = (
-  patch: Partial<MedicationForecastCoverage> = {}
-): MedicationForecastCoverage => ({
+  patch: Partial<MedicationForecastPlannedCoverage> = {}
+): MedicationForecastPlannedCoverage => ({
   status: 'covered',
   basis: 'course_end',
   coverage_through: '2026-12-01',
@@ -17,10 +17,26 @@ export const forecastCoverage = (
   lead_days: 14,
   buffer_days: 3,
   limitations: [],
+  projection: {
+    provisional_slots: 0,
+    projection_starts_on: null,
+    // Explicit synthetic committed demand for legacy shortage test cases. I07
+    // scenarios override the projection with their own server-provided facts.
+    first_unserved_day:
+      patch.status === 'ok' || patch.status === 'reorder_now'
+        ? '2026-12-02'
+        : null,
+    first_unserved_kind:
+      patch.status === 'ok' || patch.status === 'reorder_now'
+        ? 'committed'
+        : null,
+    claim_basis: patch.status === 'unknown' ? 'unknown' : 'committed',
+  },
   ...patch,
 });
 export const inventoryForecastFixture =
-  (): MedicationInventoryForecastResponse => ({
+  (): MedicationInventoryPlannedForecastResponse => ({
+    forecast_mode: 'planned_cycles',
     as_of: '2026-11-16T12:00:00Z',
     today: '2026-11-16',
     timezone: 'Europe/London',
@@ -33,6 +49,7 @@ export const inventoryForecastFixture =
         medication_id: courseIds.med,
         name: 'Example prepared medication',
         route: 'injection',
+        cycle_assumptions: [],
         prepared_only: forecastCoverage(),
         containers: [],
         device_basis: [

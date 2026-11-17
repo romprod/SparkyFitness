@@ -1,5 +1,5 @@
 import {
-  medicationInventoryForecastResponseSchema,
+  medicationInventoryPlannedForecastResponseSchema,
   medicationReorderDefaultsSchema,
   type MedicationReorderDefaultsInput,
 } from '@workspace/shared';
@@ -9,10 +9,10 @@ export const getMedicationInventoryForecast = async (
   ownerId: string,
   signal?: AbortSignal
 ) =>
-  medicationInventoryForecastResponseSchema.parse(
+  medicationInventoryPlannedForecastResponseSchema.parse(
     await apiCall('/v2/medication-inventory/forecast', {
       signal,
-      params: { expected_owner_id: ownerId },
+      params: { expected_owner_id: ownerId, forecast_mode: 'planned_cycles' },
       suppressErrorToast: true,
     })
   );

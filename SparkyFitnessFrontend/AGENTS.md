@@ -226,3 +226,11 @@ P07 adds optional independent week lengths and advisory boundary context within 
 Render the current-cycle dates and original authored context truthfully; do not reset or infer dose progression locally. Corrections/deletions and retained actual provenance remain server-authoritative. No I07 provisional forecast, generated ramp, prescription/Gantt workflow, timed notifications or native distribution is included. Exact actions/labels follow the final source-fit contract and synthetic full-App proof.
 
 The older f622 client is a limited fallback: authoritative due/log values may remain usable, but configured-cycle review/history can fail closed and require the updated website. Do not infer that old-web use makes an old backend safe; P07 backend/shared phase maths remain required after use. No forced reload/capability mechanism is selected.
+
+## Planned-cycle forecast presentation
+
+I07 new web requests planned_cycles explicitly on forecast/dashboard and requires the server mode echo. Include mode in forecast/dashboard cache keys with existing owner/profile identity guards; reject old-server or missing-echo responses rather than relabel committed data. There is no user toggle or persisted preference. Keep the existing Supply, forecast, prepared-only and container surfaces.
+
+Render server provenance and calendar fields without a client cycle engine. Reserve for-next-cycle copy for projected_restart first failure; a later committed shortage influenced by provisional consumption uses qualified planned-demand wording. Covered hypothetical demand also requires manual-restart qualification. Unknown dates remain unknown; do not invent a restart or auto-activate it. Existing Today, P07 action controls, queue proof/save/fresh-open behaviour, physical stock and owner-only defaults remain unchanged. No new navigation, notifications or native binary is included.
+
+Show each plan's server-supplied name and captured timezone. Keep authored cycle dates separate from forecast-calendar dates; unavailable projection dates are not no demand. Planned-only unknown_projection_date retains demand but removes exact date/urgency claims. Do not calculate overdue/restart dates or insert a time for an untimed rule in the browser.

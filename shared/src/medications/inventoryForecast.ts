@@ -2,6 +2,7 @@ import type {
   InventoryForecastLimitationCode,
   InventoryForecastPlan,
   InventoryForecastPlanInput,
+  InventoryForecastCycleAssumption,
 } from './inventoryForecastPlan.ts';
 export interface InventoryPreparedContainer {
   id: string;
@@ -14,7 +15,16 @@ export interface InventoryPreparedContainer {
   expiry_date: string | null;
   created_at: string;
 }
+export interface InventoryForecastProjection {
+  provisional_slots: number;
+  projection_starts_on: string | null;
+  first_unserved_day: string | null;
+  first_unserved_kind: 'committed' | 'projected_restart' | null;
+  claim_basis:
+    'committed' | 'projected_restart' | 'projected_coverage' | 'unknown';
+}
 export interface InventoryForecastMathCoverage {
+  projection?: InventoryForecastProjection;
   status: 'unknown' | 'covered' | 'ok' | 'reorder_now';
   basis: 'unknown' | 'course_end' | 'horizon' | 'slot_cap' | 'depleted';
   coverage_through: string | null;
@@ -34,6 +44,7 @@ export interface InventoryForecastMathContainer {
   current_dose: { value: string; unit: string; device_id: string } | null;
 }
 export interface InventoryForecastMathResult extends InventoryForecastMathCoverage {
+  cycle_assumptions?: InventoryForecastCycleAssumption[];
   prepared_only: InventoryForecastMathCoverage;
   containers: InventoryForecastMathContainer[];
 }
@@ -101,13 +112,37 @@ const withLimits = (
   ...base,
   limitations: [...new Set([...base.limitations, ...limitations])],
 });
+function projection(
+  plan: InventoryForecastPlan | undefined,
+  claim: InventoryForecastProjection['claim_basis'],
+  failed?: InventoryForecastSlot
+): { projection?: InventoryForecastProjection } {
+  if (plan?.forecast_mode !== 'planned_cycles') return {};
+  const provisional = plan.slots.filter(
+    (slot) => slot.demand_kind === 'projected_restart'
+  );
+  return {
+    projection: {
+      provisional_slots: provisional.length,
+      projection_starts_on: provisional.some((slot) => slot.date_basis_unknown)
+        ? null
+        : (provisional[0]?.day ?? null),
+      first_unserved_day: failed?.day ?? null,
+      first_unserved_kind: failed?.demand_kind ?? null,
+      claim_basis: claim,
+    },
+  };
+}
 function unknown(
-  input: Pick<InventoryPreparedCoverageInput, 'lead_days' | 'buffer_days'>,
+  input: Pick<InventoryPreparedCoverageInput, 'lead_days' | 'buffer_days'> & {
+    plan?: InventoryForecastPlan;
+  },
   count: number,
   limitations: Iterable<InventoryForecastLimitationCode>,
   served = 0
 ): InventoryForecastMathCoverage {
   return {
+    ...projection(input.plan, 'unknown'),
     status: 'unknown',
     basis: 'unknown',
     coverage_through: null,
@@ -193,7 +228,10 @@ export function forecastPreparedCoverage(
     throw new RangeError('Invalid reorder preferences');
   const slots = input.plan.slots;
   const limitations = new Set(input.plan.limitations);
-  if (limitations.has('unmodelled_legacy_demand'))
+  if (
+    limitations.has('unmodelled_legacy_demand') ||
+    limitations.has('unknown_projection_date')
+  )
     return unknown(input, slots.length, limitations);
   if (!slots.length)
     return unknown(input, 0, [...limitations, 'no_forecast_slots']);
@@ -202,6 +240,7 @@ export function forecastPreparedCoverage(
     pool: decimal(container.remaining_ml),
   }));
   let served = 0,
+    provisionalServed = false,
     last: string | null = null;
   for (const slot of slots) {
     let filled = false,
@@ -254,6 +293,7 @@ export function forecastPreparedCoverage(
     for (const reason of rowLimits) limitations.add(reason);
     if (filled) {
       served++;
+      if (slot.demand_kind === 'projected_restart') provisionalServed = true;
       last = slot.day;
       continue;
     }
@@ -269,8 +309,13 @@ export function forecastPreparedCoverage(
       0,
       last === null ? 0 : daysBetween(input.today, last)
     );
+    const projectedFailure = slot.demand_kind === 'projected_restart';
+    const needDistance = projectedFailure
+      ? Math.max(0, daysBetween(input.today, slot.day))
+      : coverage;
     const shifted = new Date(
-      Date.parse(depletion + 'T00:00:00Z') - input.lead_days * 86400000
+      Date.parse((projectedFailure ? slot.day : depletion) + 'T00:00:00Z') -
+        input.lead_days * 86400000
     );
     let reorder: string | null = null;
     if (Number.isFinite(shifted.getTime())) {
@@ -286,8 +331,19 @@ export function forecastPreparedCoverage(
         served
       );
     return {
+      ...projection(
+        input.plan,
+        projectedFailure
+          ? 'projected_restart'
+          : provisionalServed
+            ? 'projected_coverage'
+            : 'committed',
+        slot
+      ),
       status:
-        coverage <= input.lead_days + input.buffer_days ? 'reorder_now' : 'ok',
+        needDistance <= input.lead_days + input.buffer_days
+          ? 'reorder_now'
+          : 'ok',
       basis: 'depleted',
       coverage_through: last ?? input.today,
       depletion_date: depletion,
@@ -302,6 +358,12 @@ export function forecastPreparedCoverage(
   }
   const end = last;
   return {
+    ...projection(
+      input.plan,
+      input.plan.slots.some((slot) => slot.demand_kind === 'projected_restart')
+        ? 'projected_coverage'
+        : 'committed'
+    ),
     status: 'covered',
     basis: input.plan.basis,
     coverage_through: end,
@@ -380,6 +442,7 @@ export function buildInventoryForecast(
     'incompatible_device',
     'unsupported_route',
     'date_out_of_range',
+    'unknown_projection_date',
   ]);
   const unmodelledDemand = [...allLimits].some((code) => demandCodes.has(code));
   const excludedStock = [...allLimits].some(
@@ -433,5 +496,12 @@ export function buildInventoryForecast(
         : null,
     };
   });
-  return { ...overall, prepared_only: prepared, containers };
+  return {
+    ...overall,
+    ...(input.plan.forecast_mode === 'planned_cycles'
+      ? { cycle_assumptions: plan.cycle_assumptions ?? [] }
+      : {}),
+    prepared_only: prepared,
+    containers,
+  };
 }

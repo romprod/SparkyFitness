@@ -1,4 +1,5 @@
 import { ZodError } from 'zod';
+import { medicationInventoryDashboardResponseSchema } from '@workspace/shared';
 import { apiCall } from '@/api/api';
 import { getMedicationStockDashboard } from '@/api/Medications/inventoryDashboardService';
 import {
@@ -21,7 +22,10 @@ it('reads one owner-bound current dashboard with canonical GET and caller cancel
   expect(request).toHaveBeenCalledTimes(1);
   expect(request).toHaveBeenCalledWith('/v2/medication-inventory/dashboard', {
     method: 'GET',
-    params: { expected_owner_id: courseIds.owner },
+    params: {
+      expected_owner_id: courseIds.owner,
+      forecast_mode: 'planned_cycles',
+    },
     signal,
     suppressErrorToast: true,
   });
@@ -133,4 +137,46 @@ it('propagates ownership rejection without retry or an empty-dashboard fallback'
     error
   );
   expect(request).toHaveBeenCalledTimes(1);
+});
+
+it.each(['missing', 'committed'] as const)(
+  'rejects a dashboard with %s planned-mode echo instead of using old committed coverage',
+  async (mode) => {
+    const old =
+      medicationInventoryDashboardResponseSchema.parse(dashboardFixture());
+    request.mockResolvedValue(
+      mode === 'missing'
+        ? old
+        : {
+            ...dashboardFixture(),
+            forecast: {
+              ...dashboardFixture().forecast,
+              forecast_mode: 'committed',
+            },
+          }
+    );
+    await expect(
+      getMedicationStockDashboard(courseIds.owner)
+    ).rejects.toBeInstanceOf(ZodError);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]![1]!.params).toEqual({
+      expected_owner_id: courseIds.owner,
+      forecast_mode: 'planned_cycles',
+    });
+  }
+);
+it('rejects a planned-mode dashboard missing required coverage provenance despite a valid unchanged queue', async () => {
+  const result = dashboardFixture();
+  request.mockResolvedValue({
+    ...result,
+    forecast: {
+      ...result.forecast,
+      medications: [
+        { ...result.forecast.medications[0], projection: undefined },
+      ],
+    },
+  });
+  await expect(
+    getMedicationStockDashboard(courseIds.owner)
+  ).rejects.toBeInstanceOf(ZodError);
 });

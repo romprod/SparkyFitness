@@ -481,15 +481,17 @@
       "area": "Inventory",
       "feature": "Demand across planned breaks",
       "reference_capability": "Projects next on-cycle demand as provisional and orders against planned restart.",
-      "sparky_baseline": "Not found: projected course-restart stock demand.",
-      "proposed_work": "Extend forecasts to scheduled future courses and label unconfirmed restarts as provisional.",
+      "sparky_baseline": "P07 weekly metadata/manual cycle actions and I06 committed-demand forecasts are deployed at5791f2745. Committed future-start courses are already supported; provisional restarts beyond a committed planned stop are not.",
+      "proposed_work": "Add explicitly qualified hypothetical next-cycle demand beyond an eligible committed planned stop, without changing actual dues or activating a course.",
       "decision": "Add",
       "priority": "Next",
       "relative_effort": "M",
-      "dependencies_and_limits": "Depends on P07/I06. Never represent provisional demand as a confirmed course.",
-      "status": "proposed",
-      "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/1caffbcfaeb4ccaccee9806a37d169e013328528/docs/reorder-forecast-rulings.md",
-      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx"
+      "dependencies_and_limits": "Depends on deployed P07/I06 and reuses known stock/device/BUD/unknown policy. Only eligible active current tips with positive on/off weeks, known weekly anchor and explicit end equal to planned stop project. Never represent provisional demand as committed; preserve independent earlier ends, rules/activity/successor bounds and phase-family facts.",
+      "status": "implemented_partial",
+      "reference_source": "https://github.com/kavo91/peptide-pitstop/blob/b305c4c95f2118051c0e03f719d9330bfe3f9818/docs/reorder-forecast-rulings.md",
+      "sparky_source": "https://github.com/CodeWithCJ/SparkyFitness/blob/39d9ca2d13c2a1b9f64e4be793b2f23433489d0c/SparkyFitnessFrontend/src/pages/Medications/Glp1InventoryManager.tsx",
+      "implementation_scope": "Implemented and source-tested selected I07: explicit read-only forecast_mode=planned_cycles on forecast/dashboard; new web requests it automatically with mode-isolated caches and requires the echo. Omitted/default/explicit committed requests retain5791 response shape and behaviour. No UI toggle or preference storage. Every coverage scope carries projection provenance, including first unserved day/kind; for-next-cycle copy is reserved for a provisional first failure, while a committed failure after provisional stock consumption remains separately qualified. Hypothetical demand respects on/off windows before phase advancement and aggregate caps, with no past hypothetical consumption, anchor reset, fake actuals or stored slots. No Today/adherence/P07-action/preparation-queue writes, DDL, new dependencies, notifications or native UI.",
+      "verification": "Final immutable2201-file backend/shared snapshot passes5 fresh isolated PostgreSQL cases (snapshot3/modes2) with coherent reads/no mutations/default compatibility. Web162/10suites, math81 including30new, schema30 and backend27 focused cases/static checks pass. Direct5791 default JSON byte comparison12cases all match. Protected27 P07/Today/log/queue/default contracts remain5791-identical; prior83 P07 proof reused only for unchanged surfaces. Exact App/image/privacy/live operational verification is recorded separately; no new DDL, data export or native distribution."
     },
     {
       "id": "I08",

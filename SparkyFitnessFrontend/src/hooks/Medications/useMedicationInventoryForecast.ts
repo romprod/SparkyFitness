@@ -8,7 +8,12 @@ import { medicationInventoryKeys } from '@/api/keys/medicationInventory';
 export const useMedicationInventoryForecast = () => {
   const scope = useMedicationCourseScope();
   const query = useQuery({
-    queryKey: [...medicationInventoryKeys.all, scope.key, 'forecast'],
+    queryKey: [
+      ...medicationInventoryKeys.all,
+      scope.key,
+      'forecast',
+      'planned_cycles',
+    ],
     queryFn: ({ signal }) =>
       api.getMedicationInventoryForecast(scope.ownerId, signal),
     enabled: scope.ready,

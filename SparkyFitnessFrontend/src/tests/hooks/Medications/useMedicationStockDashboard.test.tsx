@@ -8,7 +8,10 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { medicationPreparationSchema } from '@workspace/shared';
+import {
+  medicationPreparationSchema,
+  medicationInventoryDashboardResponseSchema,
+} from '@workspace/shared';
 import {
   useMedicationStockDashboard,
   usePreparationQueueStock,
@@ -26,6 +29,7 @@ import {
   courseIds,
   courseMedication,
 } from '@/tests/fixtures/medicationCourses';
+import { medicationInventoryKeys } from '@/api/keys/medicationInventory';
 import MedicationPreparationQueue from '@/pages/Medications/MedicationPreparationQueue';
 
 jest.mock('@/contexts/PreferencesContext', () => ({
@@ -421,4 +425,101 @@ it('freshly revalidates a cached exact vial on reopen with production cache defa
   await act(async () => freshPens.resolve([dashboardPen()]));
   await screen.findByText('Validated inline wizard');
   expect(pens.mock.calls[1]![0]).toBe(courseIds.med);
+});
+
+it('isolates the planned dashboard cache from a fresh committed response', async () => {
+  const pending =
+    deferred<Awaited<ReturnType<typeof getMedicationStockDashboard>>>();
+  dashboard.mockReturnValue(pending.promise);
+  const { client } = setup('dashboard');
+  const scopeKey = currentDashboard.scope.key;
+  const old =
+    medicationInventoryDashboardResponseSchema.parse(dashboardFixture());
+  old.preparation_queue[0]!.label = 'Old committed dashboard';
+  const oldKey = [...medicationInventoryKeys.all, scopeKey, 'dashboard'];
+  act(() => client.setQueryData(oldKey, old));
+  await waitFor(() => expect(dashboard).toHaveBeenCalledTimes(1));
+  expect(currentDashboard.data).toBeUndefined();
+  expect(screen.getByTestId('dashboard')).not.toHaveTextContent(
+    'Old committed dashboard'
+  );
+  const planned = dashboardFixture({
+    preparation_queue: [queueItem({ label: 'Planned dashboard' })],
+  });
+  await act(async () => pending.resolve(planned));
+  await waitFor(() =>
+    expect(screen.getByTestId('dashboard')).toHaveTextContent(
+      'Planned dashboard'
+    )
+  );
+  expect(
+    client.getQueryData([
+      ...medicationInventoryKeys.all,
+      scopeKey,
+      'dashboard',
+      'planned_cycles',
+    ])
+  ).toEqual(planned);
+  expect(client.getQueryData(oldKey)).toEqual(old);
+});
+it('ignores a committed queue cache and uses the fresh planned dashboard token before reading exact stock', async () => {
+  const pending =
+    deferred<Awaited<ReturnType<typeof getMedicationStockDashboard>>>();
+  dashboard.mockReturnValue(pending.promise);
+  const { client } = setup();
+  const scopeKey = currentQueue.scope.key;
+  const oldKey = [
+    ...medicationInventoryKeys.all,
+    scopeKey,
+    'queue-stock',
+    courseIds.med,
+    dashboardStockId,
+  ];
+  act(() =>
+    client.setQueryData(oldKey, {
+      row: queueItem({ preparation_queue_state: 'b'.repeat(64) }),
+      pen: dashboardPen({ label: 'Old cached vial' }),
+    })
+  );
+  await waitFor(() => expect(dashboard).toHaveBeenCalledTimes(1));
+  expect(currentQueue.data).toBeUndefined();
+  expect(pens).not.toHaveBeenCalled();
+  await act(async () => pending.resolve(dashboardFixture()));
+  await waitFor(() =>
+    expect(screen.getByTestId('queue')).toHaveTextContent(dashboardStockId)
+  );
+  expect(currentQueue.data?.row.preparation_queue_state).toBe('a'.repeat(64));
+  expect(pens).toHaveBeenCalledTimes(1);
+  expect(
+    client.getQueryData([
+      ...medicationInventoryKeys.all,
+      scopeKey,
+      'queue-stock',
+      'planned_cycles',
+      courseIds.med,
+      dashboardStockId,
+    ])
+  ).toEqual(currentQueue.data);
+});
+it('stops queue expansion after a planned dashboard error instead of using an old committed stock record', async () => {
+  dashboard.mockRejectedValue(new Error('Planned mode is unavailable'));
+  const { client } = setup();
+  act(() =>
+    client.setQueryData(
+      [
+        ...medicationInventoryKeys.all,
+        currentQueue.scope.key,
+        'queue-stock',
+        courseIds.med,
+        dashboardStockId,
+      ],
+      { row: queueItem(), pen: dashboardPen() }
+    )
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('queue')).toHaveTextContent('error')
+  );
+  expect(currentQueue.data).toBeUndefined();
+  expect(pens).not.toHaveBeenCalled();
+  expect(dashboard).toHaveBeenCalledTimes(1);
 });

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import type {
-  MedicationInventoryDashboardResponse,
+  MedicationInventoryPlannedDashboardResponse,
   MedicationInventorySupply,
 } from '@workspace/shared';
 import MedicationSupplyTile from '@/pages/Medications/MedicationSupplyTile';
@@ -15,6 +15,12 @@ import {
   courseIds,
   courseMedication,
 } from '@/tests/fixtures/medicationCourses';
+
+import {
+  projectedCoverageFixture,
+  projectionFixture,
+  cycleAssumptionFixture,
+} from '@/tests/fixtures/medicationInventoryProjection';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -35,7 +41,7 @@ jest.mock('@/contexts/PreferencesContext', () => ({
 let mockReady = true;
 let mockCurrent = true;
 let mockScopeKey = 'actor:owner:1';
-let mockData: MedicationInventoryDashboardResponse | undefined;
+let mockData: MedicationInventoryPlannedDashboardResponse | undefined;
 const mockQuery = {
   isLoading: false,
   isFetching: false,
@@ -103,7 +109,7 @@ const dashboard = (
     state: 'forecast',
     medication_id: courseIds.med,
   }
-): MedicationInventoryDashboardResponse => ({
+): MedicationInventoryPlannedDashboardResponse => ({
   forecast: inventoryForecastFixture(),
   supply,
   preparation_queue: [],
@@ -369,3 +375,120 @@ it.each(['stock', 'cabinet', 'symptoms', 'costs'])(
     expect(mockDashboardRead).not.toHaveBeenCalled();
   }
 );
+
+it('uses for-next-cycle wording only for a server-proven provisional first failure', () => {
+  mockData!.forecast.medications[0] = {
+    ...mockData!.forecast.medications[0]!,
+    ...projectedCoverageFixture(),
+    cycle_assumptions: [cycleAssumptionFixture()],
+  };
+  renderTile();
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'Reorder by UK:2027-01-10 for next cycle'
+  );
+  expect(
+    screen.getByText('Assumes planned manual restart(s).')
+  ).toBeInTheDocument();
+  expect(screen.getByText(/planned restarts are overdue/)).toBeInTheDocument();
+});
+it('does not call a committed shortage after provisional consumption next-cycle demand', () => {
+  mockData!.forecast.medications[0] = {
+    ...mockData!.forecast.medications[0]!,
+    ...projectedCoverageFixture({
+      projection: projectionFixture({
+        claim_basis: 'projected_coverage',
+        first_unserved_kind: 'committed',
+      }),
+    }),
+    cycle_assumptions: [cycleAssumptionFixture()],
+  };
+  renderTile();
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'Reorder by UK:2027-01-10'
+  );
+  expect(screen.getByRole('link')).not.toHaveTextContent('for next cycle');
+  expect(
+    screen.getByText('Assumes planned manual restart(s).')
+  ).toBeInTheDocument();
+});
+it('qualifies covered projected demand without claiming committed-only or unlimited coverage', () => {
+  mockData!.forecast.medications[0] = {
+    ...mockData!.forecast.medications[0]!,
+    coverage_through: '2027-01-24',
+    projection: projectionFixture({
+      claim_basis: 'projected_coverage',
+      first_unserved_day: null,
+      first_unserved_kind: null,
+    }),
+    cycle_assumptions: [cycleAssumptionFixture()],
+  };
+  renderTile();
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'Covers planned doses through UK:2027-01-24'
+  );
+  expect(screen.getByRole('link')).not.toHaveTextContent('Covers committed');
+  expect(
+    screen.getByText('Assumes planned manual restart(s).')
+  ).toBeInTheDocument();
+});
+it('labels urgent provisional need as next-cycle reorder without calculating urgency from browser dates', () => {
+  mockData!.forecast.medications[0] = {
+    ...mockData!.forecast.medications[0]!,
+    ...projectedCoverageFixture({
+      status: 'reorder_now',
+      coverage_through: '2026-11-16',
+      depletion_date: '2026-11-16',
+      reorder_by: '2026-11-16',
+      days_left: 0,
+      served_slots: 0,
+      expected_slots: 1,
+      projection: projectionFixture({
+        provisional_slots: 1,
+        projection_starts_on: '2026-11-29',
+        first_unserved_day: '2026-11-29',
+      }),
+    }),
+    cycle_assumptions: [
+      cycleAssumptionFixture({
+        anchor_date: '2026-11-15',
+        committed_end_date: '2026-11-21',
+        next_restart_date: '2026-11-29',
+        projection_starts_on: '2026-11-29',
+        overdue: false,
+      }),
+    ],
+  };
+  renderTile();
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'Reorder now for next cycle'
+  );
+  expect(
+    screen.getByText('Assumes planned manual restart(s).')
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText(/planned restarts are overdue/)
+  ).not.toBeInTheDocument();
+});
+it('keeps a server-unknown named forecast unknown even when a restart is overdue', () => {
+  mockData!.supply = { state: 'unavailable', medication_id: courseIds.med };
+  mockData!.forecast.medications[0] = {
+    ...mockData!.forecast.medications[0]!,
+    ...unknownCoverage(),
+    limitations: ['unknown_projection_date'],
+    projection: projectionFixture({
+      claim_basis: 'unknown',
+      projection_starts_on: null,
+      first_unserved_day: null,
+      first_unserved_kind: null,
+    }),
+    cycle_assumptions: [cycleAssumptionFixture({ projection_starts_on: null })],
+  };
+  renderTile();
+  expect(screen.getByRole('link')).toHaveTextContent('Coverage unknown');
+  expect(screen.getByRole('link')).not.toHaveTextContent('Reorder now');
+  expect(screen.getByRole('link')).not.toHaveTextContent('for next cycle');
+  expect(screen.getByText(/restarting remains manual/)).toBeInTheDocument();
+  expect(
+    screen.getByText('Assumes planned manual restart(s).')
+  ).toBeInTheDocument();
+});
