@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   buildMonthGrid,
@@ -54,7 +54,11 @@ export interface MedicationLogCalendarProps {
   onSelectDate: (date: string) => void;
   subtype?: MedSubtype;
   toolbar?: import('react').ReactNode;
-  onOpenDay?: (day: string, medicationId?: string) => void;
+  onOpenDay?: (
+    day: string,
+    medicationId?: string,
+    trigger?: HTMLButtonElement | null
+  ) => void;
 }
 
 export default function MedicationMonthCalendar({
@@ -66,6 +70,7 @@ export default function MedicationMonthCalendar({
   onOpenDay,
 }: MedicationLogCalendarProps) {
   const { t } = useTranslation();
+  const invokingButton = useRef<HTMLButtonElement | null>(null);
   const { firstDayOfWeek } = usePreferences();
 
   // The calendar already receives the subtype-filtered list, so only its wording
@@ -280,136 +285,149 @@ export default function MedicationMonthCalendar({
   ];
 
   return (
-    <MonthCalendar
-      month={month}
-      onMonthChange={setMonth}
-      weekdayLabels={weekdayLabels}
-      selectedDate={selectedDate}
-      onDayClick={(day) => {
-        onSelectDate(day);
-        onOpenDay?.(day, activeMedId);
+    <div
+      onClickCapture={(event) => {
+        invokingButton.current =
+          event.target instanceof Element
+            ? event.target.closest('button')
+            : null;
       }}
-      legend={legend}
-      monthLabelLocale={t('i18n.locale', 'en-US')}
-      topContent={
-        <div className="space-y-2">
-          {toolbar}
-          <div className="flex items-center justify-between gap-3">
-            <Select value={selectedMedId} onValueChange={setSelectedMedId}>
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue placeholder={copy.placeholder} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_MEDS}>{copy.all}</SelectItem>
-                {loggableMeds.map((med) => (
-                  <SelectItem key={med.id} value={med.id}>
-                    {med.display_name || med.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    >
+      <MonthCalendar
+        month={month}
+        onMonthChange={setMonth}
+        weekdayLabels={weekdayLabels}
+        selectedDate={selectedDate}
+        onDayClick={(day) => {
+          onSelectDate(day);
+          onOpenDay?.(day, activeMedId, invokingButton.current);
+        }}
+        legend={legend}
+        monthLabelLocale={t('i18n.locale', 'en-US')}
+        topContent={
+          <div className="space-y-2">
+            {toolbar}
+            <div className="flex items-center justify-between gap-3">
+              <Select value={selectedMedId} onValueChange={setSelectedMedId}>
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder={copy.placeholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_MEDS}>{copy.all}</SelectItem>
+                  {loggableMeds.map((med) => (
+                    <SelectItem key={med.id} value={med.id}>
+                      {med.display_name || med.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'medications.calendar.monthTotal',
+                '{{count}} doses logged in {{month}}',
+                { count: monthTotal, month: monthLabel }
+              )}
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              'medications.calendar.monthTotal',
-              '{{count}} doses logged in {{month}}',
-              { count: monthTotal, month: monthLabel }
-            )}
-          </p>
-        </div>
-      }
-      renderDay={(day): DayCellRender => {
-        const counts = entriesByDay[day];
-        const symptoms = symptomsByDay[day];
-        const status = counts ? dayLogStatus(counts) : null;
-        const total = counts ? dayDoseTotal(counts) : 0;
+        }
+        renderDay={(day): DayCellRender => {
+          const counts = entriesByDay[day];
+          const symptoms = symptomsByDay[day];
+          const status = counts ? dayLogStatus(counts) : null;
+          const total = counts ? dayDoseTotal(counts) : 0;
 
-        const cell: DayCellRender = {};
-        if (status) {
-          cell.fill = DAY_STATUS_COLOR[status];
-          cell.textColor = '#fff';
-        }
+          const cell: DayCellRender = {};
+          if (status) {
+            cell.fill = DAY_STATUS_COLOR[status];
+            cell.textColor = '#fff';
+          }
 
-        // Hover tooltip: exact breakdown, since the fill color alone can't
-        // distinguish e.g. "2 taken + 1 skipped" from other combinations
-        // that land in the same amber/orange band.
-        if (counts) {
-          const parts: string[] = [];
-          if (counts.taken > 0) {
-            parts.push(
-              t('medications.calendar.tooltipTaken', '{{count}} taken', {
-                count: counts.taken,
-              })
-            );
+          // Hover tooltip: exact breakdown, since the fill color alone can't
+          // distinguish e.g. "2 taken + 1 skipped" from other combinations
+          // that land in the same amber/orange band.
+          if (counts) {
+            const parts: string[] = [];
+            if (counts.taken > 0) {
+              parts.push(
+                t('medications.calendar.tooltipTaken', '{{count}} taken', {
+                  count: counts.taken,
+                })
+              );
+            }
+            if (counts.prn > 0) {
+              parts.push(
+                t('medications.calendar.tooltipPrn', '{{count}} PRN taken', {
+                  count: counts.prn,
+                })
+              );
+            }
+            if (counts.skipped > 0) {
+              parts.push(
+                t('medications.calendar.tooltipSkipped', '{{count}} skipped', {
+                  count: counts.skipped,
+                })
+              );
+            }
+            if (counts.snoozed > 0) {
+              parts.push(
+                t('medications.calendar.tooltipSnoozed', '{{count}} snoozed', {
+                  count: counts.snoozed,
+                })
+              );
+            }
+            if (symptoms && symptoms.names.length > 0) {
+              parts.push(
+                t(
+                  'medications.calendar.tooltipSymptoms',
+                  'Symptoms: {{names}}',
+                  {
+                    names: symptoms.names.join(', '),
+                  }
+                )
+              );
+            }
+            if (parts.length > 0) {
+              cell.title = parts.join(' · ');
+            }
           }
-          if (counts.prn > 0) {
-            parts.push(
-              t('medications.calendar.tooltipPrn', '{{count}} PRN taken', {
-                count: counts.prn,
-              })
-            );
-          }
-          if (counts.skipped > 0) {
-            parts.push(
-              t('medications.calendar.tooltipSkipped', '{{count}} skipped', {
-                count: counts.skipped,
-              })
-            );
-          }
-          if (counts.snoozed > 0) {
-            parts.push(
-              t('medications.calendar.tooltipSnoozed', '{{count}} snoozed', {
-                count: counts.snoozed,
-              })
-            );
-          }
-          if (symptoms && symptoms.names.length > 0) {
-            parts.push(
-              t('medications.calendar.tooltipSymptoms', 'Symptoms: {{names}}', {
-                names: symptoms.names.join(', '),
-              })
-            );
-          }
-          if (parts.length > 0) {
-            cell.title = parts.join(' · ');
-          }
-        }
 
-        const badges: React.ReactNode[] = [];
-        if (total > 1) {
-          badges.push(
-            <span
-              key="count"
-              className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-[9px] font-bold text-background"
-            >
-              {total}
-            </span>
-          );
-        }
-        if (symptoms?.sideEffect) {
-          badges.push(
-            <span
-              key="side-effect"
-              className="absolute bottom-1 left-1/2 -translate-x-[5px] h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: SIDE_EFFECT_COLOR }}
-            />
-          );
-        }
-        if (symptoms?.general) {
-          badges.push(
-            <span
-              key="general"
-              className="absolute bottom-1 left-1/2 translate-x-[1px] h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: GENERAL_SYMPTOM_COLOR }}
-            />
-          );
-        }
-        if (badges.length > 0) {
-          cell.content = <>{badges}</>;
-        }
+          const badges: React.ReactNode[] = [];
+          if (total > 1) {
+            badges.push(
+              <span
+                key="count"
+                className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-[9px] font-bold text-background"
+              >
+                {total}
+              </span>
+            );
+          }
+          if (symptoms?.sideEffect) {
+            badges.push(
+              <span
+                key="side-effect"
+                className="absolute bottom-1 left-1/2 -translate-x-[5px] h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: SIDE_EFFECT_COLOR }}
+              />
+            );
+          }
+          if (symptoms?.general) {
+            badges.push(
+              <span
+                key="general"
+                className="absolute bottom-1 left-1/2 translate-x-[1px] h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: GENERAL_SYMPTOM_COLOR }}
+              />
+            );
+          }
+          if (badges.length > 0) {
+            cell.content = <>{badges}</>;
+          }
 
-        return cell;
-      }}
-    />
+          return cell;
+        }}
+      />
+    </div>
   );
 }

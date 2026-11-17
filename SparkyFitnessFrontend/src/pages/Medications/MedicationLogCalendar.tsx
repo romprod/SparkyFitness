@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { addDays, todayInZone } from '@workspace/shared';
 import { useTranslation } from 'react-i18next';
 import { usePreferences } from '@/contexts/PreferencesContext';
@@ -23,7 +23,9 @@ export default function MedicationLogCalendar(
     day: string;
     scopeKey: string;
     medicationId?: string;
+    trigger?: HTMLButtonElement | null;
   } | null>(null);
+  const returnFocus = useRef<HTMLButtonElement | null>(null);
   const monday = medicationCalendarMonday(
     detail?.day ?? props.selectedDate,
     today
@@ -61,9 +63,16 @@ export default function MedicationLogCalendar(
         <MedicationMonthCalendar
           {...props}
           toolbar={controls}
-          onOpenDay={(day, medicationId) => {
-            if (result.scope.ready && result.scope.isCurrent())
-              setDetail({ day, scopeKey: result.scope.key, medicationId });
+          onOpenDay={(day, medicationId, trigger) => {
+            if (result.scope.ready && result.scope.isCurrent()) {
+              returnFocus.current = null;
+              setDetail({
+                day,
+                scopeKey: result.scope.key,
+                medicationId,
+                trigger,
+              });
+            }
           }}
         />
       ) : (
@@ -144,13 +153,28 @@ export default function MedicationLogCalendar(
             result={result}
             medications={props.medications}
             subtype={props.subtype ?? 'all'}
-            onClose={() => setDetail(null)}
+            onClose={() => {
+              returnFocus.current = detail.trigger ?? null;
+              setDetail(null);
+            }}
+            onRestoreFocus={() => {
+              const target = returnFocus.current;
+              returnFocus.current = null;
+              if (
+                target === detail.trigger &&
+                result.scope.isCurrent() &&
+                target?.isConnected
+              )
+                target.focus();
+            }}
             onSelectDate={(day) => {
+              returnFocus.current = null;
               props.onSelectDate(day);
               setDetail({
                 day,
                 scopeKey: result.scope.key,
                 medicationId: detail.medicationId,
+                trigger: detail.trigger,
               });
             }}
           />

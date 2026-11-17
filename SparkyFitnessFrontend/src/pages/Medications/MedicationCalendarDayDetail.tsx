@@ -300,6 +300,7 @@ export default function MedicationCalendarDayDetail({
   medications,
   subtype,
   onClose,
+  onRestoreFocus,
   onSelectDate,
 }: {
   day: string;
@@ -308,6 +309,7 @@ export default function MedicationCalendarDayDetail({
   medications: Medication[];
   subtype: MedSubtype;
   onClose: () => void;
+  onRestoreFocus?: () => void;
   onSelectDate: (day: string) => void;
 }) {
   const { t } = useTranslation();
@@ -410,7 +412,13 @@ export default function MedicationCalendarDayDetail({
           if (!open && !action) onClose();
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (!action) onRestoreFocus?.();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {t('medications.week.dayDetail', 'Day detail')} ·{' '}
