@@ -10,6 +10,7 @@ import {
   medicationCourseCycleStateSchema,
   medicationCourseCycleReviewSchema,
   medicationCourseCycleMutationResultSchema,
+  medicationCourseTimelineResponseSchema,
   type MedicationCourseCycleReviewInput,
   type MedicationCourseCycleActionInput,
   type MedicationCourseCreateInput,
@@ -188,6 +189,20 @@ export const startMedicationCourseCycle = async (
     await apiCall(`${root}/${id}/cycle-start`, {
       method: 'POST',
       body,
+      suppressErrorToast: true,
+    })
+  );
+
+/** All-profile authored windows; the server supplies the fixed calendar geometry. */
+export const getMedicationCourseTimeline = async (
+  ownerId: string,
+  signal?: AbortSignal
+) =>
+  medicationCourseTimelineResponseSchema.parse(
+    await apiCall(`${root}/timeline`, {
+      method: 'GET',
+      params: { expected_owner_id: ownerId },
+      signal,
       suppressErrorToast: true,
     })
   );

@@ -1,4 +1,7 @@
-import { resolvePreparedMedicationRoute } from '@workspace/shared';
+import {
+  resolvePreparedMedicationRoute,
+  type MedicationCourseTimelineRow,
+} from '@workspace/shared';
 import { useState, useEffect, useMemo } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
@@ -54,6 +57,7 @@ import Glp1RecentInjections from './Glp1RecentInjections';
 import AddMedicationDialog, { MedTypeIcon } from './AddMedicationDialog';
 import { countMedicationNutrients } from './medicationUtils';
 import ScheduleManager from './ScheduleManager';
+import MedicationCourseTimeline from './MedicationCourseTimeline';
 import TodayMedications from './TodayMedications';
 import MedicationSupplyTile from './MedicationSupplyTile';
 import SymptomsHub from '../Symptoms/SymptomsHub';
@@ -82,6 +86,8 @@ export default function Medications() {
       return next;
     });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [focusRevisionId, setFocusRevisionId] = useState<string>();
 
   // `All | Meds | Supplements` view filter. Persisted so it survives navigation, and it
   // filters the shared meds list rather than fetching a separate one — the whole point of
@@ -99,6 +105,14 @@ export default function Medications() {
     localStorage.setItem('medications.subtypeFilter', next);
   };
 
+  const manageTimelinePlan = (row: MedicationCourseTimelineRow) => {
+    if (!row.medication_id || !row.is_current_tip) return;
+    setTimelineOpen(false);
+    setSubtypeFilter('all');
+    setSelectedId(row.medication_id);
+    setFocusRevisionId(row.revision_id);
+    setActiveTab('cabinet');
+  };
   const dateParam = searchParams.get('date');
 
   const preferencesContext = usePreferences();
@@ -751,7 +765,11 @@ export default function Medications() {
                   {selected.is_glp1 ? (
                     <div className="space-y-4">
                       <Glp1Coach med={selected} />
-                      <ScheduleManager med={selected} />
+                      <ScheduleManager
+                        med={selected}
+                        onTimeline={() => setTimelineOpen(true)}
+                        focusRevisionId={focusRevisionId}
+                      />
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -782,7 +800,11 @@ export default function Medications() {
                           <Glp1RecentInjections med={selected} />
                         </>
                       )}
-                      <ScheduleManager med={selected} />
+                      <ScheduleManager
+                        med={selected}
+                        onTimeline={() => setTimelineOpen(true)}
+                        focusRevisionId={focusRevisionId}
+                      />
                     </div>
                   )}
                 </div>
@@ -790,6 +812,14 @@ export default function Medications() {
             </div>
           </div>
         </div>
+      )}
+
+      {timelineOpen && (
+        <MedicationCourseTimeline
+          medications={meds as MedicationDetail[]}
+          onClose={() => setTimelineOpen(false)}
+          onManage={manageTimelinePlan}
+        />
       )}
 
       {activeTab === 'symptoms' && (

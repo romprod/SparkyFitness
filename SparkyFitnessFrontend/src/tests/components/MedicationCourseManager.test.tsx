@@ -251,3 +251,36 @@ it('offers server-allowed Start for a completed current tip without requiring a 
   );
   expect(screen.getByText('Cycle action start')).toBeInTheDocument();
 });
+
+it('exposes the all-plan Timeline entry to read-only readers without enabling edits', () => {
+  mockWrite = false;
+  const onTimeline = jest.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MedicationCourseManager med={courseMedication} onTimeline={onTimeline} />
+    </QueryClientProvider>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+  expect(onTimeline).toHaveBeenCalledTimes(1);
+  expect(
+    screen.queryByRole('button', { name: 'Edit current course' })
+  ).not.toBeInTheDocument();
+});
+it('focuses the exact requested revision without opening an edit dialog', async () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <MedicationCourseManager
+        med={courseMedication}
+        focusRevisionId={mockCourses[0]!.revisions[0]!.id}
+      />
+    </QueryClientProvider>
+  );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      document.getElementById(
+        `course-revision-${mockCourses[0]!.revisions[0]!.id}`
+      )
+    )
+  );
+  expect(screen.queryByText('Course editor')).not.toBeInTheDocument();
+});

@@ -274,3 +274,44 @@ export function useMedicationCourseCycle(id: string, enabled = true) {
         : undefined,
   };
 }
+
+/** Read-only profile-wide timeline, requested only while its dialog is open. */
+export function useMedicationCourseTimeline(open: boolean) {
+  const scope = useMedicationCourseScope();
+  const client = useQueryClient();
+  useLayoutEffect(() => {
+    if (!open)
+      void client.cancelQueries({
+        queryKey: [
+          ...medicationCourseKeys.all,
+          scope.actorId,
+          scope.ownerId,
+          scope.generation,
+          'timeline',
+        ],
+        exact: true,
+      });
+  }, [open, client, scope.actorId, scope.ownerId, scope.generation]);
+  const query = useQuery({
+    queryKey: [
+      ...medicationCourseKeys.all,
+      scope.actorId,
+      scope.ownerId,
+      scope.generation,
+      'timeline',
+    ],
+    queryFn: ({ signal }) => {
+      if (!open || !scope.ready || !scope.isCurrent())
+        throw new Error('The active profile changed.');
+      return api.getMedicationCourseTimeline(scope.ownerId, signal);
+    },
+    enabled: open && scope.ready,
+    gcTime: Infinity,
+    retry: false,
+  });
+  return {
+    scope,
+    query,
+    data: open && scope.ready && scope.isCurrent() ? query.data : undefined,
+  };
+}

@@ -2,6 +2,7 @@ import express, { type RequestHandler } from 'express';
 import { z } from 'zod';
 import {
   medicationCourseDaySchema,
+  medicationCourseTimelineQuerySchema,
   medicationCourseCreateInputSchema,
   medicationCourseReviewInputSchema,
   medicationCourseReviseInputSchema,
@@ -15,6 +16,8 @@ import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
 import * as service from '../../services/medicationCourseService.js';
+import { getMedicationCourseTimeline } from '../../services/medicationCourseTimelineService.js';
+import { courseProblem } from '../../models/medicationCourseRepository.js';
 import * as cycles from '../../services/medicationCourseCycleService.js';
 const router = express.Router();
 router.use(
@@ -65,6 +68,21 @@ router.get(
   run(async (req, res) => {
     const query = dueSchema.parse(req.query);
     res.json(await service.getMedicationCourseDue(req.userId, query.date));
+  })
+);
+router.get(
+  '/timeline',
+  run(async (req, res) => {
+    const query = medicationCourseTimelineQuerySchema.parse(req.query);
+    if (query.expected_owner_id && query.expected_owner_id !== req.userId)
+      throw courseProblem(
+        'The active profile changed. Refresh this timeline request.'
+      );
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.json(await getMedicationCourseTimeline(req.userId));
   })
 );
 router.get(

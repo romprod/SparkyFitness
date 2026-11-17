@@ -108,7 +108,6 @@ import {
   dayToUtcRange,
   instantToDay,
   localDateTimeToUtc,
-  isDayString,
 } from '../utils/timezone.ts';
 import { courseEntryMatchesSlot } from './courseAdherence.ts';
 import {
@@ -123,6 +122,7 @@ import {
   coursePhaseForRevision,
 } from './coursePhaseContext.ts';
 import { isScheduleDueOnDate } from './schedules.ts';
+import { courseProjectionEligibility } from './courseProjectionEligibility.ts';
 const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 interface RawForecastSlot {
   date_basis_unknown?: boolean;
@@ -204,40 +204,20 @@ export function buildInventoryForecastPlan(
   const projectionViews = new Map<string, MedicationCourse>();
   if (input.forecast_mode === 'planned_cycles' && input.medication_active) {
     for (const course of input.courses) {
-      const revision = course.revisions.find(
-        (row) => row.id === course.current_revision_id
-      );
-      if (
-        course.deleted_at !== null ||
-        !revision ||
-        revision.deleted_at !== null ||
-        revision.status !== 'active' ||
-        course.revisions.some((row) => row.predecessor_id === revision.id)
-      )
-        continue;
-      const on = revision.course_cycle_on_weeks,
-        off = revision.course_cycle_off_weeks;
-      const anchor = revision.course_cycle_anchor_date;
-      if (
-        !on ||
-        !off ||
-        !Number.isInteger(on) ||
-        !Number.isInteger(off) ||
-        on < 1 ||
-        off < 1 ||
-        on > 104 ||
-        off > 104 ||
-        !anchor
-      )
-        continue;
       try {
-        const stop = addDays(anchor, on * 7 - 1),
-          restart = addDays(anchor, (on + off) * 7);
-        if (!isDayString(stop) || !isDayString(restart)) {
-          limitations.add('date_out_of_range');
-          continue;
-        }
-        if (revision.end_date !== stop) continue;
+        const eligible = courseProjectionEligibility({
+          course,
+          medicationActive: input.medication_active,
+        });
+        if (!eligible) continue;
+        const {
+          revision,
+          anchor_date: anchor,
+          committed_end_date: stop,
+          on_weeks: on,
+          off_weeks: off,
+          next_restart_date: restart,
+        } = eligible;
         assumptions.push({
           course_id: course.id,
           revision_id: revision.id,

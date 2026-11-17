@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -253,19 +253,33 @@ function CourseAction({
 
 export default function MedicationCourseManager({
   med,
+  onTimeline,
+  focusRevisionId,
 }: {
   med: MedicationDetail;
+  onTimeline?: () => void;
+  focusRevisionId?: string;
 }) {
   const result = useMedicationCourses(med.id);
   return result.scope.ready ? (
-    <CourseManagerContent key={result.scope.key} med={med} result={result} />
+    <CourseManagerContent
+      key={result.scope.key}
+      med={med}
+      result={result}
+      onTimeline={onTimeline}
+      focusRevisionId={focusRevisionId}
+    />
   ) : null;
 }
 function CourseManagerContent({
   med,
   result,
+  onTimeline,
+  focusRevisionId,
 }: {
   med: MedicationDetail;
+  onTimeline?: () => void;
+  focusRevisionId?: string;
   result: ReturnType<typeof useMedicationCourses>;
 }) {
   const { t } = useTranslation();
@@ -282,6 +296,14 @@ function CourseManagerContent({
   const [cycleAction, setCycleAction] = useState<
     (Selection & { kind: 'end' | 'start' }) | null
   >(null);
+  useEffect(() => {
+    if (!focusRevisionId || !scope.ready || !data) return;
+    const target = document.getElementById(
+      `course-revision-${focusRevisionId}`
+    );
+    target?.scrollIntoView?.({ block: 'center' });
+    target?.focus();
+  }, [focusRevisionId, scope.ready, data]);
   if (!scope.ready) return null;
   const rows =
     data?.courses.flatMap((course) =>
@@ -313,6 +335,16 @@ function CourseManagerContent({
       <CardHeader>
         <CardTitle className="text-base">
           {t('medications.courses.title', 'Versioned plans')}
+          {onTimeline && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-3"
+              onClick={onTimeline}
+            >
+              {t('medications.courses.timeline.entry', 'Timeline')}
+            </Button>
+          )}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
           {t(
@@ -400,6 +432,8 @@ function CourseManagerContent({
                 return (
                   <article
                     key={revision.id}
+                    id={`course-revision-${revision.id}`}
+                    tabIndex={-1}
                     aria-label={`${revision.name} — ${t('medications.courses.revisionNumber', 'Revision {{number}}', { number: revision.revision_no })}`}
                     className="space-y-2 rounded-md border p-3 text-sm"
                   >

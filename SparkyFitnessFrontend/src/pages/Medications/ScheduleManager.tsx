@@ -39,7 +39,15 @@ import {
 } from './medicationUtils';
 import type { MedicationDetail, MedicationSchedule } from '@/types/medications';
 
-export default function ScheduleManager({ med }: { med: MedicationDetail }) {
+export default function ScheduleManager({
+  med,
+  onTimeline,
+  focusRevisionId,
+}: {
+  med: MedicationDetail;
+  onTimeline?: () => void;
+  focusRevisionId?: string;
+}) {
   const { t } = useTranslation();
   const preferencesContext = usePreferences();
   const timezone =
@@ -544,7 +552,12 @@ export default function ScheduleManager({ med }: { med: MedicationDetail }) {
           )}
         </CardContent>
       </Card>
-      <MedicationCourseManager key={med.id} med={med} />
+      <MedicationCourseManager
+        key={med.id}
+        med={med}
+        onTimeline={onTimeline}
+        focusRevisionId={focusRevisionId}
+      />
     </>
   );
 }

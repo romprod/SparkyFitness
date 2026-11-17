@@ -56,7 +56,42 @@ jest.mock('@/pages/Medications/TodayMedications', () => ({
 }));
 jest.mock('@/pages/Medications/ScheduleManager', () => ({
   __esModule: true,
-  default: () => null,
+  default: ({
+    onTimeline,
+    focusRevisionId,
+  }: {
+    onTimeline?: () => void;
+    focusRevisionId?: string;
+  }) => (
+    <>
+      <button onClick={onTimeline}>Timeline test entry</button>
+      <p>Focused plan: {focusRevisionId}</p>
+    </>
+  ),
+}));
+jest.mock('@/pages/Medications/MedicationCourseTimeline', () => ({
+  __esModule: true,
+  default: ({
+    onManage,
+  }: {
+    onManage: (row: {
+      medication_id: string;
+      is_current_tip: boolean;
+      revision_id: string;
+    }) => void;
+  }) => (
+    <button
+      onClick={() =>
+        onManage({
+          medication_id: 'med',
+          is_current_tip: true,
+          revision_id: 'timeline-revision',
+        })
+      }
+    >
+      Manage exact timeline row
+    </button>
+  ),
 }));
 jest.mock('@/pages/Symptoms/SymptomsHub', () => ({
   __esModule: true,
@@ -327,4 +362,23 @@ it('hides Costs and makes no financial requests in a delegated profile', async (
       endpoint.startsWith('/v2/medication-purchases')
     )
   ).toBe(false);
+});
+
+it('returns timeline Manage to the exact Cabinet plan and clears the subtype filter', async () => {
+  localStorage.setItem('medications.subtypeFilter', 'meds');
+  open();
+  fireEvent.click(await screen.findByText('Synthetic injectable'));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Timeline test entry' })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Manage exact timeline row' })
+  );
+  expect(localStorage.getItem('medications.subtypeFilter')).toBe('all');
+  expect(
+    await screen.findByText('Focused plan: timeline-revision')
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Manage exact timeline row' })
+  ).not.toBeInTheDocument();
 });

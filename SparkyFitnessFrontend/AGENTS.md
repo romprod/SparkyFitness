@@ -234,3 +234,9 @@ I07 new web requests planned_cycles explicitly on forecast/dashboard and require
 Render server provenance and calendar fields without a client cycle engine. Reserve for-next-cycle copy for projected_restart first failure; a later committed shortage influenced by provisional consumption uses qualified planned-demand wording. Covered hypothetical demand also requires manual-restart qualification. Unknown dates remain unknown; do not invent a restart or auto-activate it. Existing Today, P07 action controls, queue proof/save/fresh-open behaviour, physical stock and owner-only defaults remain unchanged. No new navigation, notifications or native binary is included.
 
 Show each plan's server-supplied name and captured timezone. Keep authored cycle dates separate from forecast-calendar dates; unavailable projection dates are not no demand. Planned-only unknown_projection_date retains demand but removes exact date/urgency claims. Do not calculate overdue/restart dates or insert a time for an untimed rule in the browser.
+
+## Selected P08 course-window timeline
+
+P08 is implemented and source-tested within Cabinet/versioned plans. Render aligned authored course windows with advisory break and eligible hypothetical-cycle labels; the source reference uses a fixed 140-day/20-week window including past context. Show lifecycle/unknown states truthfully and label overlap as planned/provisional rather than taken together or actual exposure. Do not turn these bars into dose/titration-phase bars.
+
+Use existing reviewed edit navigation, permission and profile-generation guards. No direct timeline writes, dragging, new cycle-anchor controls, DEXA markers or A02 actual-dose calendar are selected. Preserve current Today, I07 forecasts, preparation queue and theme/layout. Final App checks must include narrow-screen and keyboard access without using the owner browser.
