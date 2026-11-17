@@ -80,6 +80,7 @@ export default function MedicationPrescriptionForm({
   const register = useMedicationPrescriptions();
   const detail = useMedicationPrescription(initial?.id, !!initial);
   const [base, setBase] = useState(initial);
+  const [costTouched, setCostTouched] = useState(false);
   const [draft, setDraft] = useState(() =>
     seed(initial, fixedMedicationId ?? medications[0]?.id ?? '')
   );
@@ -93,6 +94,7 @@ export default function MedicationPrescriptionForm({
   const change = (key: keyof typeof draft, value: string) => {
     if (locked) return;
     attempt.current = null;
+    if (key === 'cost') setCostTouched(true);
     setDraft((old) => ({ ...old, [key]: value }));
     setMessage('');
   };
@@ -108,9 +110,15 @@ export default function MedicationPrescriptionForm({
     if (!attempt.current) {
       const { medication_id, ...fields } = draft;
       const operation_id = crypto.randomUUID();
+      const basis = costTouched
+        ? { cost_basis: fields.cost.trim() ? ('per_vial' as const) : null }
+        : base?.cost_basis === 'per_vial' && fields.cost.trim()
+          ? { cost_basis: 'per_vial' as const }
+          : {};
       if (base) {
         const parsed = medicationPrescriptionUpdateSchema.safeParse({
           ...fields,
+          ...basis,
           operation_id,
           expected_version: base.version,
         });
@@ -129,6 +137,7 @@ export default function MedicationPrescriptionForm({
       } else {
         const parsed = medicationPrescriptionCreateSchema.safeParse({
           ...fields,
+          ...basis,
           medication_id,
           operation_id,
         });
@@ -207,6 +216,7 @@ export default function MedicationPrescriptionForm({
       if (fresh.isSuccess && fresh.data?.prescription) {
         setBase(fresh.data.prescription);
         setDraft(seed(fresh.data.prescription, ''));
+        setCostTouched(false);
         attempt.current = null;
         setStale(false);
         setMessage('');
@@ -235,6 +245,13 @@ export default function MedicationPrescriptionForm({
         type={type}
         inputMode={inputMode}
         onChange={(event) => change(key, event.target.value)}
+        onInput={
+          key === 'cost'
+            ? () => {
+                if (!locked) setCostTouched(true);
+              }
+            : undefined
+        }
       />
     </div>
   );
@@ -301,6 +318,17 @@ export default function MedicationPrescriptionForm({
               )}
             </select>
           </div>
+          {base?.cost !== null &&
+            base?.cost !== undefined &&
+            base.cost_basis !== 'per_vial' &&
+            !costTouched && (
+              <p className="text-sm text-muted-foreground">
+                {t(
+                  'medications.costEstimates.unconfirmedHelp',
+                  'This existing cost has no confirmed per-vial basis. Re-enter the cost to use it as an estimate; editing other fields does not confirm it.'
+                )}
+              </p>
+            )}
           <div className="grid gap-3 sm:grid-cols-2">
             {field('source', t('medications.prescriptions.source', 'Source'))}
             {field(
@@ -317,7 +345,7 @@ export default function MedicationPrescriptionForm({
             )}
             {field(
               'cost',
-              t('medications.prescriptions.cost', 'Cost'),
+              t('medications.costEstimates.costPerVial', 'Cost per vial'),
               'text',
               'decimal'
             )}

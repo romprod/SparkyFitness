@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import {
   useMutation,
   useQuery,
@@ -36,6 +36,27 @@ export const medicationPurchaseKeys = {
   list: (owner: string) => ['medication-purchases', owner, 'list'] as const,
   detail: (owner: string, id: string) =>
     ['medication-purchases', owner, 'detail', id] as const,
+  analyticsWithPrescriptionEstimates: (
+    owner: string,
+    window: MedicationCostWindow,
+    generation: number
+  ) =>
+    [
+      'medication-purchases',
+      owner,
+      'analytics',
+      window,
+      'with_prescription_estimates',
+      generation,
+    ] as const,
+  vialsWithPrescriptionEstimates: (owner: string, generation: number) =>
+    [
+      'medication-purchases',
+      owner,
+      'vials',
+      'with_prescription_estimates',
+      generation,
+    ] as const,
   editor: (owner: string, id?: string) =>
     ['medication-purchases', owner, 'editor', id ?? 'new'] as const,
   vials: (owner: string) => ['medication-purchases', owner, 'vials'] as const,
@@ -96,6 +117,8 @@ export const useMedicationPurchaseScope = () => {
   );
   return {
     ownerId: user?.id ?? '',
+    generation: identityGeneration(user),
+    key: identityKey.join(':'),
     ready,
     isCurrent: () => current() && liveIdentity.current === user,
   };
@@ -130,13 +153,40 @@ export const useMedicationPurchaseEditor = (
     queryFn: () => api.getMedicationPurchaseEditorData(owner, id),
     enabled,
   });
-export const useMedicationVialCosts = (owner: string, enabled: boolean) =>
-  useQuery({
+export const useMedicationVialCosts = (owner: string, enabled: boolean) => {
+  const scope = useMedicationPurchaseScope();
+  const allowed = enabled && scope.ready && scope.ownerId === owner;
+  const client = useQueryClient();
+  const queryKey = useMemo(
+    () =>
+      medicationPurchaseKeys.vialsWithPrescriptionEstimates(
+        owner,
+        scope.generation
+      ),
+    [owner, scope.generation]
+  );
+  useLayoutEffect(() => {
+    if (!allowed) void client.cancelQueries({ queryKey, exact: true });
+  }, [allowed, client, queryKey]);
+  const query = useQuery({
     gcTime: Infinity,
-    queryKey: medicationPurchaseKeys.vials(owner),
-    queryFn: () => api.getMedicationVialCosts(owner),
-    enabled,
+    queryKey,
+    queryFn: ({ signal }) => {
+      if (!allowed || !scope.isCurrent())
+        throw new Error('The active profile changed.');
+      return api.getMedicationVialCostsWithPrescriptionEstimates(owner, signal);
+    },
+    enabled: allowed,
   });
+  return {
+    ...query,
+    data:
+      allowed && scope.isCurrent() && !query.isPlaceholderData
+        ? query.data
+        : undefined,
+  };
+};
+
 export const useSaveMedicationPurchase = () => {
   const client = useQueryClient();
   return useMutation({
@@ -174,14 +224,44 @@ export const useMedicationCostAnalytics = (
   owner: string,
   window: MedicationCostWindow,
   enabled: boolean
-) =>
-  useQuery({
-    queryKey: medicationPurchaseKeys.analytics(owner, window),
-    queryFn: ({ signal }) =>
-      api.getMedicationCostAnalytics(owner, window, signal),
-    enabled,
+) => {
+  const scope = useMedicationPurchaseScope();
+  const allowed = enabled && scope.ready && scope.ownerId === owner;
+  const client = useQueryClient();
+  const queryKey = useMemo(
+    () =>
+      medicationPurchaseKeys.analyticsWithPrescriptionEstimates(
+        owner,
+        window,
+        scope.generation
+      ),
+    [owner, window, scope.generation]
+  );
+  useLayoutEffect(() => {
+    if (!allowed) void client.cancelQueries({ queryKey, exact: true });
+  }, [allowed, client, queryKey]);
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => {
+      if (!allowed || !scope.isCurrent())
+        throw new Error('The active profile changed.');
+      return api.getMedicationCostAnalyticsWithPrescriptionEstimates(
+        owner,
+        window,
+        signal
+      );
+    },
+    enabled: allowed,
     gcTime: Infinity,
   });
+  return {
+    ...query,
+    data:
+      allowed && scope.isCurrent() && !query.isPlaceholderData
+        ? query.data
+        : undefined,
+  };
+};
 
 /** Refresh derived financial data without invalidating authoritative identity proof. */
 export const invalidateMedicationPurchaseData = (

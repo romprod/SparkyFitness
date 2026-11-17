@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import MedicationCostBreakdown from './MedicationCostBreakdown';
+import MedicationPrescriptionEstimates, {
+  PrescriptionAccountedLines,
+} from './MedicationPrescriptionEstimates';
 
 export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
   const { t } = useTranslation();
@@ -33,6 +36,7 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
   );
   return (
     <>
+      {data && <MedicationPrescriptionEstimates buckets={data.accounted} />}
       <Card>
         <CardHeader className="space-y-3">
           <CardTitle>
@@ -60,7 +64,7 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
           <p className="text-xs text-muted-foreground">
             {t(
               'medications.costReport.note',
-              'Rates use current purchase and vial label data. Uncosted doses are excluded.'
+              'Rates use current invoice or confirmed stock-linked prescription prices and vial label data. Prescription estimates exclude shipping; uncosted doses are excluded.'
             )}
           </p>
         </CardHeader>
@@ -126,7 +130,10 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
                         {t('medications.costs.medication', 'Medication')}
                       </th>
                       <th className="min-w-24 p-3 text-right font-medium">
-                        {t('medications.costReport.spend', 'Spend')}
+                        {t(
+                          'medications.costEstimates.invoiceSpend',
+                          'Invoice spend'
+                        )}
                       </th>
                       <th className="min-w-24 p-3 text-right font-medium">
                         {t('medications.costReport.perDose', 'Per dose')}
@@ -156,6 +163,16 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
                               }
                             )}
                           </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            {t(
+                              'medications.costEstimates.usageSources',
+                              '{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates',
+                              {
+                                invoice: row.usage_sources.invoice,
+                                prescription: row.usage_sources.prescription,
+                              }
+                            )}
+                          </span>
                         </td>
                         <td className="p-3 text-right tabular-nums">
                           <span
@@ -175,6 +192,15 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
                           </span>
                           {row.spend_mixed_currency && (
                             <span className="sr-only">{mixedSpend}</span>
+                          )}
+                          {row.accounted.some(
+                            (bucket) => bucket.estimated_vials > 0
+                          ) && (
+                            <div className="mt-2">
+                              <PrescriptionAccountedLines
+                                buckets={row.accounted}
+                              />
+                            </div>
                           )}
                         </td>
                         <td className="p-3 text-right tabular-nums">

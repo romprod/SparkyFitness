@@ -1,3 +1,7 @@
+import {
+  prescriptionCostBasis,
+  type PrescriptionCostBasis,
+} from '../services/medicationPrescriptionCostBasis.js';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import {
@@ -31,6 +35,13 @@ interface Envelope {
   iv: string | null;
   tag: string | null;
 }
+interface LockedPrescriptionCost {
+  medication_id: string | null;
+  version: number;
+  cost: string | null;
+  currency: string;
+  cost_basis: PrescriptionCostBasis;
+}
 const privateFields = [
   'source',
   'prescriber',
@@ -58,7 +69,7 @@ type Stored = Omit<MedicationPrescription, PrivateField | 'medication_name'> & {
   dose_instructions_encrypted: Envelope | null;
 };
 const cols =
-  'p.id,p.user_id,p.medication_id,COALESCE(CASE WHEN length(m.display_name)>0 THEN m.display_name END,m.name,p.medication_name_snapshot) AS medication_name,p.source_encrypted,p.prescriber_encrypted,p.pharmacy_encrypted,p.dose_instructions_encrypted,p.cost::text,p.currency,p.quantity,p.refills_authorized,p.refills_remaining,p.date_written::text,p.next_refill::text,p.expiration::text,p.lead_time_days,p.status,p.version,p.created_at::text,p.updated_at::text';
+  'p.id,p.user_id,p.medication_id,p.cost_basis,COALESCE(CASE WHEN length(m.display_name)>0 THEN m.display_name END,m.name,p.medication_name_snapshot) AS medication_name,p.source_encrypted,p.prescriber_encrypted,p.pharmacy_encrypted,p.dose_instructions_encrypted,p.cost::text,p.currency,p.quantity,p.refills_authorized,p.refills_remaining,p.date_written::text,p.next_refill::text,p.expiration::text,p.lead_time_days,p.status,p.version,p.created_at::text,p.updated_at::text';
 const encode = async (value: string | null): Promise<Envelope | null> =>
   value ? ((await encrypt(value, ENCRYPTION_KEY)) as Envelope) : null;
 const decode = async (value: Envelope | null): Promise<string | null> =>
@@ -83,6 +94,7 @@ async function read(
     result.rows.map(async (row) => {
       const {
         source_encrypted,
+        cost_basis,
         prescriber_encrypted,
         pharmacy_encrypted,
         dose_instructions_encrypted,
@@ -90,6 +102,9 @@ async function read(
       } = row;
       return {
         ...visible,
+        ...(cost_basis === null || cost_basis === undefined
+          ? {}
+          : { cost_basis }),
         created_at: new Date(visible.created_at).toISOString(),
         updated_at: new Date(visible.updated_at).toISOString(),
         source: await decode(source_encrypted),
@@ -171,10 +186,10 @@ async function lockParents(
   owner: string,
   id: string | undefined,
   medicationId?: string
-): Promise<{ medication_id: string | null; version: number } | null> {
+): Promise<LockedPrescriptionCost | null> {
   const initial = id
-    ? await client.query<{ medication_id: string | null; version: number }>(
-        'SELECT medication_id,version FROM medication_prescriptions WHERE user_id=$1 AND id=$2',
+    ? await client.query<LockedPrescriptionCost>(
+        'SELECT medication_id,version,cost::text,currency,cost_basis FROM medication_prescriptions WHERE user_id=$1 AND id=$2',
         [owner, id]
       )
     : null;
@@ -207,11 +222,8 @@ async function lockParents(
       'SELECT id FROM medication_pens WHERE user_id=$1 AND prescription_id=$2 ORDER BY id FOR UPDATE',
       [owner, id]
     );
-    const locked = await client.query<{
-      medication_id: string | null;
-      version: number;
-    }>(
-      'SELECT medication_id,version FROM medication_prescriptions WHERE user_id=$1 AND id=$2 FOR UPDATE',
+    const locked = await client.query<LockedPrescriptionCost>(
+      'SELECT medication_id,version,cost::text,currency,cost_basis FROM medication_prescriptions WHERE user_id=$1 AND id=$2 FOR UPDATE',
       [owner, id]
     );
     if (
@@ -298,6 +310,7 @@ export async function createMedicationPrescription(
         'medication_name_snapshot',
         ...privateFields.map((f) => f + '_encrypted'),
         ...publicFields,
+        'cost_basis',
       ];
       const values: unknown[] = [
         id,
@@ -316,6 +329,7 @@ export async function createMedicationPrescription(
                 ? 'active'
                 : null)
         );
+      values.push(prescriptionCostBasis(data));
       await c.query(
         `INSERT INTO medication_prescriptions(${fields.join(',')}) VALUES(${values.map((_, i) => '$' + (i + 1)).join(',')})`,
         values
@@ -357,6 +371,14 @@ export async function updateMedicationPrescription(
           values.push(data[field]);
           setters.push(field + '=$' + values.length);
         }
+      values.push(
+        prescriptionCostBasis(data, {
+          cost: old!.cost,
+          currency: old!.currency,
+          cost_basis: old!.cost_basis,
+        })
+      );
+      setters.push('cost_basis=$' + values.length);
       await c.query(
         `UPDATE medication_prescriptions SET ${[...setters, 'version=version+1', 'updated_at=NOW()'].join(',')} WHERE user_id=$1 AND id=$2 AND version=$3`,
         values

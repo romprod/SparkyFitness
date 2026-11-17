@@ -54,7 +54,15 @@ describe('private manual prescription transactions', () => {
         : sql.startsWith('SELECT COALESCE')
           ? [{ name: 'Synthetic name' }]
           : sql.includes('SELECT medication_id,version')
-            ? [{ medication_id: med, version: 1 }]
+            ? [
+                {
+                  medication_id: med,
+                  version: 1,
+                  cost: null,
+                  currency: 'AUD',
+                  cost_basis: null,
+                },
+              ]
             : [],
     }));
   });
@@ -163,7 +171,15 @@ describe('private manual prescription transactions', () => {
       rows: sql.includes('SELECT DISTINCT c.id')
         ? [{ id: 'course' }]
         : sql.includes('SELECT medication_id,version')
-          ? [{ medication_id: med, version: 1 }]
+          ? [
+              {
+                medication_id: med,
+                version: 1,
+                cost: null,
+                currency: 'AUD',
+                cost_basis: null,
+              },
+            ]
           : sql.startsWith('SELECT id FROM medications')
             ? [{ id: med }]
             : [],
@@ -267,5 +283,64 @@ describe('private manual prescription transactions', () => {
     });
     expect(Object.hasOwn(result, 'prescription_id')).toBe(false);
     expect(plan.prescription_id).toBeNull();
+  });
+  it.each([null, 'per_vial'] as const)(
+    'omits nullable basis from old-compatible public rows, exposes only confirmed marker %s',
+    async (basis) => {
+      mocks.query.mockResolvedValue({
+        rows: [
+          {
+            id,
+            medication_id: med,
+            user_id: owner,
+            medication_name: 'Synthetic',
+            cost_basis: basis,
+            cost: '5',
+            currency: 'AUD',
+            created_at: '2026-11-17T12:00Z',
+            updated_at: '2026-11-17T12:00Z',
+            source_encrypted: null,
+            prescriber_encrypted: null,
+            pharmacy_encrypted: null,
+            dose_instructions_encrypted: null,
+          },
+        ],
+      });
+      const rows = await listMedicationPrescriptions(owner);
+      expect(Object.hasOwn(rows[0]!, 'cost_basis')).toBe(basis !== null);
+      if (basis !== null) expect(rows[0]?.cost_basis).toBe('per_vial');
+      expect(rows[0]).not.toHaveProperty('source_encrypted');
+    }
+  );
+  it('retains cost confirmation intent in operation receipts instead of treating it as an unrelated retry', async () => {
+    let saved: { request_hash: string; result: unknown } | null = null;
+    const original = mocks.query.getMockImplementation()!;
+    mocks.query.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (sql.includes('SELECT request_hash,result'))
+        return { rows: saved ? [saved] : [] };
+      if (sql.startsWith('INSERT INTO medication_prescription_operations')) {
+        saved = {
+          request_hash: values![2] as string,
+          result: JSON.parse(values![3] as string),
+        };
+        return { rows: [] };
+      }
+      return original(sql);
+    });
+    const legacy = medicationPrescriptionCreateSchema.parse({
+      operation_id: op,
+      medication_id: med,
+      cost: '5',
+    });
+    const result = await createMedicationPrescription(owner, legacy);
+    expect(await createMedicationPrescription(owner, legacy)).toEqual(result);
+    await expect(
+      createMedicationPrescription(owner, { ...legacy, cost_basis: 'per_vial' })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(
+      mocks.query.mock.calls.filter(([sql]) =>
+        sql.startsWith('INSERT INTO medication_prescriptions(')
+      )
+    ).toHaveLength(1);
   });
 });

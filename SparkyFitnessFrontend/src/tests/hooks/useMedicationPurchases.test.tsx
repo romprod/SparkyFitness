@@ -15,7 +15,7 @@ jest.mock('@/hooks/useAuth', () => ({
 jest.mock('@/api/Medications/purchaseService', () => ({
   listMedicationPurchases: jest.fn(),
   getMedicationPurchaseIdentity: jest.fn(),
-  getMedicationCostAnalytics: jest.fn(),
+  getMedicationCostAnalyticsWithPrescriptionEstimates: jest.fn(),
 }));
 const list = jest.mocked(api.listMedicationPurchases);
 function Probe() {
@@ -33,12 +33,19 @@ function Probe() {
 beforeEach(() => {
   mockUser = { id: 'owner', activeUserId: 'owner' };
   list.mockReset();
-  jest.mocked(api.getMedicationCostAnalytics).mockReset();
-  jest.mocked(api.getMedicationCostAnalytics).mockResolvedValue({
-    window: { key: '12', from_date: '2025-11-15', to_date: '2026-11-15' },
-    rows: [],
-    ...emptyCostBreakdown,
-  });
+  jest
+    .mocked(api.getMedicationCostAnalyticsWithPrescriptionEstimates)
+    .mockReset();
+  jest
+    .mocked(api.getMedicationCostAnalyticsWithPrescriptionEstimates)
+    .mockResolvedValue({
+      window: { key: '12', from_date: '2025-11-15', to_date: '2026-11-15' },
+      rows: [],
+      cost_basis: 'with_prescription_estimates',
+      accounted: [],
+      ...emptyCostBreakdown,
+      waste: { ...emptyCostBreakdown.waste, rows: [] },
+    });
   list.mockResolvedValue({ purchases: [] });
   jest.mocked(api.getMedicationPurchaseIdentity).mockReset();
   jest
@@ -60,7 +67,9 @@ it('never requests financial endpoints while acting for another profile', () => 
   );
   expect(screen.getByText('private')).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
 });
 it('drops financial readiness synchronously on clear before active identity has refreshed', async () => {
   const client = new QueryClient({
@@ -107,7 +116,9 @@ it('waits for delayed authoritative self identity before any financial request',
   );
   expect(screen.getByText('private')).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
   await act(async () =>
     resolve({ authenticatedUserId: 'owner', activeUserId: 'owner' })
   );
@@ -134,13 +145,17 @@ it('makes zero financial requests when a self-looking session resolves to a dele
     </QueryClientProvider>
   );
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
   await act(async () =>
     resolve({ authenticatedUserId: 'owner', activeUserId: 'delegate' })
   );
   expect(screen.getByText('private')).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
 });
 
 it('fails closed when identity verification is unavailable', async () => {
@@ -159,7 +174,9 @@ it('fails closed when identity verification is unavailable', async () => {
     expect(client.getQueryCache().getAll()[0]?.state.status).toBe('error')
   );
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
   expect(screen.getByText('private')).toBeInTheDocument();
 });
 
@@ -189,7 +206,9 @@ it('ignores a late identity result after clear until a fresh identity generation
   rerender(tree());
   expect(screen.getByText('private')).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
   mockUser = { id: 'owner', activeUserId: 'owner' };
   rerender(tree());
   await screen.findByText('ready:0');
@@ -215,5 +234,7 @@ it('does not accept proof for a different authenticated account', async () => {
   );
   expect(screen.getByText('private')).toBeInTheDocument();
   expect(list).not.toHaveBeenCalled();
-  expect(api.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  expect(
+    api.getMedicationCostAnalyticsWithPrescriptionEstimates
+  ).not.toHaveBeenCalled();
 });

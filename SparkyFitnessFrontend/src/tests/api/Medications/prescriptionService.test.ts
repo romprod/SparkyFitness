@@ -268,3 +268,37 @@ it('propagates stale CAS failure once without retry, version changes or a replac
   ).rejects.toBe(conflict);
   expect(request).toHaveBeenCalledTimes(1);
 });
+
+it('preserves only explicit per-vial basis input and keeps unrelated sparse updates unconfirmed', async () => {
+  request.mockResolvedValue(receipt);
+  const confirmed = {
+    operation_id: courseIds.step,
+    medication_id: courseIds.med,
+    cost: '0.0000',
+    cost_basis: 'per_vial' as const,
+  };
+  await service.createMedicationPrescription(courseIds.owner, confirmed);
+  expect(request.mock.calls[0]![1]!.body).toBe(confirmed);
+  const unrelated = { ...deleteBody, prescriber: 'Example clinician' };
+  await service.updateMedicationPrescription(
+    courseIds.owner,
+    courseIds.legacy,
+    unrelated
+  );
+  expect(request.mock.calls[1]![1]!.body).toBe(unrelated);
+  expect(request.mock.calls[1]![1]!.body).not.toHaveProperty('cost_basis');
+  expect(request.mock.calls[1]![1]!.body).not.toHaveProperty('cost');
+});
+it('accepts the optional confirmed basis response while retaining old unconfirmed marker omission', async () => {
+  request.mockResolvedValueOnce({
+    prescription: { ...row(), cost_basis: 'per_vial' },
+  });
+  await expect(
+    service.getMedicationPrescription(courseIds.owner, courseIds.legacy)
+  ).resolves.toEqual({ prescription: { ...row(), cost_basis: 'per_vial' } });
+  request.mockResolvedValueOnce({ prescription: row() });
+  expect(
+    (await service.getMedicationPrescription(courseIds.owner, courseIds.legacy))
+      .prescription
+  ).not.toHaveProperty('cost_basis');
+});

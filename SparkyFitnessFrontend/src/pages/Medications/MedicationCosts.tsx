@@ -166,7 +166,7 @@ function OwnedCosts({
             <p className="text-sm text-muted-foreground">
               {t(
                 'medications.costs.emptyHint',
-                'Add an order and match the vials it bought. Vials without an invoice remain uncosted.'
+                'Add an invoice to record purchase spend. Confirmed stock-linked prescription estimates can still appear in the report above.'
               )}
             </p>
           </CardContent>
@@ -287,7 +287,7 @@ function OwnedCosts({
           <p className="text-sm">
             {t(
               'medications.costs.deleteHint',
-              'The vials are kept and become uncosted.'
+              'The vials are kept. Costs are recalculated from eligible linked prescriptions; otherwise they become uncosted.'
             )}
           </p>
           {deleteError && (

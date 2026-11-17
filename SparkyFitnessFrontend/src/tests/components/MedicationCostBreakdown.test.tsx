@@ -193,3 +193,32 @@ it('keeps unvalued closed vials out of the six-value list while explaining exclu
     screen.getByText('Showing six eligible closed vials.')
   ).toBeInTheDocument();
 });
+
+it('labels estimate-valued waste while keeping monthly cash invoice-only', () => {
+  const value = report();
+  const estimate = {
+    ...value,
+    cost_basis: 'with_prescription_estimates' as const,
+    waste: {
+      ...value.waste,
+      rows: value.waste.rows.map((row) => ({
+        ...row,
+        cost_source: 'prescription' as const,
+      })),
+    },
+  };
+  render(<MedicationCostBreakdown data={estimate} />);
+  expect(
+    screen.getByText(
+      /Monthly bars and invoice totals show recorded invoice cash only/
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText('Prescription estimate · no shipping')
+  ).toBeInTheDocument();
+  expect(
+    within(
+      screen.getByRole('region', { name: 'Monthly invoice spend' })
+    ).getByText('GBP 115.00')
+  ).toBeInTheDocument();
+});

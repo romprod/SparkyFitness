@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '@/api/Medications/prescriptionService';
+import { invalidateMedicationPurchaseData } from '@/hooks/useMedicationPurchases';
 import {
   medicationCourseKeys,
   useMedicationCourseScope,
@@ -118,6 +119,7 @@ export function useMedicationPrescriptionActions(
     guard();
     const result = await operation();
     guard();
+    void invalidateMedicationPurchaseData(client);
     void client.invalidateQueries({ queryKey: prescriptionKeys });
     if (detach) {
       void client.invalidateQueries({ queryKey: ['medication-pens'] });

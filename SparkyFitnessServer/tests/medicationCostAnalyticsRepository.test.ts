@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   getClient: vi.fn(),
   assertOwner: vi.fn(),
   build: vi.fn(),
+  estimates: vi.fn(),
+  vialEstimates: vi.fn(),
 }));
 vi.mock('../db/poolManager.js', () => ({ getClient: mocks.getClient }));
 vi.mock('../models/medicationPurchaseRepository.js', () => ({
@@ -13,8 +15,14 @@ vi.mock('../models/medicationPurchaseRepository.js', () => ({
 vi.mock('@workspace/shared', async (original) => ({
   ...(await original<typeof import('@workspace/shared')>()),
   buildMedicationCostAnalytics: mocks.build,
+  buildMedicationPrescriptionCostAnalytics: mocks.estimates,
+  buildMedicationVialCostEstimates: mocks.vialEstimates,
 }));
-import { getMedicationCostAnalytics } from '../models/medicationCostAnalyticsRepository.js';
+import {
+  getMedicationCostAnalytics,
+  getMedicationPrescriptionVialCosts,
+  loadMedicationPrescriptionFinancialSnapshot,
+} from '../models/medicationCostAnalyticsRepository.js';
 describe('owner cost analytics snapshot projection', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -24,6 +32,14 @@ describe('owner cost analytics snapshot projection', () => {
     });
     mocks.query.mockResolvedValue({ rows: [] });
     mocks.build.mockReturnValue({ rows: [] });
+    mocks.estimates.mockReturnValue({
+      cost_basis: 'with_prescription_estimates',
+      rows: [],
+    });
+    mocks.vialEstimates.mockReturnValue({
+      cost_basis: 'with_prescription_estimates',
+      vials: [],
+    });
   });
   it('projects exact consumable metadata and closed stock with all lifetime doses under one read-only snapshot', async () => {
     const line = {
@@ -105,6 +121,12 @@ describe('owner cost analytics snapshot projection', () => {
         doses: [dose],
       })
     );
+    expect(
+      mocks.query.mock.calls.some(([sql]) =>
+        String(sql).includes('medication_prescriptions')
+      )
+    ).toBe(false);
+    expect(mocks.estimates).not.toHaveBeenCalled();
     expect(mocks.release).toHaveBeenCalledOnce();
   });
   it('rejects non-owner context before acquiring a database connection', async () => {
@@ -124,6 +146,76 @@ describe('owner cost analytics snapshot projection', () => {
       'invalid projection'
     );
     expect(mocks.query.mock.calls.at(-1)).toEqual(['ROLLBACK']);
+    expect(mocks.release).toHaveBeenCalledOnce();
+  });
+  it('loads only explicit linked financial facts with the supplied client and no clinical text/decryption', async () => {
+    const row = {
+      id: 'rx',
+      medication_id: 'med',
+      cost: '0',
+      currency: 'GBP',
+      date_written: null,
+      cost_basis: 'per_vial',
+    };
+    mocks.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('FROM medication_prescriptions r') ? [row] : [],
+    }));
+    const client = { query: mocks.query } as unknown as import('pg').PoolClient;
+    expect(
+      (await loadMedicationPrescriptionFinancialSnapshot(client, 'owner'))
+        .prescriptions
+    ).toEqual([row]);
+    expect(mocks.getClient).not.toHaveBeenCalled();
+    expect(mocks.release).not.toHaveBeenCalled();
+    for (const [sql, parameters] of mocks.query.mock.calls) {
+      expect(sql).toMatch(/^SELECT/);
+      expect(sql).not.toMatch(
+        /encrypted|prescriber|pharmacy|dose_instructions|source|FOR UPDATE/
+      );
+      expect(parameters).toEqual(['owner']);
+    }
+    const query = mocks.query.mock.calls.find(([sql]) =>
+      sql.includes('FROM medication_prescriptions r')
+    )![0];
+    expect(query).toContain('p.prescription_id=r.id');
+    expect(query).toContain('p.user_id=r.user_id');
+    expect(query).toContain('p.medication_id=r.medication_id');
+    expect(query).toContain("p.kind='vial'");
+  });
+  it('keeps all opt-in inputs and projection on one read-only snapshot with an explicit echo', async () => {
+    const result = await getMedicationCostAnalytics(
+      'owner',
+      'all',
+      new Date('2026-11-17T12:00Z'),
+      'with_prescription_estimates'
+    );
+    expect(result).toMatchObject({ cost_basis: 'with_prescription_estimates' });
+    expect(mocks.build).not.toHaveBeenCalled();
+    expect(mocks.estimates).toHaveBeenCalledWith(
+      expect.objectContaining({ prescriptions: [] })
+    );
+    expect(mocks.query.mock.calls[0]![0]).toBe(
+      'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'
+    );
+    expect(mocks.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(mocks.getClient).toHaveBeenCalledOnce();
+  });
+  it('uses the same canonical resolver wrapper for opt-in vial badges without reading dose/clinical rows', async () => {
+    expect(await getMedicationPrescriptionVialCosts('owner')).toEqual({
+      cost_basis: 'with_prescription_estimates',
+      vials: [],
+    });
+    expect(mocks.vialEstimates).toHaveBeenCalledWith({
+      vials: [],
+      invoice_prices: [],
+      prescriptions: [],
+    });
+    expect(
+      mocks.query.mock.calls.some(([sql]) =>
+        /injection_entries|medication_entries|encrypted/.test(sql)
+      )
+    ).toBe(false);
+    expect(mocks.getClient).toHaveBeenCalledOnce();
     expect(mocks.release).toHaveBeenCalledOnce();
   });
 });

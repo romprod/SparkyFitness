@@ -80,7 +80,9 @@ it('shows all stored statuses without filters and preserves known zero versus un
     <MedicationPrescriptions medications={[courseMedication]} />
   );
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
-  expect(screen.getByText(/Cost: AUD 0.00/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Recorded cost \(basis unconfirmed\): AUD 0.00/)
+  ).toBeInTheDocument();
   expect(screen.getByText('Refills remaining: 0 / 0')).toBeInTheDocument();
   expect(screen.getByText('Known deleted target')).toBeInTheDocument();
   expect(view.container.querySelector('details')).not.toHaveAttribute('open');

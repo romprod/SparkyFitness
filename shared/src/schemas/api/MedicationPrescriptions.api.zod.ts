@@ -63,6 +63,7 @@ export const medicationPrescriptionStatusSchema = z.enum([
   'cancelled',
 ]);
 const fields = z.object({
+  cost_basis: z.literal('per_vial').nullable().optional(),
   source: text,
   prescriber: text,
   pharmacy: text,
@@ -87,7 +88,15 @@ export const medicationPrescriptionQuerySchema = z
   .strict();
 export const medicationPrescriptionCreateSchema = fields
   .extend({ operation_id: uuid, medication_id: uuid })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.cost_basis === 'per_vial' && value.cost === null)
+      context.addIssue({
+        code: 'custom',
+        path: ['cost'],
+        message: 'Confirm per-vial basis with an explicit cost',
+      });
+  });
 /** Partial updates retain omitted fields; only an identical target may be echoed. */
 export const medicationPrescriptionUpdateSchema = fields
   .partial()
@@ -97,7 +106,18 @@ export const medicationPrescriptionUpdateSchema = fields
     expected_version: version,
     medication_id: uuid.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.cost_basis === 'per_vial' &&
+      (value.cost === undefined || value.cost === null)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['cost'],
+        message: 'Confirm per-vial basis with an explicit cost',
+      });
+  });
 export const medicationPrescriptionDeleteSchema = z
   .object({ operation_id: uuid, expected_version: version })
   .strict();
@@ -121,6 +141,7 @@ export const medicationPrescriptionSchema = z
           value === null ||
           (value.trim() !== '' && normalizePurchaseDecimal(value) !== null)
       ),
+    cost_basis: z.literal('per_vial').nullable().optional(),
     currency: z.string().min(1),
     quantity: count.nullable(),
     refills_authorized: count.nullable(),

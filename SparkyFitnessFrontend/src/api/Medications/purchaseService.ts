@@ -1,5 +1,9 @@
 import {
   medicationCostAnalyticsSchema,
+  medicationPrescriptionCostAnalyticsSchema,
+  medicationPrescriptionCostAnalyticsQuerySchema,
+  medicationPrescriptionVialCostsSchema,
+  medicationPrescriptionVialCostsQuerySchema,
   type MedicationCostWindow,
 } from '@workspace/shared';
 import { apiCall } from '@/api/api';
@@ -80,6 +84,40 @@ export const getMedicationCostAnalytics = async (
     await apiCall(`${base}/analytics`, {
       method: 'GET',
       params: { expected_owner_id: ownerId, window },
+      signal,
+      suppressErrorToast: true,
+    })
+  );
+
+/** Expanded owner read; legacy omitted-mode service methods remain invoice-only. */
+export const getMedicationCostAnalyticsWithPrescriptionEstimates = async (
+  ownerId: string,
+  window: MedicationCostWindow,
+  signal?: AbortSignal
+) =>
+  medicationPrescriptionCostAnalyticsSchema.parse(
+    await apiCall(`${base}/analytics`, {
+      method: 'GET',
+      params: medicationPrescriptionCostAnalyticsQuerySchema.parse({
+        expected_owner_id: ownerId,
+        window,
+        cost_basis: 'with_prescription_estimates',
+      }),
+      signal,
+      suppressErrorToast: true,
+    })
+  );
+export const getMedicationVialCostsWithPrescriptionEstimates = async (
+  ownerId: string,
+  signal?: AbortSignal
+) =>
+  medicationPrescriptionVialCostsSchema.parse(
+    await apiCall(`${base}/vial-costs`, {
+      method: 'GET',
+      params: medicationPrescriptionVialCostsQuerySchema.parse({
+        expected_owner_id: ownerId,
+        cost_basis: 'with_prescription_estimates',
+      }),
       signal,
       suppressErrorToast: true,
     })

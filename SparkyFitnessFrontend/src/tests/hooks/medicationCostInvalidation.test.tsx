@@ -17,6 +17,15 @@ function setup() {
     identity: medicationPurchaseKeys.identity('owner', 1),
     report3: medicationPurchaseKeys.analytics('owner', '3'),
     report12: medicationPurchaseKeys.analytics('owner', '12'),
+    estimatedReport: medicationPurchaseKeys.analyticsWithPrescriptionEstimates(
+      'owner',
+      '12',
+      1
+    ),
+    estimatedVials: medicationPurchaseKeys.vialsWithPrescriptionEstimates(
+      'owner',
+      1
+    ),
     editor: medicationPurchaseKeys.editor('owner'),
     vials: medicationPurchaseKeys.vials('owner'),
     list: medicationPurchaseKeys.list('owner'),
@@ -38,6 +47,8 @@ it('refreshes label/report/matching data after a stock edit without invalidating
   expect(client.getQueryState(keys.report12)?.isInvalidated).toBe(true);
   expect(client.getQueryState(keys.editor)?.isInvalidated).toBe(true);
   expect(client.getQueryState(keys.vials)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(keys.estimatedReport)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(keys.estimatedVials)?.isInvalidated).toBe(true);
   expect(client.getQueryState(keys.identity)?.isInvalidated).toBe(false);
 });
 it('refreshes report windows and matching metadata after a recorded-dose correction', async () => {
@@ -51,5 +62,7 @@ it('refreshes report windows and matching metadata after a recorded-dose correct
   expect(client.getQueryState(keys.report12)?.isInvalidated).toBe(true);
   expect(client.getQueryState(keys.editor)?.isInvalidated).toBe(true);
   expect(client.getQueryState(keys.list)?.isInvalidated).toBe(false);
+  expect(client.getQueryState(keys.estimatedReport)?.isInvalidated).toBe(true);
+  expect(client.getQueryState(keys.estimatedVials)?.isInvalidated).toBe(false);
   expect(client.getQueryState(keys.identity)?.isInvalidated).toBe(false);
 });

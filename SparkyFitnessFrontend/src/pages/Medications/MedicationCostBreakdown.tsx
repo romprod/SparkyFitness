@@ -126,6 +126,15 @@ export default function MedicationCostBreakdown({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {'cost_basis' in data &&
+            data.cost_basis === 'with_prescription_estimates' && (
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'medications.costEstimates.monthlyCash',
+                  'Monthly bars and invoice totals show recorded invoice cash only; prescription estimates are excluded.'
+                )}
+              </p>
+            )}
           {monthlyMixed && warning}
           {monthly.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -430,6 +439,25 @@ export default function MedicationCostBreakdown({
                         { mass: number(row.estimated_unused_mg) }
                       )}
                     </span>
+                    {'cost_source' in row &&
+                      row.cost_source === 'prescription' && (
+                        <span className="block text-xs text-muted-foreground">
+                          {t(
+                            'medications.costEstimates.prescriptionEstimate',
+                            'Prescription estimate'
+                          )}{' '}
+                          ·{' '}
+                          {t(
+                            'medications.costEstimates.noShipping',
+                            'no shipping'
+                          )}
+                        </span>
+                      )}
+                    {'cost_source' in row && row.cost_source === 'invoice' && (
+                      <span className="block text-xs text-muted-foreground">
+                        {t('medications.costs.invoice', 'Invoice')}
+                      </span>
+                    )}
                   </div>
                   <span className="shrink-0 tabular-nums">
                     {money(

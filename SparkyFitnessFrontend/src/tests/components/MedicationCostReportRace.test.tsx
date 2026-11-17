@@ -2,17 +2,28 @@ import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { MedicationCostAnalytics } from '@workspace/shared';
+import type { MedicationPrescriptionCostAnalytics } from '@workspace/shared';
 import MedicationCostReport from '@/pages/Medications/MedicationCostReport';
 import * as api from '@/api/Medications/purchaseService';
+const mockUser = { id: 'owner', activeUserId: 'owner' };
+jest.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ user: mockUser, loading: false }),
+}));
 jest.mock('@/api/Medications/purchaseService', () => ({
-  getMedicationCostAnalytics: jest.fn(),
+  getMedicationPurchaseIdentity: jest.fn(async () => ({
+    authenticatedUserId: 'owner',
+    activeUserId: 'owner',
+  })),
+  getMedicationCostAnalyticsWithPrescriptionEstimates: jest.fn(),
 }));
 const response = (
   key: '3' | '6' | '12',
   name: string
-): MedicationCostAnalytics => ({
+): MedicationPrescriptionCostAnalytics => ({
   ...emptyCostBreakdown,
+  waste: { ...emptyCostBreakdown.waste, rows: [] },
+  cost_basis: 'with_prescription_estimates',
+  accounted: [],
   window: { key, from_date: '2026-01-01', to_date: '2026-11-15' },
   rows: [
     {
@@ -28,14 +39,19 @@ const response = (
       usage_mixed_currency: false,
       costed_doses: 1,
       uncosted_doses: 0,
+      usage_sources: { invoice: 1, prescription: 0 },
+      accounted: [],
     },
   ],
 });
 it('ignores a slow earlier window response after the selected window changes', async () => {
-  let resolve3!: (value: MedicationCostAnalytics) => void;
-  let resolve6!: (value: MedicationCostAnalytics) => void;
   jest
-    .mocked(api.getMedicationCostAnalytics)
+    .mocked(api.getMedicationPurchaseIdentity)
+    .mockResolvedValue({ authenticatedUserId: 'owner', activeUserId: 'owner' });
+  let resolve3!: (value: MedicationPrescriptionCostAnalytics) => void;
+  let resolve6!: (value: MedicationPrescriptionCostAnalytics) => void;
+  jest
+    .mocked(api.getMedicationCostAnalyticsWithPrescriptionEstimates)
     .mockImplementation(async (_owner, window) =>
       window === '3'
         ? new Promise((done) => {

@@ -4,10 +4,14 @@ import {
   medicationPurchaseCreateSchema,
   medicationPurchaseUpdateSchema,
   medicationPurchaseDeleteSchema,
-  medicationCostAnalyticsQuerySchema,
+  medicationPrescriptionCostAnalyticsQuerySchema,
+  medicationPrescriptionVialCostsQuerySchema,
 } from '@workspace/shared';
 import * as purchases from '../../models/medicationPurchaseRepository.js';
-import { getMedicationCostAnalytics } from '../../models/medicationCostAnalyticsRepository.js';
+import {
+  getMedicationCostAnalytics,
+  getMedicationPrescriptionVialCosts,
+} from '../../models/medicationCostAnalyticsRepository.js';
 import { authenticate } from '../../middleware/authMiddleware.js';
 
 /** Existing app-wide owner API-key semantics apply: read-only keys may read self,
@@ -70,7 +74,22 @@ router.get('/editor-data', async (req, res, next) => {
 });
 router.get('/vial-costs', async (req, res, next) => {
   try {
-    res.json({ vials: await purchases.getVialCosts(req.userId) });
+    const query = medicationPrescriptionVialCostsQuerySchema.safeParse(
+      req.query
+    );
+    if (!query.success) {
+      res.status(400).json({ error: 'Invalid financial cost request.' });
+      return;
+    }
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.json(
+      query.data.cost_basis === 'with_prescription_estimates'
+        ? await getMedicationPrescriptionVialCosts(req.userId)
+        : { vials: await purchases.getVialCosts(req.userId) }
+    );
   } catch (error) {
     next(error);
   }
@@ -78,14 +97,29 @@ router.get('/vial-costs', async (req, res, next) => {
 /** Owner-only estimates from current invoice links and explicit labelled mass. */
 router.get('/analytics', async (req, res, next) => {
   try {
-    const query = medicationCostAnalyticsQuerySchema.safeParse(req.query);
+    const query = medicationPrescriptionCostAnalyticsQuerySchema.safeParse(
+      req.query
+    );
     if (!query.success) {
       res
         .status(400)
         .json({ error: 'Invalid request', details: query.error.flatten() });
       return;
     }
-    res.json(await getMedicationCostAnalytics(req.userId, query.data.window));
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.json(
+      query.data.cost_basis === 'with_prescription_estimates'
+        ? await getMedicationCostAnalytics(
+            req.userId,
+            query.data.window,
+            undefined,
+            'with_prescription_estimates'
+          )
+        : await getMedicationCostAnalytics(req.userId, query.data.window)
+    );
   } catch (error) {
     next(error);
   }

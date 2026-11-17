@@ -21,7 +21,8 @@ it('distinguishes a recorded zero-cost vial from uncosted stock', () => {
           is_costed: true,
           purchase_id: 'invoice',
           currency: 'AUD',
-          landed_unit: '0',
+          unit_cost: '0',
+          cost_source: 'invoice',
         },
       ],
     },
@@ -55,4 +56,63 @@ it('never requests private vial cost data for a delegated context', () => {
   );
   expect(mockCosts).not.toHaveBeenCalled();
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
+});
+
+it('shows a confirmed zero prescription estimate without an invoice and never fabricates currency', () => {
+  mockCosts.mockReturnValue({
+    data: {
+      cost_basis: 'with_prescription_estimates',
+      vials: [
+        {
+          pen_id: 'vial',
+          is_costed: true,
+          cost_source: 'prescription',
+          unit_cost: '0',
+          currency: 'GBP',
+          purchase_id: null,
+          prescription_id: 'rx',
+          estimate_basis: 'per_vial',
+        },
+      ],
+    },
+  });
+  const view = render(
+    <MemoryRouter>
+      <MedicationVialCostLink penId="vial" />
+    </MemoryRouter>
+  );
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'GBP 0.00 · Prescription estimate · no shipping'
+  );
+  expect(screen.getByRole('link')).toHaveAttribute(
+    'href',
+    '/medications?tab=costs'
+  );
+  mockCosts.mockReturnValue({
+    data: {
+      cost_basis: 'with_prescription_estimates',
+      vials: [
+        {
+          pen_id: 'vial',
+          is_costed: true,
+          cost_source: 'invoice',
+          unit_cost: '-2',
+          currency: null,
+          purchase_id: 'invoice',
+        },
+      ],
+    },
+  });
+  view.rerender(
+    <MemoryRouter>
+      <MedicationVialCostLink penId="vial" />
+    </MemoryRouter>
+  );
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'Currency unavailable · Invoice'
+  );
+  expect(screen.getByRole('link')).not.toHaveTextContent(
+    'Prescription estimate'
+  );
+  expect(screen.getByRole('link')).not.toHaveTextContent('AUD');
 });

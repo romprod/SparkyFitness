@@ -78,7 +78,7 @@ it('uses source defaults, full fields, exact cost and zero counters without touc
     'Reorder lead time (days)',
   ])
     fireEvent.change(screen.getByLabelText(label), { target: { value: '0' } });
-  fireEvent.change(screen.getByLabelText('Cost'), {
+  fireEvent.change(screen.getByLabelText('Cost per vial'), {
     target: { value: '0.1234567890123456789' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
@@ -134,7 +134,7 @@ it('locks the medication target on edit, retains blanks as null and never change
     />
   );
   expect(screen.getByLabelText('Medication')).toBeDisabled();
-  expect(screen.getByLabelText('Cost')).toHaveValue('0');
+  expect(screen.getByLabelText('Cost per vial')).toHaveValue('0');
   expect(screen.getByLabelText('Quantity')).toHaveValue('0');
   fireEvent.change(screen.getByLabelText('Prescriber'), {
     target: { value: '' },
@@ -287,3 +287,138 @@ it.each([false, true])(
     expect(p.onClose).toHaveBeenCalled();
   }
 );
+
+it('does not confirm an untouched legacy cost on focus, blur or unrelated changes', async () => {
+  render(
+    <MedicationPrescriptionForm
+      {...props()}
+      initial={prescriptionFixture({ cost: '20' })}
+    />
+  );
+  const input = screen.getByLabelText('Cost per vial');
+  fireEvent.focus(input);
+  fireEvent.blur(input);
+  fireEvent.change(screen.getByLabelText('Prescriber'), {
+    target: { value: 'Updated prescriber' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+  expect(mockUpdate.mock.calls[0][1]).toHaveProperty('cost', '20');
+  expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('cost_basis');
+});
+it.each(['20', '0'])(
+  'confirms deliberate same-value input %s under Cost per vial',
+  async (cost) => {
+    render(
+      <MedicationPrescriptionForm
+        {...props()}
+        initial={prescriptionFixture({ cost })}
+      />
+    );
+    fireEvent.input(screen.getByLabelText('Cost per vial'), {
+      target: { value: cost },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+    expect(mockUpdate.mock.calls[0][1]).toMatchObject({
+      cost,
+      cost_basis: 'per_vial',
+    });
+  }
+);
+it('clears a blank cost and preserves only an already confirmed basis on currency edits', async () => {
+  const view = render(
+    <MedicationPrescriptionForm
+      {...props()}
+      initial={prescriptionFixture({ cost: '20', cost_basis: 'per_vial' })}
+    />
+  );
+  fireEvent.change(screen.getByLabelText('Cost per vial'), {
+    target: { value: '' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+  expect(mockUpdate.mock.calls[0][1]).toMatchObject({
+    cost: null,
+    cost_basis: null,
+  });
+  view.unmount();
+  render(
+    <MedicationPrescriptionForm
+      {...props()}
+      initial={prescriptionFixture({ cost: '20', cost_basis: 'per_vial' })}
+    />
+  );
+  fireEvent.change(screen.getByLabelText('Currency'), {
+    target: { value: 'USD' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
+  expect(mockUpdate.mock.calls[1][1]).toMatchObject({
+    cost: '20',
+    currency: 'USD',
+  });
+  expect(mockUpdate.mock.calls[1][1]).toHaveProperty('cost_basis', 'per_vial');
+  view.unmount();
+});
+it('does not confirm an untouched legacy cost on a currency edit', async () => {
+  render(
+    <MedicationPrescriptionForm
+      {...props()}
+      initial={prescriptionFixture({ cost: '20' })}
+    />
+  );
+  fireEvent.change(screen.getByLabelText('Currency'), {
+    target: { value: 'EUR' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+  expect(mockUpdate.mock.calls[0][1]).toMatchObject({
+    cost: '20',
+    currency: 'EUR',
+  });
+  expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('cost_basis');
+});
+it('discards prior cost-input intent when explicitly reloading a stale saved record', async () => {
+  mockUpdate
+    .mockRejectedValueOnce(new HttpApiError('stale', 409))
+    .mockResolvedValueOnce({
+      id: prescriptionIds.first,
+      version: 3,
+      deleted: false,
+    });
+  render(
+    <MedicationPrescriptionForm
+      {...props()}
+      initial={prescriptionFixture({ cost: '10' })}
+    />
+  );
+  fireEvent.change(screen.getByLabelText('Cost per vial'), {
+    target: { value: '20' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await screen.findByRole('button', {
+    name: 'Reload saved prescription (discards this draft)',
+  });
+  mockReload.mockResolvedValueOnce({
+    isSuccess: true,
+    data: { prescription: prescriptionFixture({ cost: '20', version: 2 }) },
+  });
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Reload saved prescription (discards this draft)',
+    })
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Save prescription' })
+    ).toBeEnabled()
+  );
+  fireEvent.change(screen.getByLabelText('Source'), {
+    target: { value: 'Only metadata' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
+  expect(mockUpdate.mock.calls[0][1]).toHaveProperty('cost_basis', 'per_vial');
+  expect(mockUpdate.mock.calls[1][1]).not.toHaveProperty('cost_basis');
+});

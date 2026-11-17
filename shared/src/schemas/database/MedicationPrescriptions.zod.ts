@@ -24,6 +24,7 @@ export const medicationPrescriptionsSchema = z.object({
   pharmacy_encrypted: encrypted,
   dose_instructions_encrypted: encrypted,
   cost: z.string().nullable(),
+  cost_basis: z.literal('per_vial').nullable().optional(),
   currency: z.string(),
   quantity: count,
   refills_authorized: count,

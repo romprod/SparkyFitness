@@ -367,7 +367,16 @@ function PrescriptionRegister({
                         </p>
                         {record.cost !== null && (
                           <p>
-                            {t('medications.prescriptions.cost', 'Cost')}:{' '}
+                            {record.cost_basis === 'per_vial'
+                              ? t(
+                                  'medications.costEstimates.costPerVial',
+                                  'Cost per vial'
+                                )
+                              : t(
+                                  'medications.costEstimates.unconfirmedCost',
+                                  'Recorded cost (basis unconfirmed)'
+                                )}
+                            :{' '}
                             {formatPurchaseMoney(record.cost, record.currency)}
                           </p>
                         )}

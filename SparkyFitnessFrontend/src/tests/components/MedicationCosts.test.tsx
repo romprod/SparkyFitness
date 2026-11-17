@@ -28,7 +28,7 @@ jest.mock('@/contexts/PreferencesContext', () => ({
 }));
 jest.mock('@/api/Medications/purchaseService', () => ({
   getMedicationPurchaseIdentity: jest.fn(),
-  getMedicationCostAnalytics: jest.fn(),
+  getMedicationCostAnalyticsWithPrescriptionEstimates: jest.fn(),
   listMedicationPurchases: jest.fn(),
   getMedicationPurchase: jest.fn(),
   getMedicationPurchaseEditorData: jest.fn(),
@@ -90,11 +90,14 @@ beforeEach(() => {
   rows = [];
   jest.clearAllMocks();
   jest
-    .mocked(api.getMedicationCostAnalytics)
+    .mocked(api.getMedicationCostAnalyticsWithPrescriptionEstimates)
     .mockImplementation(async (_owner, window) => ({
       window: { key: window, from_date: '2025-11-15', to_date: '2026-11-15' },
       rows: [],
       ...emptyCostBreakdown,
+      waste: { ...emptyCostBreakdown.waste, rows: [] },
+      cost_basis: 'with_prescription_estimates',
+      accounted: [],
     }));
   jest
     .mocked(api.getMedicationPurchaseIdentity)
@@ -172,7 +175,9 @@ it('creates, reopens, edits and deletes with owner/revision bindings', async () 
   fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await screen.findByRole('dialog', { name: 'Delete this invoice?' });
   expect(
-    screen.getByText('The vials are kept and become uncosted.')
+    screen.getByText(
+      'The vials are kept. Costs are recalculated from eligible linked prescriptions; otherwise they become uncosted.'
+    )
   ).toBeInTheDocument();
   fireEvent.click(screen.getAllByRole('button', { name: 'Delete' }).at(-1)!);
   await screen.findByText('No invoices yet');
@@ -320,11 +325,9 @@ it('keeps all invoice cards and old edit links independent of report windows', a
   );
   fireEvent.click(screen.getByRole('button', { name: '3m' }));
   await waitFor(() =>
-    expect(api.getMedicationCostAnalytics).toHaveBeenLastCalledWith(
-      mockUser.id,
-      '3',
-      expect.any(AbortSignal)
-    )
+    expect(
+      api.getMedicationCostAnalyticsWithPrescriptionEstimates
+    ).toHaveBeenLastCalledWith(mockUser.id, '3', expect.any(AbortSignal))
   );
   expect(
     screen.getByText('Synthetic supplier · SYN-OLDER')
@@ -333,4 +336,38 @@ it('keeps all invoice cards and old edit links independent of report windows', a
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await screen.findByRole('heading', { name: 'Edit invoice' });
   expect(screen.getByLabelText('Ordered')).toHaveValue('2020-01-01');
+});
+
+it('shows known-zero stock estimates beside an empty invoice ledger', async () => {
+  jest
+    .mocked(api.getMedicationCostAnalyticsWithPrescriptionEstimates)
+    .mockImplementation(async (_owner, window) => ({
+      ...emptyCostBreakdown,
+      waste: { ...emptyCostBreakdown.waste, rows: [] },
+      window: { key: window, from_date: '2025-11-15', to_date: '2026-11-15' },
+      rows: [],
+      cost_basis: 'with_prescription_estimates',
+      accounted: [
+        {
+          currency: 'GBP',
+          invoice_cash: '0',
+          prescription_estimate: '0',
+          accounted_total: '0',
+          estimated_vials: 1,
+          undated_vials: 1,
+        },
+      ],
+    }));
+  open();
+  await screen.findByText('No invoices yet');
+  await screen.findByRole('region', {
+    name: 'Accounted values by recorded currency',
+  });
+  expect(
+    screen.getByText('1 estimated vials · no shipping')
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Add invoice' })
+  ).toBeInTheDocument();
+  expect(api.createMedicationPurchase).not.toHaveBeenCalled();
 });

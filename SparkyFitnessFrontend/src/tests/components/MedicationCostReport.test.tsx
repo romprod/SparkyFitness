@@ -4,15 +4,15 @@ import '@testing-library/jest-dom';
 import MedicationCostReport from '@/pages/Medications/MedicationCostReport';
 import type {
   MedicationCostAnalytics,
-  MedicationCostAnalyticsRow,
+  MedicationPrescriptionCostAnalytics,
 } from '@workspace/shared';
 const mockReport = jest.fn();
 jest.mock('@/hooks/useMedicationPurchases', () => ({
   useMedicationCostAnalytics: (...args: unknown[]) => mockReport(...args),
 }));
 const row = (
-  patch: Partial<MedicationCostAnalyticsRow> = {}
-): MedicationCostAnalyticsRow => ({
+  patch: Partial<MedicationPrescriptionCostAnalytics['rows'][number]> = {}
+): MedicationPrescriptionCostAnalytics['rows'][number] => ({
   medication_id: 'med',
   medication_name: 'Synthetic medication',
   spend: '100',
@@ -25,15 +25,20 @@ const row = (
   usage_mixed_currency: false,
   costed_doses: 3,
   uncosted_doses: 2,
+  usage_sources: { invoice: patch.costed_doses ?? 3, prescription: 0 },
+  accounted: [],
   ...patch,
 });
 const data = (
   rows = [row()],
   key: MedicationCostAnalytics['window']['key'] = '12'
-) => ({
+): MedicationPrescriptionCostAnalytics => ({
+  cost_basis: 'with_prescription_estimates' as const,
+  accounted: [],
   window: { key, from_date: '2025-11-15', to_date: '2026-11-15' },
   rows,
   ...emptyCostBreakdown,
+  waste: { ...emptyCostBreakdown.waste, rows: [] },
 });
 beforeEach(() => mockReport.mockReset());
 const ready = (value = data()) =>
@@ -48,7 +53,7 @@ it('shows exactly the source four columns with independent metric currencies and
   render(<MedicationCostReport ownerId="owner" />);
   expect(
     screen.getAllByRole('columnheader').map((cell) => cell.textContent)
-  ).toEqual(['Medication', 'Spend', 'Per dose', 'Per mg']);
+  ).toEqual(['Medication', 'Invoice spend', 'Per dose', 'Per mg']);
   expect(screen.getByText('AUD 100.00')).toBeInTheDocument();
   expect(screen.getByText('GBP 0.125')).toBeInTheDocument();
   expect(screen.getByText('GBP 0.001')).toBeInTheDocument();
@@ -180,4 +185,70 @@ it('rejects a mismatched response window and hides failed cached data', () => {
   });
   rerender(<MedicationCostReport ownerId="owner" />);
   expect(screen.queryByText('AUD 100.00')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('heading', {
+      name: 'Invoice cash and prescription estimates',
+    })
+  ).not.toBeInTheDocument();
+});
+
+it('keeps known-zero prescription estimates without invoices and separates currencies and undated counts', () => {
+  const zero = {
+    currency: 'GBP',
+    invoice_cash: '0',
+    prescription_estimate: '0',
+    accounted_total: '0',
+    estimated_vials: 2,
+    undated_vials: 1,
+  };
+  const euro = {
+    currency: 'EUR',
+    invoice_cash: '0',
+    prescription_estimate: '12.345',
+    accounted_total: '12.345',
+    estimated_vials: 1,
+    undated_vials: 0,
+  };
+  const result = data([
+    row({
+      spend: null,
+      spend_present: false,
+      spend_currency: null,
+      cost_per_dose: '0',
+      cost_per_mg: '0',
+      usage_currency: 'GBP',
+      usage_sources: { invoice: 0, prescription: 3 },
+      accounted: [zero, euro],
+    }),
+  ]);
+  ready({ ...result, accounted: [zero, euro] });
+  render(<MedicationCostReport ownerId="owner" />);
+  const summary = within(
+    screen.getByRole('region', {
+      name: 'Accounted values by recorded currency',
+    })
+  );
+  expect(summary.getByRole('rowheader', { name: 'GBP' })).toBeInTheDocument();
+  expect(summary.getByRole('rowheader', { name: 'EUR' })).toBeInTheDocument();
+  expect(summary.getAllByText('GBP 0.00')).toHaveLength(3);
+  expect(summary.getAllByText('EUR 12.35')).toHaveLength(2);
+  expect(
+    summary.getByText('2 estimated vials · no shipping')
+  ).toBeInTheDocument();
+  expect(
+    summary.getByText(
+      '1 vials have no prescription written date and are included in every window.'
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      '0 doses priced from invoices · 3 from prescription estimates'
+    )
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      /Monthly bars and invoice totals show recorded invoice cash only/
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByText('No invoices in this window.')).toBeInTheDocument();
 });

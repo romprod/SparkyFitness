@@ -520,3 +520,48 @@ it('provides fresh exact detail on explicit reload and never substitutes cached 
   await waitFor(() => expect(currentDetail.query.isError).toBe(true));
   expect(currentDetail.data).toBeUndefined();
 });
+
+it.each(['create', 'update', 'remove'] as const)(
+  'reprices derived estimate caches after successful owner-current Rx %s without invalidating financial identity',
+  async (command) => {
+    const { client } = setup();
+    await screen.findByText('Private self record');
+    const proofKey = ['medication-purchases', courseIds.owner, 'identity', 1];
+    const estimateKey = [
+      'medication-purchases',
+      courseIds.owner,
+      'analytics',
+      '12',
+      'with_prescription_estimates',
+      1,
+    ];
+    const vialKey = [
+      'medication-purchases',
+      courseIds.owner,
+      'vials',
+      'with_prescription_estimates',
+      1,
+    ];
+    client.setQueryData(proofKey, {
+      authenticatedUserId: courseIds.owner,
+      activeUserId: courseIds.owner,
+    });
+    client.setQueryData(estimateKey, {
+      capturedEstimate: 'unchanged until read',
+    });
+    client.setQueryData(vialKey, { capturedRate: 'unchanged until read' });
+    await act(async () => {
+      if (command === 'create') await actions.create(createBody);
+      if (command === 'update')
+        await actions.update(courseIds.legacy, changeBody);
+      if (command === 'remove')
+        await actions.remove(courseIds.legacy, changeBody);
+    });
+    expect(client.getQueryState(estimateKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(vialKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(proofKey)?.isInvalidated).toBe(false);
+    expect(client.getQueryData(vialKey)).toEqual({
+      capturedRate: 'unchanged until read',
+    });
+  }
+);

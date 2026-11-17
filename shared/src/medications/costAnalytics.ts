@@ -1,5 +1,15 @@
 import { Decimal } from 'decimal.js';
 import {
+  buildMedicationVialCostEstimates,
+  type MedicationCostPrescription,
+  type MedicationVialInvoicePrice,
+} from './vialCostResolution.ts';
+import type {
+  MedicationPrescriptionCostAnalytics,
+  MedicationPrescriptionVialCost,
+  MedicationPrescriptionAccountedBucket,
+} from '../schemas/api/MedicationPrescriptionCosts.api.zod.ts';
+import {
   allocateMedicationPurchase,
   type PurchaseAllocationInput,
 } from './purchaseCosts.ts';
@@ -30,6 +40,8 @@ export interface MedicationCostVial {
   label_mass_mg: string | null;
   purchase_item_id: string | null;
   status?: string | null;
+  kind?: string | null;
+  prescription_id?: string | null;
 }
 export interface MedicationCostDose {
   medication_id: string | null;
@@ -71,14 +83,39 @@ interface Accumulator {
   uncosted: number;
 }
 /** Derived current purchase/label estimates only; no requested-dose or preparation-mass inference. */
-export function buildMedicationCostAnalytics(input: {
+export interface MedicationCostAnalyticsInput {
   today: string;
   window?: MedicationCostWindow;
   medications: { id: string; name: string }[];
   invoices: MedicationCostInvoice[];
   vials: MedicationCostVial[];
   doses: MedicationCostDose[];
-}): MedicationCostAnalytics {
+}
+export function buildMedicationCostAnalytics(
+  input: MedicationCostAnalyticsInput
+): MedicationCostAnalytics {
+  return buildCostAnalytics(input);
+}
+interface CostResolutionContext {
+  resolved: Map<string, MedicationPrescriptionVialCost>;
+  usageSources: Map<string, { invoice: number; prescription: number }>;
+}
+function volumeOnlySentinel(dose: MedicationCostDose): boolean {
+  const mass = finite(dose.dose_mg),
+    volume = finite(dose.volume_ml);
+  return (
+    mass?.isZero() === true &&
+    volume !== null &&
+    volume.gt(0) &&
+    ['ml', 'units', 'pumps'].includes(
+      dose.dose_input_unit?.trim().toLowerCase() ?? ''
+    )
+  );
+}
+function buildCostAnalytics(
+  input: MedicationCostAnalyticsInput,
+  context?: CostResolutionContext
+): MedicationCostAnalytics {
   const window = medicationCostRange(input.today, input.window ?? '12');
   const names = new Map(input.medications.map((med) => [med.id, med.name]));
   const acc = new Map<string, Accumulator>();
@@ -128,14 +165,36 @@ export function buildMedicationCostAnalytics(input: {
       row.spendCurrencies.add(invoice.currency);
     }
   }
+  if (context)
+    for (const vial of input.vials) {
+      const selected = context.resolved.get(vial.id);
+      if (
+        selected?.cost_source === 'prescription' &&
+        (selected.prescription_date_written === null ||
+          (selected.prescription_date_written >= window.from_date &&
+            selected.prescription_date_written <= window.to_date))
+      )
+        touch(vial.medication_id);
+    }
   const rates = new Map<
     string,
     { rate: Decimal; currency: string; medication_id: string }
   >();
   for (const vial of input.vials) {
-    const price = vial.purchase_item_id
-      ? prices.get(vial.purchase_item_id)
-      : undefined;
+    const selected = context?.resolved.get(vial.id);
+    const price = context
+      ? selected?.unit_cost !== null &&
+        selected?.unit_cost !== undefined &&
+        selected.currency !== null
+        ? {
+            value: new D(selected.unit_cost),
+            currency: selected.currency,
+            medication_id: vial.medication_id,
+          }
+        : undefined
+      : vial.purchase_item_id
+        ? prices.get(vial.purchase_item_id)
+        : undefined;
     const mass = finite(vial.label_mass_mg);
     if (
       !price ||
@@ -163,6 +222,7 @@ export function buildMedicationCostAnalytics(input: {
     const mass = finite(dose.dose_mg);
     const recordedVolume = finite(dose.volume_ml);
     const known =
+      !(context && volumeOnlySentinel(dose)) &&
       mass !== null &&
       mass.gte(0) &&
       !(
@@ -184,6 +244,17 @@ export function buildMedicationCostAnalytics(input: {
     row.cost = row.cost.plus(rate.rate.times(deliveredMcg));
     row.mass = row.mass.plus(deliveredMcg);
     row.costed++;
+    if (context) {
+      const source = context.resolved.get(dose.pen_id!)?.cost_source;
+      if (source) {
+        const sources = context.usageSources.get(dose.medication_id) ?? {
+          invoice: 0,
+          prescription: 0,
+        };
+        sources[source]++;
+        context.usageSources.set(dose.medication_id, sources);
+      }
+    }
     row.usageCurrencies.add(rate.currency);
   }
   const reportSpendCurrencies = new Set(
@@ -232,7 +303,11 @@ export function buildMedicationCostAnalytics(input: {
         a.medication_id.localeCompare(b.medication_id)
       );
     });
-  return { window, rows, ...buildCostBreakdown(input, window, prices) };
+  return {
+    window,
+    rows,
+    ...buildCostBreakdown(input, window, prices, context),
+  };
 }
 
 function buildCostBreakdown(
@@ -241,7 +316,8 @@ function buildCostBreakdown(
   prices: Map<
     string,
     { value: Decimal; currency: string; medication_id: string }
-  >
+  >,
+  context?: CostResolutionContext
 ): Pick<MedicationCostAnalytics, 'consumables' | 'waste' | 'monthly_spend'> {
   const within = (day: string) =>
     day >= window.from_date && day <= window.to_date;
@@ -386,6 +462,7 @@ function buildCostBreakdown(
     const mass = finite(dose.dose_mg),
       volume = finite(dose.volume_ml);
     if (
+      (context && volumeOnlySentinel(dose)) ||
       mass === null ||
       mass.lt(0) ||
       (mass.isZero() &&
@@ -402,9 +479,20 @@ function buildCostBreakdown(
   const names = new Map(input.medications.map((med) => [med.id, med.name]));
   for (const vial of input.vials) {
     if (vial.status !== 'finished' && vial.status !== 'discarded') continue;
-    const price = vial.purchase_item_id
-      ? prices.get(vial.purchase_item_id)
-      : undefined;
+    const selected = context?.resolved.get(vial.id);
+    const price = context
+      ? selected?.unit_cost !== null &&
+        selected?.unit_cost !== undefined &&
+        selected.currency !== null
+        ? {
+            value: new D(selected.unit_cost),
+            currency: selected.currency,
+            medication_id: vial.medication_id,
+          }
+        : undefined
+      : vial.purchase_item_id
+        ? prices.get(vial.purchase_item_id)
+        : undefined;
     const label = finite(vial.label_mass_mg),
       history = lifetime.get(vial.id);
     const delivered = history?.unknown ? null : (history?.mass ?? new D(0));
@@ -509,5 +597,133 @@ function buildCostBreakdown(
           mixed_currency: values.currencies.size > 1,
         };
       }),
+  };
+}
+
+/** Opt-in current recorded estimates. Invoice cash and all physical state remain untouched. */
+export function buildMedicationPrescriptionCostAnalytics(
+  input: MedicationCostAnalyticsInput & {
+    prescriptions: MedicationCostPrescription[];
+  }
+): MedicationPrescriptionCostAnalytics {
+  const invoicePrices: MedicationVialInvoicePrice[] = [];
+  for (const invoice of input.invoices) {
+    const allocation = allocateMedicationPurchase(invoice);
+    for (const line of invoice.lines) {
+      if (line.kind !== 'medication' || line.medication_id === null) continue;
+      const allocated = allocation.lines.find((row) => row.id === line.id);
+      if (allocated)
+        invoicePrices.push({
+          purchase_id: invoice.id,
+          purchase_item_id: line.id,
+          medication_id: line.medication_id,
+          unit_cost: allocated.landed_unit,
+          currency: invoice.currency,
+        });
+    }
+  }
+  const selected = buildMedicationVialCostEstimates({
+    vials: input.vials,
+    invoice_prices: invoicePrices,
+    prescriptions: input.prescriptions,
+  });
+  const resolved = new Map(selected.vials.map((row) => [row.pen_id, row])),
+    usageSources = new Map<string, { invoice: number; prescription: number }>();
+  const report = buildCostAnalytics(input, { resolved, usageSources });
+  interface Bucket {
+    cash: Decimal;
+    estimate: Decimal;
+    estimated: number;
+    undated: number;
+  }
+  const global = new Map<string, Bucket>(),
+    byMed = new Map<string, Map<string, Bucket>>();
+  const touch = (map: Map<string, Bucket>, currency: string) => {
+    let value = map.get(currency);
+    if (!value) {
+      value = { cash: new D(0), estimate: new D(0), estimated: 0, undated: 0 };
+      map.set(currency, value);
+    }
+    return value;
+  };
+  const med = (id: string) => {
+    let map = byMed.get(id);
+    if (!map) {
+      map = new Map();
+      byMed.set(id, map);
+    }
+    return map;
+  };
+  const within = (day: string) =>
+    day >= report.window.from_date && day <= report.window.to_date;
+  for (const invoice of input.invoices) {
+    if (!within(invoice.ordered_date) || !invoice.currency.trim()) continue;
+    const allocation = allocateMedicationPurchase(invoice);
+    const bucket = touch(global, invoice.currency);
+    bucket.cash = bucket.cash.plus(allocation.total);
+    for (const line of invoice.lines) {
+      if (line.kind !== 'medication' || line.medication_id === null) continue;
+      const allocated = allocation.lines.find((row) => row.id === line.id);
+      if (allocated) {
+        const b = touch(med(line.medication_id), invoice.currency);
+        b.cash = b.cash.plus(allocated.landed);
+      }
+    }
+  }
+  for (const vial of input.vials) {
+    const price = resolved.get(vial.id);
+    if (
+      price?.cost_source !== 'prescription' ||
+      price.unit_cost === null ||
+      price.currency === null ||
+      (price.prescription_date_written !== null &&
+        !within(price.prescription_date_written))
+    )
+      continue;
+    for (const map of [global, med(vial.medication_id)]) {
+      const bucket = touch(map, price.currency);
+      bucket.estimate = bucket.estimate.plus(price.unit_cost);
+      bucket.estimated++;
+      if (price.prescription_date_written === null) bucket.undated++;
+    }
+  }
+  const buckets = (
+    map: Map<string, Bucket>
+  ): MedicationPrescriptionAccountedBucket[] =>
+    [...map]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([currency, b]) => {
+        const invoice_cash = b.cash.toFixed(2, D.ROUND_HALF_UP),
+          prescription_estimate = b.estimate.toFixed(2, D.ROUND_HALF_UP);
+        return {
+          currency,
+          invoice_cash,
+          prescription_estimate,
+          accounted_total: new D(invoice_cash)
+            .plus(prescription_estimate)
+            .toFixed(2),
+          estimated_vials: b.estimated,
+          undated_vials: b.undated,
+        };
+      });
+  return {
+    ...report,
+    cost_basis: 'with_prescription_estimates',
+    accounted: buckets(global),
+    rows: report.rows.map((row) => ({
+      ...row,
+      accounted: buckets(byMed.get(row.medication_id) ?? new Map()),
+      usage_sources: usageSources.get(row.medication_id) ?? {
+        invoice: 0,
+        prescription: 0,
+      },
+    })),
+    waste: {
+      ...report.waste,
+      rows: report.waste.rows.map((row) => ({
+        ...row,
+        cost_source: resolved.get(row.vial_id)?.cost_source ?? null,
+      })),
+    },
   };
 }
