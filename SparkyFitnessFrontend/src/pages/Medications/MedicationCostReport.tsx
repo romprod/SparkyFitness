@@ -115,7 +115,7 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
               </p>
             ) : (
               <div
-                className="overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="relative overflow-x-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 role="region"
                 tabIndex={0}
                 aria-label={t(
