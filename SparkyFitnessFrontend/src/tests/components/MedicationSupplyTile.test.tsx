@@ -64,6 +64,16 @@ jest.mock('@/hooks/Medications/useMedicationStockDashboard', () => ({
   },
 }));
 // Isolate the page's existing date/subtype/tab behaviour from unrelated domain queries.
+jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
+  useMedicationPrescriptionScope: () => ({
+    ready: false,
+    isCurrent: () => false,
+  }),
+}));
+jest.mock('@/pages/Medications/MedicationLogCalendar', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/hooks/useMedicationPurchases', () => ({
   useMedicationPurchaseScope: () => ({ ready: false, ownerId: '' }),
 }));

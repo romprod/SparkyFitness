@@ -234,6 +234,8 @@ export interface ListMedicationEntriesOptions {
 // --- GLP-1 injections, pen/vial inventory and titration ---------------------
 
 export interface MedicationPen {
+  /** Owner-private binding; omission preserves it for other readers/callers. */
+  prescription_id?: string | null;
   /** Explicit total printed vial mass in mg; unknown unless supplied. */
   label_mass_mg?: string | null;
   preparation?: MedicationPreparation | null;

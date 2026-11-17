@@ -121,6 +121,8 @@ BEGIN
     'medication_pens',
     'medication_syringes',
     'medication_device_preferences',
+    'medication_prescriptions',
+    'medication_prescription_operations',
     'medication_purchases',
     'medication_purchase_items',
     'medication_purchase_vials',
@@ -806,6 +808,13 @@ SELECT create_library_policy('workout_presets', 'is_public', ARRAY['can_view_exe
 -- Do NOT apply create_library_policy or create_diary_policy to medication tables.
 SELECT create_owner_policy('user_medication_display_preferences');
 -- Invoice amounts and links are private financial data, never medication delegation.
+DROP POLICY IF EXISTS owner_policy ON public.medication_prescriptions;
+CREATE POLICY owner_policy ON public.medication_prescriptions FOR ALL TO PUBLIC USING(user_id=authenticated_user_id() AND user_id=current_user_id()) WITH CHECK(user_id=authenticated_user_id() AND user_id=current_user_id());
+DROP POLICY IF EXISTS owner_policy ON public.medication_prescription_operations;
+DROP POLICY IF EXISTS owner_select_policy ON public.medication_prescription_operations;
+DROP POLICY IF EXISTS owner_insert_policy ON public.medication_prescription_operations;
+CREATE POLICY owner_select_policy ON public.medication_prescription_operations FOR SELECT TO PUBLIC USING (user_id=authenticated_user_id() AND user_id=current_user_id());
+CREATE POLICY owner_insert_policy ON public.medication_prescription_operations FOR INSERT TO PUBLIC WITH CHECK (user_id=authenticated_user_id() AND user_id=current_user_id());
 SELECT create_owner_policy('medication_purchases');
 SELECT create_owner_policy('medication_purchase_items');
 SELECT create_owner_policy('medication_purchase_vials');

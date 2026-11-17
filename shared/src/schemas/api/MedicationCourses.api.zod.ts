@@ -137,6 +137,7 @@ export const medicationCoursePlanInputSchema = z
       .nullable()
       .optional(),
     device_id: z.string().uuid().nullable().optional(),
+    prescription_id: z.string().uuid().nullable().optional(),
     name: z.string().trim().min(1),
     notes: z.string().nullable().optional(),
     start_date: medicationCourseDaySchema,
@@ -294,6 +295,7 @@ export const medicationCourseRevisionSchema = z.object({
   course_cycle_off_weeks: medicationCourseCycleWeekSchema.nullable(),
   course_cycle_anchor_date: nullableDay,
   device_id: uuid.nullable(),
+  prescription_id: uuid.nullable().optional(),
   device_choice: medicationCourseDeviceChoiceSchema,
   revision_no: z.number().int().positive(),
   name: z.string(),

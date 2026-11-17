@@ -1,3 +1,4 @@
+import medicationPrescriptionRoutes from './routes/v2/medicationPrescriptionRoutes.js';
 import path from 'path';
 import { emailLoginGuard } from './middleware/emailLoginGuard.js';
 import { passkeyLoginGuard } from './middleware/passkeyLoginGuard.js';
@@ -872,6 +873,7 @@ app.use('/api/v2/medication-courses', medicationCourseRoutes);
 app.use('/api/v2/medication-inventory', medicationInventoryRoutes);
 app.use('/api/v2/preferences', medicationReorderRoutes);
 app.use('/api/v2/medication-purchases', medicationPurchaseRoutesV2);
+app.use('/api/v2/medication-prescriptions', medicationPrescriptionRoutes);
 app.use('/api/v2/symptoms', symptomRoutesV2);
 app.use('/api/v2/cycle', cycleRoutesV2);
 app.use('/api/v2/pregnancy', pregnancyRoutesV2);

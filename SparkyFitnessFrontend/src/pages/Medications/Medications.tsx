@@ -50,6 +50,8 @@ import type { MedicationDetail } from '@/types/medications';
 import Glp1Coach from './Glp1Coach';
 import PeptideStock from './PeptideStock';
 import MedicationCosts from './MedicationCosts';
+import MedicationPrescriptions from './MedicationPrescriptions';
+import { useMedicationPrescriptionScope } from '@/hooks/Medications/useMedicationPrescriptions';
 import { useMedicationPurchaseScope } from '@/hooks/useMedicationPurchases';
 import Glp1InventoryManager from './Glp1InventoryManager';
 import Glp1LogInjection from './Glp1LogInjection';
@@ -68,6 +70,7 @@ import { formatScheduleDescription } from './medicationUtils';
 export default function Medications() {
   const { t } = useTranslation();
   const purchaseScope = useMedicationPurchaseScope();
+  const prescriptionScope = useMedicationPrescriptionScope();
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
@@ -75,11 +78,12 @@ export default function Medications() {
     tabParam === 'cabinet' ||
     tabParam === 'stock' ||
     tabParam === 'symptoms' ||
+    tabParam === 'prescriptions' ||
     tabParam === 'costs'
       ? tabParam
       : 'today';
   const setActiveTab = (
-    tab: 'today' | 'cabinet' | 'stock' | 'symptoms' | 'costs'
+    tab: 'today' | 'cabinet' | 'stock' | 'symptoms' | 'costs' | 'prescriptions'
   ) =>
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -228,10 +232,19 @@ export default function Medications() {
     !stillLoading &&
     !hasExistingData &&
     !disclaimerAccepted &&
-    activeTab !== 'costs'
+    activeTab !== 'costs' &&
+    activeTab !== 'prescriptions'
   ) {
     return (
       <div className="space-y-4">
+        {prescriptionScope.ready && (
+          <Button
+            variant="outline"
+            onClick={() => setActiveTab('prescriptions')}
+          >
+            {t('medications.prescriptions.title', 'Prescriptions')}
+          </Button>
+        )}
         {purchaseScope.ready && (
           <Button variant="outline" onClick={() => setActiveTab('costs')}>
             <Receipt className="mr-2 h-4 w-4" />
@@ -300,6 +313,18 @@ export default function Medications() {
               <Receipt className="w-4 h-4" />
               <span className="text-xs font-semibold">
                 {t('medications.costs.title', 'Costs')}
+              </span>
+            </Button>
+          )}
+          {prescriptionScope.ready && (
+            <Button
+              variant={activeTab === 'prescriptions' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab('prescriptions')}
+              className="rounded-full px-4 h-9 gap-2"
+            >
+              <span className="text-xs font-semibold">
+                {t('medications.prescriptions.title', 'Prescriptions')}
               </span>
             </Button>
           )}
@@ -400,6 +425,9 @@ export default function Medications() {
 
       {activeTab === 'stock' && <PeptideStock meds={meds} />}
       {activeTab === 'costs' && purchaseScope.ready && <MedicationCosts />}
+      {activeTab === 'prescriptions' && prescriptionScope.ready && (
+        <MedicationPrescriptions medications={meds as MedicationDetail[]} />
+      )}
 
       {activeTab === 'today' && (
         <>

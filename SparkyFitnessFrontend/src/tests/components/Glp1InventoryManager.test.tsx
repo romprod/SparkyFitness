@@ -7,6 +7,36 @@ import {
 } from '@/tests/fixtures/medicationInventoryForecast';
 import type { Medication, MedicationPen } from '@/types/medications';
 
+let mockRxReady = false;
+let mockRxKey = 'owner:1';
+const mockRxId = '00000000-0000-4000-8000-000000000071';
+jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
+  useMedicationPrescriptionScope: () => ({
+    key: mockRxKey,
+    ready: mockRxReady,
+    canWrite: mockRxReady,
+    isCurrent: () => mockRxReady,
+  }),
+  useMedicationPrescriptions: () => ({
+    scope: {
+      ready: mockRxReady,
+      canWrite: mockRxReady,
+      isCurrent: () => mockRxReady,
+    },
+    query: { isError: false, isFetching: false },
+    data: {
+      prescriptions: [
+        {
+          id: mockRxId,
+          medication_id: 'medicine',
+          source: 'Recorded Rx',
+          status: 'cancelled',
+          expiration: null,
+        },
+      ],
+    },
+  }),
+}));
 const mockSave = jest.fn();
 const mockUpdate = jest.fn();
 let mockPens: Partial<MedicationPen>[] = [];
@@ -42,6 +72,8 @@ jest.mock('@/contexts/PreferencesContext', () => ({
 }));
 const med = { id: 'medicine', dose_amount: 0.6, dose_unit: 'mg' } as Medication;
 beforeEach(() => {
+  mockRxReady = false;
+  mockRxKey = 'owner:1';
   mockPens = [];
   mockSave.mockClear();
   mockUpdate.mockClear();
@@ -569,3 +601,80 @@ it('attaches a prepared-container forecast only to its matching existing stock r
   ).toHaveTextContent(': 7');
   expect(screen.queryByText(/: 99/)).not.toBeInTheDocument();
 });
+
+it('preserves omitted prescription binding on ordinary edits and sends only explicit link/unlink choices', () => {
+  mockRxReady = true;
+  mockPens = [
+    {
+      id: 'pen',
+      medication_id: 'medicine',
+      kind: 'vial',
+      status: 'sealed',
+      label: 'Existing vial',
+      dose_mg: 1,
+      doses_total: 10,
+      doses_used: 0,
+      prescription_id: mockRxId,
+    },
+  ];
+  const view = render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+    'prescription_id'
+  );
+  fireEvent.change(screen.getByLabelText('Prescription (optional)'), {
+    target: { value: 'none' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  expect(mockUpdate.mock.calls[1][0].body).toHaveProperty(
+    'prescription_id',
+    null
+  );
+  expect(mockUpdate.mock.calls[1][0].body).not.toHaveProperty('dose_mg');
+  view.unmount();
+});
+
+it.each(['medication', 'profile'])(
+  'does not carry a private prescription draft into a new %s session',
+  (kind) => {
+    mockRxReady = true;
+    mockPens = [
+      {
+        id: 'pen',
+        medication_id: med.id,
+        kind: 'vial',
+        status: 'sealed',
+        label: 'Existing vial',
+        dose_mg: 1,
+        doses_total: 10,
+        doses_used: 0,
+      },
+    ];
+    const view = render(<Glp1InventoryManager med={med} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+    fireEvent.change(screen.getByLabelText('Prescription (optional)'), {
+      target: { value: mockRxId },
+    });
+    expect(screen.getByLabelText('Prescription (optional)')).toHaveValue(
+      mockRxId
+    );
+    view.rerender(<Glp1InventoryManager med={med} />);
+    expect(screen.getByLabelText('Prescription (optional)')).toHaveValue(
+      mockRxId
+    );
+    const nextMed =
+      kind === 'medication' ? { ...med, id: 'other-medication' } : med;
+    if (kind === 'profile') mockRxKey = 'owner:new-generation';
+    view.rerender(<Glp1InventoryManager med={nextMed} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit pen/vial' }));
+    expect(screen.getByLabelText('Prescription (optional)')).toHaveValue(
+      'none'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(
+      'prescription_id'
+    );
+  }
+);

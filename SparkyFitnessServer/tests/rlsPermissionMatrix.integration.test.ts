@@ -168,6 +168,8 @@ describe.runIf(RUN)('RLS permission matrix', () => {
 
   const DOMAIN: Record<string, Domain> = {
     // owner-only (no delegation)
+    medication_prescriptions: 'owner',
+    medication_prescription_operations: 'owner',
     medication_purchases: 'owner',
     medication_purchase_items: 'owner',
     medication_purchase_vials: 'owner',

@@ -6,6 +6,7 @@ export const medicationPensIdSchema = z.string().or(z.number());
 export const medicationPensSchema = z.object({
   id: z.string().optional(),
   medication_id: z.string(),
+  prescription_id: z.string().uuid().nullable().optional(),
   user_id: z.string(),
   kind: z.string(),
   label: z.string().nullable().optional(),
@@ -38,6 +39,7 @@ export const medicationPensSchema = z.object({
 export const medicationPensInitializerSchema = z.object({
   id: z.string().optional(),
   medication_id: z.string().optional(),
+  prescription_id: z.string().uuid().nullable().optional(),
   user_id: z.string().optional(),
   kind: z.string().optional(),
   label: z.string().nullable().optional(),

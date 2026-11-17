@@ -134,6 +134,7 @@ export type UpdateScheduleBody = z.infer<typeof UpdateScheduleBodySchema>;
 // Pens / vials
 // --------------------------------------------------------------------------
 const PenFieldsSchema = z.object({
+  prescription_id: z.string().uuid().nullable().optional(),
   label_mass_mg: medicationVialLabelMassSchema.nullable().optional(),
   preparation: medicationPreparationInputSchema.optional(),
   lifecycle_intent: z.boolean().optional(),

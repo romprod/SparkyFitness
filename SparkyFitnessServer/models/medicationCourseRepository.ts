@@ -1,3 +1,4 @@
+import { validatePrescriptionLink } from './medicationPrescriptionRepository.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import {
@@ -775,8 +776,28 @@ export async function insertCourseRevision(
     phase_origin_context: MedicationCoursePhaseOriginContext | null;
   }
 ): Promise<void> {
+  const previous = predecessorId
+    ? await client.query<{ prescription_id: string | null }>(
+        'SELECT prescription_id FROM medication_course_revisions WHERE id=$1 AND user_id=$2 AND course_id=$3',
+        [predecessorId, owner, courseId]
+      )
+    : null;
+  const parent =
+    plan.prescription_id !== undefined
+      ? await client.query<{ medication_id: string | null }>(
+          'SELECT medication_id FROM medication_courses WHERE id=$1 AND user_id=$2',
+          [courseId, owner]
+        )
+      : null;
+  const prescriptionId = await validatePrescriptionLink(
+    client,
+    owner,
+    parent?.rows[0]?.medication_id ?? null,
+    plan,
+    previous?.rows[0]?.prescription_id ?? null
+  );
   await client.query(
-    'INSERT INTO medication_course_revisions(id,user_id,course_id,predecessor_id,revision_no,name,notes,start_date,end_date,cycle_anchor_date,target_dose,dose_unit,dose_basis,created_at,device_id,device_choice,course_cycle_on_weeks,course_cycle_off_weeks,course_cycle_anchor_date,phase_family_id,phase_origin_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb)',
+    'INSERT INTO medication_course_revisions(id,user_id,course_id,predecessor_id,revision_no,name,notes,start_date,end_date,cycle_anchor_date,target_dose,dose_unit,dose_basis,created_at,device_id,device_choice,course_cycle_on_weeks,course_cycle_off_weeks,course_cycle_anchor_date,phase_family_id,phase_origin_context,prescription_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)',
     [
       revisionId,
       owner,
@@ -810,6 +831,7 @@ export async function insertCourseRevision(
               ? continuity.phase_origin_context
               : { start_date: plan.start_date, end_date: plan.end_date ?? null }
           ),
+      prescriptionId,
     ]
   );
   await storeCourseChildren(client, owner, revisionId, plan);

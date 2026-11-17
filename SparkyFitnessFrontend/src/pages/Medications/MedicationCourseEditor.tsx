@@ -1,3 +1,6 @@
+import MedicationPrescriptionLink, {
+  MedicationPrescriptionSummary,
+} from './MedicationPrescriptionLink';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -163,6 +166,10 @@ export default function MedicationCourseEditor({
       : revision?.device_choice === 'explicit'
         ? (revision.device_id ?? 'missing')
         : 'preferred';
+  const prescriptionSelection =
+    draft.prescription_id !== undefined
+      ? draft.prescription_id
+      : revision?.prescription_id;
   const selectedDeviceMissing =
     deviceSelection !== 'preferred' &&
     !eligibleDevices.some((device) => device.id === deviceSelection);
@@ -647,6 +654,12 @@ export default function MedicationCourseEditor({
                 </SelectItem>
               </SelectContent>
             </Select>
+            <MedicationPrescriptionLink
+              medication={med}
+              value={prescriptionSelection}
+              onChange={(id) => change({ prescription_id: id })}
+              disabled={locked}
+            />
             {preparedRoute && (
               <div className="space-y-2">
                 <Label htmlFor="course-device">
@@ -1001,6 +1014,17 @@ export default function MedicationCourseEditor({
             <h4 className="font-semibold">
               {t('medications.courses.review', 'Review changes')}
             </h4>
+            <MedicationPrescriptionSummary
+              medicationId={med.id}
+              prescriptionId={
+                review.plan.prescription_id !== undefined
+                  ? review.plan.prescription_id
+                  : (revision?.prescription_id ??
+                    (mode === 'create' || mode === 'handoff'
+                      ? null
+                      : undefined))
+              }
+            />
             <p>
               {review.plan.name} · {review.plan.start_date} →{' '}
               {review.plan.end_date ?? '—'}

@@ -1,3 +1,5 @@
+import MedicationPrescriptionLink from './MedicationPrescriptionLink';
+import { useMedicationPrescriptionScope } from '@/hooks/Medications/useMedicationPrescriptions';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pencil, Trash2 } from 'lucide-react';
@@ -55,11 +57,24 @@ interface Glp1InventoryManagerProps {
   forecastTimezone?: string;
 }
 
-export default function Glp1InventoryManager({
+export default function Glp1InventoryManager(props: Glp1InventoryManagerProps) {
+  const prescriptionScope = useMedicationPrescriptionScope();
+  return (
+    <InventorySession
+      key={`${props.med.id}:${prescriptionScope.key}`}
+      {...props}
+      prescriptionScope={prescriptionScope}
+    />
+  );
+}
+function InventorySession({
   med,
   forecast,
   forecastTimezone,
-}: Glp1InventoryManagerProps) {
+  prescriptionScope,
+}: Glp1InventoryManagerProps & {
+  prescriptionScope: ReturnType<typeof useMedicationPrescriptionScope>;
+}) {
   const { t } = useTranslation();
   const medId = med.id;
 
@@ -84,6 +99,10 @@ export default function Glp1InventoryManager({
   const [label, setLabel] = useState('');
   const [labelMass, setLabelMass] = useState('');
   const [labelMassTouched, setLabelMassTouched] = useState(false);
+  const [prescriptionId, setPrescriptionId] = useState<
+    string | null | undefined
+  >(undefined);
+  const [prescriptionTouched, setPrescriptionTouched] = useState(false);
   const labelMassRelevant =
     kind === 'vial' || editingPen?.label_mass_mg != null;
   const labelMassValid =
@@ -183,12 +202,16 @@ export default function Glp1InventoryManager({
 
   const openAddDialog = () => {
     resetForm();
+    setPrescriptionId(undefined);
+    setPrescriptionTouched(false);
     setInventoryOpen(true);
   };
 
   const openEditDialog = (pen: MedicationPen) => {
     resetForm();
     setEditingPen(pen);
+    setPrescriptionId(pen.prescription_id);
+    setPrescriptionTouched(false);
     setStatus(pen.status);
     setLotNumber(pen.lot_number ?? '');
     setStorageLocation(pen.storage_location ?? '');
@@ -220,7 +243,13 @@ export default function Glp1InventoryManager({
   };
 
   const handleSaveInventory = () => {
-    if (!budValid || !labelMassValid) return;
+    if (
+      !budValid ||
+      !labelMassValid ||
+      (prescriptionTouched &&
+        (!prescriptionScope.isCurrent() || !prescriptionScope.canWrite))
+    )
+      return;
     const body: MedicationPenWriteInput = {
       kind,
       label: label.trim() || null,
@@ -243,6 +272,7 @@ export default function Glp1InventoryManager({
         reorderFlag && reorderThreshold ? Number(reorderThreshold) : null,
       notes: notes.trim() || null,
     };
+    if (prescriptionTouched) body.prescription_id = prescriptionId ?? null;
     if (kind === 'vial' || editingPen?.label_mass_mg != null) {
       if (editingPen ? labelMassTouched : !!labelMass.trim())
         body.label_mass_mg = labelMass.trim() || null;
@@ -673,6 +703,15 @@ export default function Glp1InventoryManager({
               </div>
             </div>
 
+            <MedicationPrescriptionLink
+              medication={med}
+              value={prescriptionId}
+              onChange={(id) => {
+                setPrescriptionId(id);
+                setPrescriptionTouched(true);
+              }}
+              disabled={savePending}
+            />
             {labelMassRelevant && (
               <VialLabelMassField
                 id="inv-label-mass"
@@ -986,7 +1025,13 @@ export default function Glp1InventoryManager({
             </Button>
             <Button
               onClick={handleSaveInventory}
-              disabled={savePending || !budValid || !labelMassValid}
+              disabled={
+                savePending ||
+                !budValid ||
+                !labelMassValid ||
+                (prescriptionTouched &&
+                  (!prescriptionScope.ready || !prescriptionScope.canWrite))
+              }
             >
               {savePending
                 ? t('common.saving', 'Saving...')

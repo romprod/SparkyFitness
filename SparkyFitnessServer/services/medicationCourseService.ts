@@ -1,3 +1,8 @@
+import {
+  assertPrescriptionOwner,
+  validatePrescriptionLink,
+  publicCoursePrescriptionEnvelope,
+} from '../models/medicationPrescriptionRepository.js';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import {
@@ -77,7 +82,7 @@ async function transaction<T>(
     );
     const value = await work(client);
     await client.query('COMMIT');
-    return value;
+    return publicCoursePrescriptionEnvelope(value, owner);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -106,6 +111,7 @@ function authoredPlan(
     })),
     steps: input.steps,
     device_id: input.device_id,
+    prescription_id: input.prescription_id,
     course_cycle_on_weeks:
       input.course_cycle_on_weeks === undefined
         ? (previous?.course_cycle_on_weeks ?? null)
@@ -139,6 +145,13 @@ export function publicCourseReviewPlan(
   plan: MedicationCoursePlanInput,
   input: MedicationCoursePlanInput
 ): MedicationCoursePlanInput {
+  if (
+    input.prescription_id === undefined &&
+    (plan.prescription_id === null || plan.prescription_id === undefined)
+  ) {
+    const { prescription_id: _prescription, ...legacy } = plan;
+    plan = legacy;
+  }
   if (
     input.course_cycle_on_weeks === undefined &&
     input.course_cycle_off_weeks === undefined &&
@@ -207,6 +220,7 @@ async function revisionReview(
   phaseActuals: CoursePhaseActual[],
   today: string
 ): Promise<MedicationCourseReview> {
+  if (input.prescription_id !== undefined) assertPrescriptionOwner(owner);
   expectedVersion(course, input.expected_version);
   const old = tip(course),
     plan = authoredPlan(
@@ -219,6 +233,13 @@ async function revisionReview(
     course.medication_id,
     plan,
     old
+  );
+  await validatePrescriptionLink(
+    client,
+    owner,
+    course.medication_id,
+    input,
+    old.prescription_id ?? null
   );
   const changes = courseMaterialChanges(coursePlan(old), plan);
   const oldActuals = coursePhaseActuals({
@@ -346,7 +367,9 @@ async function createReviewState(
   input: MedicationCourseReviewInput,
   now = new Date()
 ) {
+  if (input.prescription_id !== undefined) assertPrescriptionOwner(owner);
   const medication = await lockCourseMedication(client, owner, medicationId);
+  await validatePrescriptionLink(client, owner, medicationId, input);
   if (input.expected_version !== 0)
     throw courseProblem('New course creation expects version zero.');
   const selected = input.handoff
@@ -605,6 +628,7 @@ export async function editMedicationCourse(
   input: MedicationCourseEditInput,
   _now = new Date()
 ): Promise<MedicationCourseMutationResult> {
+  if (input.prescription_id !== undefined) assertPrescriptionOwner(owner);
   return operation(owner, 'edit', input, { id }, async (client) => {
     const course = await lockMedicationCourse(client, owner, id);
     expectedVersion(course, input.expected_version);
@@ -628,8 +652,15 @@ export async function editMedicationCourse(
       throw courseProblem(
         'This authored history needs a reviewed successor revision; resume or reopen the current tip first if needed.'
       );
+    const prescriptionId = await validatePrescriptionLink(
+      client,
+      owner,
+      course.medication_id,
+      input,
+      old.prescription_id ?? null
+    );
     await client.query(
-      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12,course_cycle_on_weeks=$13,course_cycle_off_weeks=$14,course_cycle_anchor_date=$15,phase_origin_context=$16::jsonb WHERE user_id=$1 AND id=$2',
+      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12,course_cycle_on_weeks=$13,course_cycle_off_weeks=$14,course_cycle_anchor_date=$15,phase_origin_context=$16::jsonb,prescription_id=$17 WHERE user_id=$1 AND id=$2',
       [
         owner,
         old.id,
@@ -654,6 +685,7 @@ export async function editMedicationCourse(
           : old.phase_origin_context === null
             ? null
             : JSON.stringify(old.phase_origin_context),
+        prescriptionId,
       ]
     );
     await storeCourseChildren(client, owner, old.id, plan, old);

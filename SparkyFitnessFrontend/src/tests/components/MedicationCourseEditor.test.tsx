@@ -19,6 +19,29 @@ import type {
   MedicationCourseReviewInput,
   MedicationCourseReview,
 } from '@workspace/shared';
+let mockRxReady = false;
+const mockRxId = '00000000-0000-4000-8000-000000000071';
+jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
+  useMedicationPrescriptions: () => ({
+    scope: {
+      ready: mockRxReady,
+      canWrite: mockRxReady,
+      isCurrent: () => mockRxReady,
+    },
+    query: { isError: false, isFetching: false },
+    data: {
+      prescriptions: [
+        {
+          id: mockRxId,
+          medication_id: '00000000-0000-4000-8000-000000000002',
+          source: 'Recorded Rx',
+          status: 'expired',
+          expiration: null,
+        },
+      ],
+    },
+  }),
+}));
 const mockReview = jest.fn<
   Promise<MedicationCourseReview>,
   [string, string | null, MedicationCourseReviewInput]
@@ -121,6 +144,7 @@ const acknowledge = () => {
   if (box) fireEvent.click(box);
 };
 beforeEach(() => {
+  mockRxReady = false;
   mockCurrent = true;
   mockDevices.syringes = [];
   mockDevices.default_syringe_id = null;
@@ -618,4 +642,17 @@ it('clears weekly metadata only through explicit blank fields', async () => {
     course_cycle_on_weeks: null,
     course_cycle_off_weeks: null,
   });
+});
+
+it('sends an explicitly selected same-medication prescription into reviewed plan input without changing dose rules', () => {
+  mockRxReady = true;
+  setup();
+  fireEvent.change(screen.getByLabelText('Prescription (optional)'), {
+    target: { value: mockRxId },
+  });
+  review();
+  expect(mockReview.mock.calls[0]![2].prescription_id).toBe(mockRxId);
+  expect(mockReview.mock.calls[0]![2].rules).toEqual([
+    { schedule_type_id: 'daily', time_of_day: null },
+  ]);
 });

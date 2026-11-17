@@ -15,6 +15,24 @@ import Medications from '@/pages/Medications/Medications';
 import { calendarWeek } from '@/tests/fixtures/medicationLogWeek';
 import { inventoryForecastFixture } from '@/tests/fixtures/medicationInventoryForecast';
 const mockInvoiceUser = { id: 'owner', activeUserId: 'owner' };
+jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
+  useMedicationPrescriptionScope: () => ({
+    ready: mockInvoiceUser.activeUserId === mockInvoiceUser.id,
+    canWrite: true,
+    key: 'owner',
+    isCurrent: () => mockInvoiceUser.activeUserId === mockInvoiceUser.id,
+  }),
+  useMedicationPrescriptions: () => ({
+    scope: {
+      ready: mockInvoiceUser.activeUserId === mockInvoiceUser.id,
+      canWrite: true,
+      key: 'owner',
+      isCurrent: () => mockInvoiceUser.activeUserId === mockInvoiceUser.id,
+    },
+    query: { isLoading: false, isError: false },
+    data: { prescriptions: [] },
+  }),
+}));
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockInvoiceUser, loading: false }),
 }));
@@ -406,4 +424,32 @@ it('places the default weekly calendar in Log before the existing separate check
   expect(
     screen.queryByRole('button', { name: 'Manage devices' })
   ).not.toBeInTheDocument();
+});
+
+it('offers the owner prescription register without medication records or medical onboarding', async () => {
+  mockEmptyMedications = true;
+  open('/medications?tab=prescriptions');
+  expect(
+    await screen.findByRole('heading', { name: 'Prescriptions' })
+  ).toBeInTheDocument();
+  expect(screen.getByText('No prescriptions yet.')).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Basic prescription' })
+  ).toBeDisabled();
+});
+it('hides the owner-only Prescriptions destination in a delegated profile', async () => {
+  mockInvoiceUser.activeUserId = 'another-profile';
+  open('/medications?tab=prescriptions');
+  await screen.findByRole('button', { name: 'Preparation & stock' });
+  expect(
+    screen.queryByRole('button', { name: 'Prescriptions' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('heading', { name: 'Prescriptions' })
+  ).not.toBeInTheDocument();
+  expect(
+    mockApiCall.mock.calls.some(([endpoint]) =>
+      endpoint.startsWith('/v2/medication-prescriptions')
+    )
+  ).toBe(false);
 });

@@ -1,3 +1,8 @@
+import {
+  prescriptionActor,
+  assertPrescriptionOwner,
+  validatePrescriptionLink,
+} from './medicationPrescriptionRepository.js';
 import type { PoolClient } from 'pg';
 import {
   badPreparation,
@@ -29,6 +34,9 @@ const PEN_COLS = `id, medication_id, user_id, kind, label, label_mass_mg::text, 
   reorder_flag, reorder_threshold, notes, source, custom_fields, created_at, updated_at,
   lot_number, storage_location, bud_mode, bud_interval_days, bud_base_date, bud_source,
   ${PREPARATION_SQL} AS preparation`;
+
+const penColumns = (owner: string) =>
+  PEN_COLS + (prescriptionActor(owner) === owner ? ', prescription_id' : '');
 
 async function createPen(
   userId: string,
@@ -77,19 +85,25 @@ async function createPen(
     }
     data = { ...data, ...resolveBud(data) };
     const owner = await client.query(
-      'SELECT id FROM medications WHERE id = $1 AND user_id = $2 FOR KEY SHARE',
+      `SELECT id FROM medications WHERE id = $1 AND user_id = $2 FOR ${data.prescription_id === undefined ? 'KEY SHARE' : 'UPDATE'}`,
       [medicationId, userId]
     );
     if (!owner.rows[0]) throw badPreparation('Medication not found.');
+    const prescriptionId = await validatePrescriptionLink(
+      client,
+      userId,
+      medicationId,
+      data
+    );
     const result = await client.query(
       `INSERT INTO medication_pens (
          medication_id, user_id, kind, label, dose_mg, concentration_mg_ml, volume_ml,
          doses_total, doses_used, status, opened_at, expiry_date, bud_date,
-         reorder_flag, reorder_threshold, notes, source, custom_fields, label_mass_mg)
+         reorder_flag, reorder_threshold, notes, source, custom_fields, label_mass_mg, prescription_id)
        VALUES ($1,$2, COALESCE($3,'pen'),$4,$5,$6,$7,$8, COALESCE($9,0),
          COALESCE($10,'sealed'),$11,$12,$13, COALESCE($14, FALSE),$15,$16,
-         COALESCE($17,'manual'), COALESCE($18,'{}'::jsonb),$19)
-       RETURNING ${PEN_COLS}`,
+         COALESCE($17,'manual'), COALESCE($18,'{}'::jsonb),$19,$20)
+       RETURNING ${penColumns(userId)}`,
       [
         medicationId,
         userId,
@@ -110,6 +124,7 @@ async function createPen(
         data.source ?? null,
         data.custom_fields ? JSON.stringify(data.custom_fields) : null,
         data.label_mass_mg ?? null,
+        prescriptionId,
       ]
     );
     const pen = result.rows[0];
@@ -152,7 +167,7 @@ async function createPen(
       ]
     );
     const saved = await client.query(
-      `SELECT ${PEN_COLS} FROM medication_pens WHERE id=$1 AND user_id=$2`,
+      `SELECT ${penColumns(userId)} FROM medication_pens WHERE id=$1 AND user_id=$2`,
       [pen.id, userId]
     );
     await client.query('COMMIT');
@@ -175,7 +190,7 @@ async function listPens(userId: string, medicationId?: string) {
       where += ' AND medication_id = $2';
     }
     const result = await client.query(
-      `SELECT ${PEN_COLS},
+      `SELECT ${penColumns(userId)},
           (SELECT COALESCE(SUM(i.dose_mg),0) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id) AS stock_used_mg,
           (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id AND (i.dose_mg IS NULL OR i.dose_mg < 0 OR (i.dose_mg = 0 AND (i.volume_ml IS NULL OR i.dose_input_unit IS NULL)))) AS stock_missing_doses,
           (SELECT COUNT(*) FROM injection_entries i WHERE i.pen_id = medication_pens.id AND i.user_id = medication_pens.user_id) AS stock_linked_count
@@ -236,6 +251,18 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
   const client: PoolClient = await getClient(userId);
   try {
     await client.query('BEGIN');
+    if (data.prescription_id !== undefined) {
+      assertPrescriptionOwner(userId);
+      const parent = await client.query<{ medication_id: string }>(
+        'SELECT medication_id FROM medication_pens WHERE user_id=$1 AND id=$2',
+        [userId, id]
+      );
+      if (parent.rows[0])
+        await client.query(
+          'SELECT id FROM medications WHERE user_id=$1 AND id=$2 FOR UPDATE',
+          [userId, parent.rows[0].medication_id]
+        );
+    }
     let queueMedicationId: string | null = null;
     if (data.expected_preparation_queue_state !== undefined) {
       const selected = await client.query<{ medication_id: string }>(
@@ -264,6 +291,14 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
       [id, userId]
     );
     const existing = locked.rows[0];
+    if (existing && data.prescription_id !== undefined)
+      await validatePrescriptionLink(
+        client,
+        userId,
+        existing.medication_id,
+        data,
+        existing.prescription_id
+      );
     if (data.expected_preparation_queue_state !== undefined) {
       const row = (await loadInventoryDashboardStock(client, userId, id))[0];
       if (
@@ -448,6 +483,7 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
     let index = 3;
 
     const fields: (keyof UpdatePenBody)[] = [
+      'prescription_id',
       'label_mass_mg',
       'lot_number',
       'storage_location',
@@ -494,7 +530,7 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
 
     if (updates.length === 0) {
       const current = await client.query(
-        `SELECT ${PEN_COLS} FROM medication_pens WHERE id = $1 AND user_id = $2`,
+        `SELECT ${penColumns(userId)} FROM medication_pens WHERE id = $1 AND user_id = $2`,
         [id, userId]
       );
       await client.query('COMMIT');
@@ -505,7 +541,7 @@ async function updatePen(userId: string, id: string, data: UpdatePenBody) {
                      ${updates.join(',\n')},
                      updated_at = NOW()
                    WHERE id = $1 AND user_id = $2
-                   RETURNING ${PEN_COLS}`;
+                   RETURNING ${penColumns(userId)}`;
 
     const result = await client.query(query, values);
     await client.query('COMMIT');
