@@ -258,6 +258,20 @@ async function listInjections(
   }
 }
 
+/** Exact scoped read for a fresh reviewed correction; no medication fallback. */
+async function getInjection(userId: string, id: string) {
+  const client: PoolClient = await getClient(userId);
+  try {
+    const result = await client.query(
+      `SELECT ${INJECTION_COLS} FROM injection_entries WHERE id=$1 AND user_id=$2`,
+      [id, userId]
+    );
+    return result.rows[0] ?? null;
+  } finally {
+    client.release();
+  }
+}
+
 async function editCalculatedInjection(
   client: import('pg').PoolClient,
   userId: string,
@@ -635,10 +649,17 @@ async function deleteInjection(userId: string, id: string) {
   }
 }
 
-export { createInjection, listInjections, updateInjection, deleteInjection };
+export {
+  createInjection,
+  listInjections,
+  getInjection,
+  updateInjection,
+  deleteInjection,
+};
 export default {
   createInjection,
   listInjections,
+  getInjection,
   updateInjection,
   deleteInjection,
 };

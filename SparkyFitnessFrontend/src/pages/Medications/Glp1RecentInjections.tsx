@@ -52,10 +52,18 @@ import type { Medication, InjectionEntry } from '@/types/medications';
 
 interface Glp1RecentInjectionsProps {
   med: Medication;
+  initialInjection?: InjectionEntry;
+  editorOnly?: boolean;
+  canEdit?: boolean;
+  onEditorClose?: () => void;
 }
 
 export default function Glp1RecentInjections({
   med,
+  initialInjection,
+  editorOnly = false,
+  canEdit = true,
+  onEditorClose,
 }: Glp1RecentInjectionsProps) {
   const { t } = useTranslation();
   const { formatDate, timezone } = usePreferences();
@@ -66,22 +74,48 @@ export default function Glp1RecentInjections({
   const [showAssociation, setShowAssociation] = useState(false);
   const [associationStale, setAssociationStale] = useState(false);
 
-  const injQ = useMedicationInjections(medId);
+  const injQ = useMedicationInjections(medId, !editorOnly);
   const updateInjMutation = useUpdateInjectionMutation(medId);
   const deleteInjMutation = useDeleteInjectionMutation(medId);
 
-  const [editingInj, setEditingInj] = useState<InjectionEntry | null>(null);
-  const [editSite, setEditSite] = useState('');
-  const [editDoseMg, setEditDoseMg] = useState('');
-  const [editInjectedAt, setEditInjectedAt] = useState('');
+  const [editingInj, setEditingInj] = useState<InjectionEntry | null>(
+    initialInjection ?? null
+  );
+  const [editSite, setEditSite] = useState(initialInjection?.site ?? 'none');
+  const [editDoseMg, setEditDoseMg] = useState(
+    initialInjection && !initialInjection.dose_input_unit
+      ? String(initialInjection.dose_mg_exact ?? initialInjection.dose_mg ?? '')
+      : ''
+  );
+  const [editInjectedAt, setEditInjectedAt] = useState(
+    initialInjection
+      ? utcToLocalDateTimeInput(initialInjection.injected_at, timezone)
+      : ''
+  );
   const [editTimeTouched, setEditTimeTouched] = useState(false);
-  const [editNotes, setEditNotes] = useState('');
+  const [editNotes, setEditNotes] = useState(initialInjection?.notes ?? '');
   const [editDoseUnit, setEditDoseUnit] = useState<DeviceDose['unit']>('mg');
   const [seedDose, setSeedDose] = useState<DeviceDose | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [reviewedState, setReviewedState] = useState<string | null>(null);
   const [amountTouched, setAmountTouched] = useState(false);
-  const [deviceBinding, setDeviceBinding] = useState('');
+  const [deviceBinding, setDeviceBinding] = useState(
+    initialInjection && !initialInjection.dose_input_unit
+      ? JSON.stringify([
+          initialInjection.id,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+        ])
+      : ''
+  );
+  const closeEditor = () => {
+    setEditingInj(null);
+    onEditorClose?.();
+  };
 
   const syringesQ = useMedicationSyringes();
   const calculatedEntry = !!editingInj?.dose_input_unit;
@@ -212,6 +246,7 @@ export default function Glp1RecentInjections({
   const handleSaveEdit = () => {
     if (
       !editingInj ||
+      (editorOnly && (!canEdit || !courseScope.isCurrent())) ||
       associationStale ||
       (association !== null &&
         (!courseScope.isCurrent() || !courseScope.canWrite)) ||
@@ -256,7 +291,7 @@ export default function Glp1RecentInjections({
         },
       },
       {
-        onSuccess: () => setEditingInj(null),
+        onSuccess: closeEditor,
         onError: (error) => {
           if (
             association !== null &&
@@ -272,96 +307,103 @@ export default function Glp1RecentInjections({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {resolvePreparedMedicationRoute(med) === 'nasal'
-            ? t('medications.devices.recentDoses', 'Recent doses')
-            : t('medications.glp1.recentInjections', 'Recent injections')}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {(injQ.data ?? []).length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            {resolvePreparedMedicationRoute(med) === 'nasal'
-              ? t('medications.devices.noDoses', 'No doses logged yet.')
-              : t('medications.glp1.noInjections', 'No injections logged yet.')}
-          </p>
-        )}
-        {(injQ.data ?? []).slice(0, 8).map((inj) => (
-          <div
-            key={inj.id}
-            className="flex items-center justify-between rounded-md border p-2 text-sm gap-2"
-          >
-            <div className="flex flex-col min-w-0">
-              <span className="font-medium truncate">
-                {inj.administration_route === 'nasal'
-                  ? t('medications.devices.nasalDose', 'Nasal dose')
-                  : inj.administration_route === 'injection'
-                    ? (INJECTION_SITES.find((s) => s.id === inj.site)?.label ??
-                      inj.site ??
-                      t('medications.devices.injection', 'Injection'))
-                    : `${t('medications.devices.recordedDose', 'Recorded dose')}${inj.site ? ` · ${INJECTION_SITES.find((s) => s.id === inj.site)?.label ?? inj.site}` : ''}`}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {inj.dose_mg != null
-                  ? t(
-                      'medications.glp1RecentInjections.mg',
-                      '{{dose_mg}} mg · ',
-                      { dose_mg: inj.dose_mg_exact ?? inj.dose_mg }
-                    )
-                  : ''}
-                {formatDate(inj.injected_at)}
-              </span>
-              {inj.notes && (
-                <span className="text-xs text-muted-foreground italic mt-0.5 block truncate">
-                  {t(
-                    'medications.glp1RecentInjections.note',
-                    'Note: {{notes}}',
-                    { notes: inj.notes }
+    <>
+      {!editorOnly && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {resolvePreparedMedicationRoute(med) === 'nasal'
+                ? t('medications.devices.recentDoses', 'Recent doses')
+                : t('medications.glp1.recentInjections', 'Recent injections')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(injQ.data ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                {resolvePreparedMedicationRoute(med) === 'nasal'
+                  ? t('medications.devices.noDoses', 'No doses logged yet.')
+                  : t(
+                      'medications.glp1.noInjections',
+                      'No injections logged yet.'
+                    )}
+              </p>
+            )}
+            {(injQ.data ?? []).slice(0, 8).map((inj) => (
+              <div
+                key={inj.id}
+                className="flex items-center justify-between rounded-md border p-2 text-sm gap-2"
+              >
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium truncate">
+                    {inj.administration_route === 'nasal'
+                      ? t('medications.devices.nasalDose', 'Nasal dose')
+                      : inj.administration_route === 'injection'
+                        ? (INJECTION_SITES.find((s) => s.id === inj.site)
+                            ?.label ??
+                          inj.site ??
+                          t('medications.devices.injection', 'Injection'))
+                        : `${t('medications.devices.recordedDose', 'Recorded dose')}${inj.site ? ` · ${INJECTION_SITES.find((s) => s.id === inj.site)?.label ?? inj.site}` : ''}`}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {inj.dose_mg != null
+                      ? t(
+                          'medications.glp1RecentInjections.mg',
+                          '{{dose_mg}} mg · ',
+                          { dose_mg: inj.dose_mg_exact ?? inj.dose_mg }
+                        )
+                      : ''}
+                    {formatDate(inj.injected_at)}
+                  </span>
+                  {inj.notes && (
+                    <span className="text-xs text-muted-foreground italic mt-0.5 block truncate">
+                      {t(
+                        'medications.glp1RecentInjections.note',
+                        'Note: {{notes}}',
+                        { notes: inj.notes }
+                      )}
+                    </span>
                   )}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground"
-                onClick={() => openEdit(inj)}
-                aria-label={
-                  inj.administration_route === 'nasal'
-                    ? t('medications.devices.editDose', 'Edit dose')
-                    : t(
-                        'medications.glp1RecentInjections.editInjectionEntry',
-                        'Edit injection entry'
-                      )
-                }
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                onClick={() => deleteInjMutation.mutate(inj.id)}
-                disabled={deleteInjMutation.isPending}
-                aria-label={t(
-                  'medications.glp1RecentInjections.deleteInjectionEntry',
-                  'Delete injection entry'
-                )}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </CardContent>
-
-      {/* Edit Injection Dialog */}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() => openEdit(inj)}
+                    aria-label={
+                      inj.administration_route === 'nasal'
+                        ? t('medications.devices.editDose', 'Edit dose')
+                        : t(
+                            'medications.glp1RecentInjections.editInjectionEntry',
+                            'Edit injection entry'
+                          )
+                    }
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteInjMutation.mutate(inj.id)}
+                    disabled={deleteInjMutation.isPending}
+                    aria-label={t(
+                      'medications.glp1RecentInjections.deleteInjectionEntry',
+                      'Delete injection entry'
+                    )}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      {/* Edit Injection Dialog: reused verbatim by the Log calendar. */}
       <Dialog
         open={!!editingInj}
-        onOpenChange={(open) => !open && setEditingInj(null)}
+        onOpenChange={(open) => !open && closeEditor()}
       >
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -598,7 +640,7 @@ export default function Glp1RecentInjections({
             </div>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditingInj(null)}>
+            <Button variant="ghost" onClick={closeEditor}>
               {t('common.cancel', 'Cancel')}
             </Button>
             {reviewing && (
@@ -615,6 +657,7 @@ export default function Glp1RecentInjections({
               }}
               disabled={
                 updateInjMutation.isPending ||
+                (editorOnly && (!canEdit || !courseScope.isCurrent())) ||
                 associationStale ||
                 (association !== null &&
                   (!courseScope.isCurrent() || !courseScope.canWrite)) ||
@@ -637,6 +680,6 @@ export default function Glp1RecentInjections({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </>
   );
 }

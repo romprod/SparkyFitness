@@ -416,3 +416,5 @@ export * from './schemas/api/MedicationInventoryProjection.api.zod.ts';
 export * from './schemas/api/MedicationCourseTimeline.api.zod.ts';
 export * from './medications/courseProjectionEligibility.ts';
 export * from './medications/courseTimeline.ts';
+export * from './schemas/api/MedicationLogWeek.api.zod.ts';
+export * from './medications/medicationWeek.ts';

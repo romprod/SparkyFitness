@@ -150,8 +150,9 @@ export const useMedicationPens = (medId: string) =>
     },
   });
 
-export const useMedicationInjections = (medId: string) =>
+export const useMedicationInjections = (medId: string, enabled = true) =>
   useQuery({
+    enabled,
     queryKey: medKeys.injections(medId),
     queryFn: () => medicationService.listInjections(medId),
     meta: {

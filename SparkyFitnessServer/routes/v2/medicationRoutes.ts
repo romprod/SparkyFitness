@@ -1,3 +1,4 @@
+import { getMedicationCalendarWeek } from '../../services/medicationCalendarService.js';
 import {
   reviewPreparationCorrection,
   commitPreparationCorrection,
@@ -5,6 +6,7 @@ import {
 import { previewMedicationDraw } from '../../services/medicationDrawReviewService.js';
 import {
   medicationSyringeInputSchema,
+  medicationLogWeekQuerySchema,
   drawPreviewInputSchema,
   medicationPreparationReviewInputSchema,
   medicationPreparationCorrectionInputSchema,
@@ -1076,6 +1078,32 @@ router.post('/pens/:id/preparation-corrections', async (req, res, next) => {
   }
 });
 
+// Static calendar path must precede the medication-id route.
+router.get('/calendar/week', async (req, res, next) => {
+  try {
+    const query = medicationLogWeekQuerySchema.safeParse(req.query);
+    if (!query.success) return badRequest(res, query.error);
+    if (
+      query.data.expected_owner_id &&
+      query.data.expected_owner_id !== req.userId
+    ) {
+      res
+        .status(409)
+        .json({ error: 'The active profile changed. Refresh this request.' });
+      return;
+    }
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.json(
+      await getMedicationCalendarWeek(req.userId, query.data.week_start)
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:id', getMedication);
 router.put(
   '/:id',
@@ -1325,6 +1353,42 @@ const deleteInjection: RequestHandler = async (req, res, next) => {
     next(error);
   }
 };
+
+router.get('/injections/:id', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    const query = z
+      .object({ expected_owner_id: z.string().uuid().optional() })
+      .strict()
+      .safeParse(req.query);
+    if (!params.success) return badRequest(res, params.error);
+    if (!query.success) return badRequest(res, query.error);
+    if (
+      query.data.expected_owner_id &&
+      query.data.expected_owner_id !== req.userId
+    ) {
+      res
+        .status(409)
+        .json({ error: 'The active profile changed. Refresh this request.' });
+      return;
+    }
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    const injection = await injectionRepository.getInjection(
+      req.userId,
+      params.data.id
+    );
+    if (!injection) {
+      res.status(404).json({ error: 'Injection not found' });
+      return;
+    }
+    res.json(injection);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/:medicationId/injections', listInjections);
 router.post('/injections', createInjection);

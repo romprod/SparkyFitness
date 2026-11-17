@@ -83,7 +83,6 @@ import type {
 import { MedTypeIcon } from './AddMedicationDialog';
 import GlpDailyCheckIn from './GlpDailyCheckIn';
 import Glp1QuickLogDialog from './Glp1QuickLogDialog';
-import MedicationLogCalendar from './MedicationLogCalendar';
 import { useMedicationCourseDue } from '@/hooks/Medications/useMedicationCourses';
 import MedicationCourseDoseDialog from './MedicationCourseDoseDialog';
 import MedicationCourseAttributionPicker from './MedicationCourseAttributionPicker';
@@ -121,7 +120,6 @@ export default function TodayMedications({
   recentEntries,
   loadingMeds,
   loadingEntries,
-  onSelectDate,
   subtype = 'all',
 }: TodayMedicationsProps) {
   const { t } = useTranslation();
@@ -1313,12 +1311,6 @@ export default function TodayMedications({
         </div>
 
         <div className="space-y-6">
-          <MedicationLogCalendar
-            medications={meds}
-            selectedDate={selectedDate}
-            onSelectDate={onSelectDate}
-            subtype={subtype}
-          />
           {/* Today Activity Log Column */}
           <div>
             <Card className="h-full">

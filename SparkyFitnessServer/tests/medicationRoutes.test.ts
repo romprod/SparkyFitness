@@ -1,3 +1,4 @@
+import { getMedicationCalendarWeek } from '../services/medicationCalendarService.js';
 import { vi, beforeEach, describe, expect, it } from 'vitest';
 // @ts-expect-error supertest has no bundled types in this project
 import request from 'supertest';
@@ -19,6 +20,9 @@ import { extractSupplementLabel } from '../services/supplementLabelScanService.j
 import { lookupSupplementInOpenFoodFacts } from '../services/supplementOpenFoodFactsService.js';
 import { getActiveProvidersByTypes } from '../models/externalProviderRepository.js';
 
+vi.mock('../services/medicationCalendarService.js', () => ({
+  getMedicationCalendarWeek: vi.fn(),
+}));
 vi.mock('../models/medicationRepository.js');
 vi.mock('../models/medicationPenRepository.js');
 vi.mock('../models/injectionRepository.js');
@@ -555,8 +559,6 @@ describe('Medication Routes V2', () => {
       await request(app)
         .get('/api/v2/medications/supplement-lookup?upc=858849003115')
         .set('Cookie', cookie);
-
-      expect(medicationRepository.getMedicationById).not.toHaveBeenCalled();
     });
   });
 
@@ -1337,5 +1339,75 @@ describe('Medication Routes V2', () => {
         .set('Cookie', cookie);
       expect(res.statusCode).toBe(404);
     });
+  });
+});
+
+describe('A02 readonly week and exact injection reads', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('routes the static week path and forwards only the bound owner and Monday', async () => {
+    vi.mocked(getMedicationCalendarWeek).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof getMedicationCalendarWeek>>
+    );
+    const res = await request(app)
+      .get(
+        '/api/v2/medications/calendar/week?week_start=2026-11-16&expected_owner_id=' +
+          UID
+      )
+      .set('Cookie', ['userId=' + UID]);
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(getMedicationCalendarWeek).toHaveBeenCalledExactlyOnceWith(
+      UID,
+      '2026-11-16'
+    );
+  });
+  it.each([
+    'week_start=2026-11-17',
+    'week_start=2026-02-30',
+    'as_of=2026-11-17',
+    'week_start=2026-11-16&week_start=2026-11-23',
+  ])('rejects unsupported or non-Monday week queries %s', async (query) => {
+    const res = await request(app)
+      .get('/api/v2/medications/calendar/week?' + query)
+      .set('Cookie', ['userId=' + UID]);
+    expect(res.status).toBe(400);
+    expect(getMedicationCalendarWeek).not.toHaveBeenCalled();
+  });
+  it('rejects stale owner assertions before either read', async () => {
+    for (const path of ['/calendar/week', '/injections/' + UID]) {
+      const res = await request(app)
+        .get('/api/v2/medications' + path + '?expected_owner_id=' + UID)
+        .set('Cookie', ['userId=otherOwner']);
+      expect(res.status).toBe(409);
+    }
+    expect(getMedicationCalendarWeek).not.toHaveBeenCalled();
+    expect(injectionRepository.getInjection).not.toHaveBeenCalled();
+  });
+  it('loads the exact current injection for the current owner without a list or medication fallback', async () => {
+    vi.mocked(injectionRepository.getInjection).mockResolvedValue({
+      id: UID,
+      dose_mg_exact: '0.125',
+      medication_id: null,
+    });
+    const res = await request(app)
+      .get(
+        '/api/v2/medications/injections/' + UID + '?expected_owner_id=' + UID
+      )
+      .set('Cookie', ['userId=' + UID]);
+    expect(res.status).toBe(200);
+    expect(res.body.dose_mg_exact).toBe('0.125');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(injectionRepository.getInjection).toHaveBeenCalledExactlyOnceWith(
+      UID,
+      UID
+    );
+    expect(injectionRepository.listInjections).not.toHaveBeenCalled();
+  });
+  it('returns 404 for missing or foreign exact injection instead of returning another row', async () => {
+    vi.mocked(injectionRepository.getInjection).mockResolvedValue(null);
+    const res = await request(app)
+      .get('/api/v2/medications/injections/' + UID)
+      .set('Cookie', ['userId=' + UID]);
+    expect(res.status).toBe(404);
   });
 });

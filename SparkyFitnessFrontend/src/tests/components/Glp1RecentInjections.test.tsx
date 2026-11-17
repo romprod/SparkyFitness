@@ -459,3 +459,33 @@ it('submits explicit association without rewriting delivered amount or timestamp
   for (const key of ['dose_mg', 'calculated_draw', 'injected_at', 'entry_date'])
     expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty(key);
 });
+
+it('reuses the full dialog directly from the calendar and preserves unchanged exact metadata', () => {
+  const close = jest.fn();
+  const entry = {
+    ...mockEntries[0]!,
+    dose_input_unit: null,
+    syringe_id: null,
+    dose_mg: 0.12345678901234568,
+    dose_mg_exact: '0.1234567890123456789',
+  };
+  render(
+    <Glp1RecentInjections
+      med={medication}
+      initialInjection={entry}
+      editorOnly
+      onEditorClose={close}
+    />
+  );
+  expect(screen.queryByText('Recent injections')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Notes'), {
+    target: { value: 'Calendar note' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(mockUpdate.mock.calls[0][0].body).toEqual(
+    expect.objectContaining({ notes: 'Calendar note' })
+  );
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('dose_mg');
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('injected_at');
+  expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('entry_date');
+});

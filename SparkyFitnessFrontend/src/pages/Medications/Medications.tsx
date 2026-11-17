@@ -59,6 +59,7 @@ import { countMedicationNutrients } from './medicationUtils';
 import ScheduleManager from './ScheduleManager';
 import MedicationCourseTimeline from './MedicationCourseTimeline';
 import TodayMedications from './TodayMedications';
+import MedicationLogCalendar from './MedicationLogCalendar';
 import MedicationSupplyTile from './MedicationSupplyTile';
 import SymptomsHub from '../Symptoms/SymptomsHub';
 import MedicationDisclaimer from './MedicationDisclaimer';
@@ -403,6 +404,18 @@ export default function Medications() {
       {activeTab === 'today' && (
         <>
           <MedicationSupplyTile />
+          <MedicationLogCalendar
+            medications={visibleMeds}
+            selectedDate={selectedDate}
+            subtype={subtype}
+            onSelectDate={(date) =>
+              setSearchParams((previous) => {
+                const next = new URLSearchParams(previous);
+                next.set('date', date);
+                return next;
+              })
+            }
+          />
           <TodayMedications
             selectedDate={selectedDate}
             today={today}

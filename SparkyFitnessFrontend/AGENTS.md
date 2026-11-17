@@ -244,3 +244,9 @@ Use existing reviewed edit navigation, permission and profile-generation guards.
 ## Diary nutrition-trend visibility
 
 The owner-requested setting is implemented and source-tested: Settings → Nutrition & Diet → Nutrient Display controls the main Diary's 14-day nutrition trends using the existing diary-layout hidden key `nutrition-trends`. Trends are shown by default; hiding them unmounts `MiniNutritionTrends`. This is independent of diary totals and the existing widgets. Preserve order and every other hidden key when changing this setting, keep owner-only preference writes/profile guards, and let reset-to-defaults show trends again. No new preference API, server/schema change or actual owner preference mutation is part of implementing or testing the option.
+
+## Selected A02 week and month dose views
+
+A02 is implemented and source-tested in Medications → Log/calendar. Default to a Monday-first weekly planned/actual swimlane with previous/next week and Today navigation; render every slot, including multiple/untimed entries, with text/glyph status signals. Week cells remain informational. Month day detail shows the selected day's rows and reuses existing actual Edit/Delete controls, stock review and confirmation/cancel/error behavior. Planned rows have no new write controls. Preserve current month markers, KPIs, checklist and medication/supplement filters.
+
+Render server-authoritative actual quantities/units and explicit planned attribution; distinguish scheduled from actual time without inventing a historical instant. Unknown history is not automatically missed/off-schedule, and Shifted requires recorded rebase provenance. Retain profile/permission/cache/stale-response guards and current-day clock behavior. Keep the separate main Diary trend-visibility setting unchanged. No new calendar dependency, native UI or unrelated wellness model is selected.

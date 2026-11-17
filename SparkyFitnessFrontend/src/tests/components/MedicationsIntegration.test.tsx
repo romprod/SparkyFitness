@@ -12,6 +12,7 @@ import {
   INJECTION_SITES,
 } from '@workspace/shared';
 import Medications from '@/pages/Medications/Medications';
+import { calendarWeek } from '@/tests/fixtures/medicationLogWeek';
 import { inventoryForecastFixture } from '@/tests/fixtures/medicationInventoryForecast';
 const mockInvoiceUser = { id: 'owner', activeUserId: 'owner' };
 jest.mock('@/hooks/useAuth', () => ({
@@ -52,7 +53,14 @@ jest.mock('@/pages/Medications/AddMedicationDialog', () => ({
 }));
 jest.mock('@/pages/Medications/TodayMedications', () => ({
   __esModule: true,
-  default: () => null,
+  default: () => <p>Existing selected-date checklist</p>,
+}));
+jest.mock('@/hooks/Medications/useMedicationLogWeek', () => ({
+  useMedicationLogWeek: () => ({
+    scope: { ready: true, key: 'owner', isCurrent: () => true },
+    query: { isLoading: false, isError: false },
+    data: calendarWeek({ lanes: [] }),
+  }),
 }));
 jest.mock('@/pages/Medications/ScheduleManager', () => ({
   __esModule: true,
@@ -380,5 +388,22 @@ it('returns timeline Manage to the exact Cabinet plan and clears the subtype fil
   ).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: 'Manage exact timeline row' })
+  ).not.toBeInTheDocument();
+});
+
+it('places the default weekly calendar in Log before the existing separate checklist', async () => {
+  open('/medications?tab=today');
+  const heading = await screen.findByRole('heading', { name: 'Dose calendar' });
+  expect(screen.getByRole('button', { name: 'Week' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  expect(
+    heading.compareDocumentPosition(
+      screen.getByText('Existing selected-date checklist')
+    ) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: 'Manage devices' })
   ).not.toBeInTheDocument();
 });
