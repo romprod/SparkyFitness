@@ -1,3 +1,4 @@
+import DiaryNutritionTrendsSetting from './DiaryNutritionTrendsSetting';
 import type React from 'react';
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -508,6 +509,7 @@ const NutrientDisplaySettingsInner: React.FC<
 
   return (
     <div className="space-y-4">
+      <DiaryNutritionTrendsSetting />
       <Tabs
         value={activePlatformTab}
         onValueChange={(value) =>

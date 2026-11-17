@@ -13,7 +13,11 @@ import { useDiaryMedicationCharts } from '@/hooks/Diary/useDiaryMedicationCharts
 import MealCard from './MealCard';
 import ExerciseCard from './ExerciseCard';
 import DiaryWidgetGrid, { type DiaryWidget } from './DiaryWidgetGrid';
-import { mealWidgetKey } from '@/utils/dashboardLayout';
+import {
+  mealWidgetKey,
+  NUTRITION_TRENDS_HIDDEN_KEY,
+} from '@/utils/dashboardLayout';
+import { useDashboardLayout } from '@/hooks/Diary/useDashboardLayout';
 import {
   Flame,
   Salad,
@@ -67,6 +71,10 @@ const Diary = () => {
   const { t } = useTranslation();
   const { activeUserId } = useActiveUser();
   const chartMedications = useDiaryMedicationCharts();
+  const { saved: diaryLayout } = useDashboardLayout('diary');
+  const showNutritionTrends = !diaryLayout?.hidden.includes(
+    NUTRITION_TRENDS_HIDDEN_KEY
+  );
   const location = useLocation();
   const navigate = useNavigate();
   const { timezone, loggingLevel, energyUnit, convertEnergy } =
@@ -388,6 +396,7 @@ const Diary = () => {
         icon: Salad,
         render: () => (
           <NutritionSummaryCard
+            showNutritionTrends={showNutritionTrends}
             selectedDate={selectedDate}
             dayTotals={dayTotals as unknown as DayTotals}
             goals={effectiveGoals}
@@ -508,6 +517,7 @@ const Diary = () => {
     effectiveGoals,
     summaryData?.calorieBalance,
     calorieGoalPreference,
+    showNutritionTrends,
     visibleMealTypes,
     selectedDate,
     dayTotals,

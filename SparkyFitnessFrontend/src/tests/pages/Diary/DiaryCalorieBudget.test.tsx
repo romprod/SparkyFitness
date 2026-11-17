@@ -16,6 +16,10 @@ jest.mock('@/pages/Diary/DiaryMedicationCharts', () => ({
 const mockWidgetKeys: string[] = [];
 
 const mockGoals = { calories: 1800, protein: 100, carbs: 200, fat: 60 };
+let mockHidden: string[] = [];
+jest.mock('@/hooks/Diary/useDashboardLayout', () => ({
+  useDashboardLayout: () => ({ saved: { hidden: mockHidden } }),
+}));
 let mockRemaining = 1256;
 let mockCaloriePreference: NutrientGoalPreferenceEntry | undefined;
 
@@ -79,8 +83,19 @@ jest.mock('@/pages/Diary/DiaryWidgetGrid', () => ({
 }));
 jest.mock('@/pages/Diary/NutritionSummaryCard', () => ({
   __esModule: true,
-  default: ({ calorieBudget }: { calorieBudget: number }) => (
-    <output aria-label="Calorie budget">{calorieBudget}</output>
+  default: ({
+    calorieBudget,
+    showNutritionTrends,
+  }: {
+    calorieBudget: number;
+    showNutritionTrends: boolean;
+  }) => (
+    <>
+      <output aria-label="Calorie budget">{calorieBudget}</output>
+      <output aria-label="Nutrition trends visibility">
+        {String(showNutritionTrends)}
+      </output>
+    </>
   ),
 }));
 jest.mock('@/pages/Diary/DailyProgress', () => () => null);
@@ -108,6 +123,7 @@ const renderDiary = () =>
   );
 
 beforeEach(() => {
+  mockHidden = [];
   mockRemaining = 1256;
   mockCaloriePreference = undefined;
 });
@@ -177,4 +193,14 @@ it('keeps an unresolved diagnostic widget after caffeine, including when viewing
 it('has no medication chart tile when none are eligible or readable', () => {
   renderDiary();
   expect(mockWidgetKeys).not.toContain('glp1');
+});
+
+it('applies only the saved nested nutrition-trends visibility, retaining all Diary widgets', () => {
+  mockHidden = ['nutrition-trends', 'water'];
+  renderDiary();
+  expect(
+    screen.getByLabelText('Nutrition trends visibility')
+  ).toHaveTextContent('false');
+  expect(mockWidgetKeys).toContain('nutrition');
+  expect(mockWidgetKeys).toContain('energy');
 });

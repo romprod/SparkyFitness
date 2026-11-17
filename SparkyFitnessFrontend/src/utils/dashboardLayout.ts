@@ -1,3 +1,6 @@
+// Nested Diary display preference; not a separately positioned widget.
+export const NUTRITION_TRENDS_HIDDEN_KEY = 'nutrition-trends';
+
 /**
  * Shared types and helpers for the customizable Diary widget grid.
  *

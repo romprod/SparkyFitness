@@ -13,10 +13,12 @@ export interface DashboardLayoutPayload {
 }
 
 export const getDashboardLayout = async (
-  pageKey: string
+  pageKey: string,
+  signal?: AbortSignal
 ): Promise<SavedDashboardLayout | null> => {
   return apiCall(`/dashboard-layouts/${pageKey}`, {
     method: 'GET',
+    signal,
     suppress404Toast: true,
   });
 };

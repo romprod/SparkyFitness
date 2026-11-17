@@ -2621,6 +2621,9 @@
       "liters": "Liters"
     },
     "nutrientDisplay": {
+      "showDiaryTrends": "Show 14-day nutrition trends in Diary",
+      "diaryTrendsHelp": "Keeps today's nutrition summary visible. Applies to desktop and mobile; resetting the Diary layout restores this setting.",
+      "diaryTrendsError": "Could not confirm this display setting. The previous setting is still shown; reload before trying again.",
       "title": "Nutrient Display",
       "description": "Choose which nutrients to display in food and meal views",
       "platformDesktop": "Desktop",

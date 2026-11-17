@@ -203,3 +203,22 @@ describe('NutritionSummaryCard goal completion', () => {
     }
   );
 });
+
+it('hides only the optional trends while retaining the nutrition summary', () => {
+  const props = {
+    selectedDate: '2026-11-17',
+    goals: DEFAULT_GOALS,
+    energyUnit: 'kcal' as const,
+    convertEnergy: (value: number) => value,
+  };
+  const view = render(<NutritionSummaryCard {...props} />);
+  expect(screen.getByTestId('mini-nutrition-trends')).toBeInTheDocument();
+  view.rerender(
+    <NutritionSummaryCard {...props} showNutritionTrends={false} />
+  );
+  expect(screen.queryByTestId('mini-nutrition-trends')).not.toBeInTheDocument();
+  expect(screen.getByText('Nutrition Summary')).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Edit Goals' })
+  ).toBeInTheDocument();
+});

@@ -47,6 +47,7 @@ export interface DayTotals {
 
 interface NutritionSummaryCardProps {
   selectedDate: string;
+  showNutritionTrends?: boolean;
   dayTotals?: DayTotals;
   goals: ExpandedGoals;
   calorieBudget?: number;
@@ -61,6 +62,7 @@ interface NutritionSummaryCardProps {
 
 const NutritionSummaryCard = ({
   selectedDate,
+  showNutritionTrends = true,
   dayTotals = { calories: 0, protein: 0, carbs: 0, fat: 0, dietary_fiber: 0 },
   goals,
   calorieBudget,
@@ -276,10 +278,12 @@ const NutritionSummaryCard = ({
             );
           })}
         </div>
-        <MiniNutritionTrends
-          selectedDate={selectedDate}
-          customNutrients={customNutrients}
-        />
+        {showNutritionTrends && (
+          <MiniNutritionTrends
+            selectedDate={selectedDate}
+            customNutrients={customNutrients}
+          />
+        )}
       </CardContent>
 
       <CopyFoodEntryDialog
