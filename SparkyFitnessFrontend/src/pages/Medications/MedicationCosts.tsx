@@ -12,7 +12,7 @@ import {
   useMedicationPurchaseScope,
   useDeleteMedicationPurchase,
 } from '@/hooks/useMedicationPurchases';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -134,33 +134,8 @@ function OwnedCosts({
       </div>
     );
   }
-  return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-3xl font-semibold tracking-tight">
-            {t('medications.costs.title', 'Costs')}
-          </h2>
-          <p className="text-muted-foreground">
-            {t(
-              'medications.costs.ledgerHint',
-              'Landed cost per vial, per mg and per dose — shipping and sundries included.'
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              'medications.costs.bookkeeping',
-              'Bookkeeping only. Not medical advice.'
-            )}
-          </p>
-        </div>
-        <Button className="shrink-0" onClick={() => setCreating(true)}>
-          <Plus aria-hidden="true" className="mr-1 h-4 w-4" />
-          {t('medications.costs.addInvoice', 'Add invoice')}
-        </Button>
-      </div>
-      <MedicationCostReport ownerId={ownerId} />
-      <MedicationCourseCosts ownerId={ownerId} />
+  const invoiceBlock = (
+    <>
       {purchases.isLoading && <p>{t('common.loading', 'Loading…')}</p>}
       {purchases.isError && (
         <Badge variant="destructive" className={notice}>
@@ -225,15 +200,16 @@ function OwnedCosts({
                           {item.landed_unit === null
                             ? t('medications.costs.uncosted', 'Uncosted')
                             : money(item.landed_unit, purchase.currency)}{' '}
-                          {t('medications.costs.each', 'each')}
+                          {t('medications.costs.cardEach', 'ea')}
                         </span>
                       </div>
                       <p className="break-words text-xs text-muted-foreground">
                         {money(item.subtotal, purchase.currency)} +{' '}
                         {money(item.allocated, purchase.currency)}{' '}
-                        {t('medications.costs.shareAmount', 'Shipping share')}
+                        {t('medications.costs.cardShip', 'ship')}
                         {item.kind === 'medication' &&
-                          ` · ${t('medications.costs.match', 'Match vials ({{matched}} of {{expected}})', { matched: item.vial_ids.length, expected: item.quantity })}`}
+                          item.vial_ids.length > 0 &&
+                          ` · ${item.vial_ids.length === 1 ? t('medications.costs.cardMatchedOne', '1 vial matched') : t('medications.costs.cardMatched', '{{matched}} vials matched', { matched: item.vial_ids.length })}`}
                       </p>
                       {item.kind === 'medication' &&
                         item.vial_ids.length > item.quantity && (
@@ -247,16 +223,18 @@ function OwnedCosts({
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-muted-foreground">
-                  {t(
-                    'medications.costs.matchedTotal',
-                    '{{matched}} of {{expected}} vials matched',
-                    {
-                      matched: purchase.vials_linked,
-                      expected: purchase.vials_expected,
-                    }
-                  )}
-                </p>
+                {purchase.vials_expected > purchase.vials_linked && (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'medications.costs.cardUnmatched',
+                      '{{missing}} vials on this invoice not yet matched to inventory.',
+                      {
+                        missing:
+                          purchase.vials_expected - purchase.vials_linked,
+                      }
+                    )}
+                  </p>
+                )}
                 {purchase.totals.unallocated !== '0.00' && (
                   <p className="text-xs text-muted-foreground">
                     {t(
@@ -286,6 +264,7 @@ function OwnedCosts({
                       setDeleteError('');
                     }}
                   >
+                    <Trash2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
                     {t('common.delete', 'Delete')}
                   </Button>
                   <Button
@@ -302,6 +281,42 @@ function OwnedCosts({
           </div>
         </section>
       )}
+    </>
+  );
+  return (
+    <div className="min-w-0 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-semibold tracking-tight">
+            {t('medications.costs.title', 'Costs')}
+          </h2>
+          <p className="text-muted-foreground">
+            {t(
+              'medications.costs.ledgerHint',
+              'Landed cost per vial, per mg and per dose — shipping and sundries included.'
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'medications.costs.bookkeeping',
+              'Bookkeeping only. Not medical advice.'
+            )}
+          </p>
+        </div>
+        <Button
+          className="shrink-0"
+          aria-label={t('medications.costs.addInvoiceLabel', 'Add invoice')}
+          onClick={() => setCreating(true)}
+        >
+          <Plus aria-hidden="true" className="mr-1 h-4 w-4" />
+          {t('medications.costs.addInvoice', 'Invoice')}
+        </Button>
+      </div>
+      <MedicationCostReport
+        ownerId={ownerId}
+        invoices={invoiceBlock}
+        trailing={<MedicationCourseCosts ownerId={ownerId} />}
+      />
       <Dialog
         open={!!deleting}
         onOpenChange={(open) =>

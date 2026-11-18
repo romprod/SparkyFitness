@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   formatPurchaseMoney,
@@ -20,7 +20,17 @@ import MedicationPrescriptionEstimates, {
 
 const WINDOWS: MedicationCostWindow[] = ['3', '6', '12', 'all'];
 
-export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
+export default function MedicationCostReport({
+  ownerId,
+  invoices,
+  trailing,
+}: {
+  ownerId: string;
+  /** Rendered after the report cards, before prescription estimates. */
+  invoices?: ReactNode;
+  /** Rendered last, after the prescription estimates. */
+  trailing?: ReactNode;
+}) {
   const { t } = useTranslation();
   const [window, setWindow] = useState<MedicationCostWindow>('12');
   const report = useMedicationCostAnalytics(ownerId, window, true);
@@ -283,12 +293,6 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
               title={t('medications.costReport.title', 'By medication')}
               cardClassName="overflow-x-auto"
             >
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  'medications.costReport.note',
-                  'Rates use current invoice or confirmed stock-linked prescription prices and vial label data. Prescription estimates exclude shipping; uncosted doses are excluded.'
-                )}
-              </p>
               {data.rows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {t(
@@ -313,10 +317,7 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
                           {t('medications.costs.medication', 'Medication')}
                         </th>
                         <th className="min-w-20 pb-2 text-right font-medium">
-                          {t(
-                            'medications.costEstimates.invoiceSpend',
-                            'Invoice spend'
-                          )}
+                          {t('medications.costEstimates.invoiceSpend', 'Spend')}
                         </th>
                         <th className="min-w-20 pb-2 text-right font-medium">
                           {t('medications.costReport.perDose', 'Per dose')}
@@ -335,24 +336,30 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
                             </span>
                             <span className="mt-1 block text-xs text-muted-foreground">
                               {t(
-                                'medications.costReport.counts',
-                                '{{costed}} costed doses · {{uncosted}} uncosted',
-                                {
-                                  costed: row.costed_doses,
-                                  uncosted: row.uncosted_doses,
-                                }
+                                'medications.costReport.countsShort',
+                                '{{costed}} doses',
+                                { costed: row.costed_doses }
                               )}
+                              {row.uncosted_doses > 0 &&
+                                t(
+                                  'medications.costReport.uncostedSuffix',
+                                  ' · {{uncosted}} uncosted',
+                                  { uncosted: row.uncosted_doses }
+                                )}
                             </span>
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {t(
-                                'medications.costEstimates.usageSources',
-                                '{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates',
-                                {
-                                  invoice: row.usage_sources.invoice,
-                                  prescription: row.usage_sources.prescription,
-                                }
-                              )}
-                            </span>
+                            {row.usage_sources.prescription > 0 && (
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {t(
+                                  'medications.costEstimates.usageSources',
+                                  '{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates',
+                                  {
+                                    invoice: row.usage_sources.invoice,
+                                    prescription:
+                                      row.usage_sources.prescription,
+                                  }
+                                )}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2 text-right tabular-nums">
                             <span
@@ -429,6 +436,20 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
                   </table>
                 </div>
               )}
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer">
+                  {t(
+                    'medications.costReport.aboutFigures',
+                    'About these figures'
+                  )}
+                </summary>
+                <p className="mt-1">
+                  {t(
+                    'medications.costReport.note',
+                    'Rates use current invoice or confirmed stock-linked prescription prices and vial label data. Prescription estimates exclude shipping; uncosted doses are excluded.'
+                  )}
+                </p>
+              </details>
             </CostSection>
             <MedicationSpendByMonth data={data} />
           </div>
@@ -436,7 +457,15 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
             <MedicationSundries data={data} />
             <MedicationWaste data={data} />
           </div>
+          {invoices}
           <MedicationPrescriptionEstimates buckets={data.accounted} />
+          {trailing}
+        </>
+      )}
+      {!(data && summary) && (
+        <>
+          {invoices}
+          {trailing}
         </>
       )}
     </div>

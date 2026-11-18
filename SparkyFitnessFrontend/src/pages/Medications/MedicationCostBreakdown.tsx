@@ -86,15 +86,6 @@ export function MedicationSpendByMonth({
     <CostSection
       title={t('medications.costReport.monthlyTitle', 'Spend by month')}
     >
-      {'cost_basis' in data &&
-        data.cost_basis === 'with_prescription_estimates' && (
-          <p className="text-xs text-muted-foreground">
-            {t(
-              'medications.costEstimates.monthlyCash',
-              'Monthly bars and invoice totals show recorded invoice cash only; prescription estimates are excluded.'
-            )}
-          </p>
-        )}
       {mixed && warning}
       {monthly.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -170,14 +161,25 @@ export function MedicationSpendByMonth({
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">
-            {t(
-              'medications.costReport.monthlyNote',
-              'Invoice totals in the selected window. Shipping & fees includes tax and discounts; negative values remain below zero. Category totals include rounding adjustments.'
-            )}
-          </p>
         </>
       )}
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer">
+          {t('medications.costReport.aboutFigures', 'About these figures')}
+        </summary>
+        <p className="mt-1">
+          {'cost_basis' in data &&
+            data.cost_basis === 'with_prescription_estimates' &&
+            `${t(
+              'medications.costEstimates.monthlyCash',
+              'Monthly bars and invoice totals show recorded invoice cash only; prescription estimates are excluded.'
+            )} `}
+          {t(
+            'medications.costReport.monthlyNote',
+            'Invoice totals in the selected window. Shipping & fees includes tax and discounts; negative values remain below zero. Category totals include rounding adjustments.'
+          )}
+        </p>
+      </details>
     </CostSection>
   );
 }
@@ -257,10 +259,7 @@ export function MedicationSundries({
           <div className="space-y-1 border-t pt-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
               <span className="text-muted-foreground">
-                {t(
-                  'medications.costReport.perDoseEstimate',
-                  'Per dose estimate'
-                )}
+                {t('medications.costReport.perDoseEstimate', 'Per injection')}
               </span>
               <span className="font-semibold tabular-nums">
                 {consumables.cost_per_dose_mixed_currency
@@ -274,12 +273,8 @@ export function MedicationSundries({
             <p className="text-xs text-muted-foreground">
               {consumables.cost_per_dose_basis === 'modelled'
                 ? t(
-                    'medications.costReport.modelledBasis',
-                    'Modelled from landed cost per piece × declared units per dose. Declared lines included: {{included}}; lines without a positive units-per-dose value excluded: {{excluded}}.',
-                    {
-                      included: consumables.modelled_lines,
-                      excluded: consumables.unmodelled_lines,
-                    }
+                    'medications.costReport.modelledShort',
+                    'Modelled from the units-per-dose you set on each line.'
                   )
                 : consumables.cost_per_dose_basis === 'amortised'
                   ? t(
@@ -292,6 +287,26 @@ export function MedicationSundries({
                       'Estimate unavailable. A modelled estimate needs a positive units-per-dose value; an amortised estimate needs logged doses and one currency.'
                     )}
             </p>
+            {consumables.cost_per_dose_basis === 'modelled' && (
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer">
+                  {t(
+                    'medications.costReport.aboutFigures',
+                    'About these figures'
+                  )}
+                </summary>
+                <p className="mt-1">
+                  {t(
+                    'medications.costReport.modelledBasis',
+                    'Modelled from landed cost per piece × declared units per dose. Declared lines included: {{included}}; lines without a positive units-per-dose value excluded: {{excluded}}.',
+                    {
+                      included: consumables.modelled_lines,
+                      excluded: consumables.unmodelled_lines,
+                    }
+                  )}
+                </p>
+              </details>
+            )}
           </div>
         </>
       )}
@@ -312,24 +327,30 @@ export function MedicationWaste({ data }: { data: MedicationCostAnalytics }) {
       <div>
         <p className="text-xl font-semibold tabular-nums">
           {money(
-            waste.estimated_unused_value,
-            waste.currency,
+            waste.estimated_unused_value ??
+              (valuedWaste.length === 0 ? '0.00' : null),
+            waste.currency ?? data.summary.currency,
             waste.mixed_currency
           )}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {t(
             'medications.costReport.wasteEstimate',
-            'Current closed-stock unused value estimate'
+            'Value of mass never delivered from vials marked finished or discarded. Sealed and in-use vials are inventory, not waste.'
           )}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {t(
-          'medications.costReport.wasteBasis',
-          'Uses all logged delivered history, independent of the selected window. Includes priced, labelled finished or discarded vials with at most 70% delivered. Sealed and in-use vials are excluded. This is a display rule, not a clinical threshold.'
-        )}
-      </p>
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer">
+          {t('medications.costReport.aboutFigures', 'About these figures')}
+        </summary>
+        <p className="mt-1">
+          {t(
+            'medications.costReport.wasteBasis',
+            'Uses all logged delivered history, independent of the selected window. Includes priced, labelled finished or discarded vials with at most 70% delivered. Sealed and in-use vials are excluded. This is a display rule, not a clinical threshold.'
+          )}
+        </p>
+      </details>
       {waste.unavailable_vials > 0 && (
         <p className="text-xs text-muted-foreground">
           {t(

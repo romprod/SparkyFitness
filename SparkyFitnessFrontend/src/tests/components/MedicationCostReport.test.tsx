@@ -53,11 +53,11 @@ it('shows exactly the source four columns with independent metric currencies and
   render(<MedicationCostReport ownerId="owner" />);
   expect(
     screen.getAllByRole('columnheader').map((cell) => cell.textContent)
-  ).toEqual(['Medication', 'Invoice spend', 'Per dose', 'Per mg']);
+  ).toEqual(['Medication', 'Spend', 'Per dose', 'Per mg']);
   expect(screen.getByText('AUD 100.00')).toBeInTheDocument();
   expect(screen.getByText('GBP 0.125')).toBeInTheDocument();
   expect(screen.getByText('GBP 0.001')).toBeInTheDocument();
-  expect(screen.getByText('3 costed doses · 2 uncosted')).toBeInTheDocument();
+  expect(screen.getByText('3 doses · 2 uncosted')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '12m' })).toHaveAttribute(
     'aria-pressed',
     'true'
@@ -208,7 +208,7 @@ it('distinguishes known zero, negative figures and absent unknown data', () => {
       '—'
     )
   ).toHaveLength(3);
-  expect(screen.getByText('0 costed doses · 2 uncosted')).toBeInTheDocument();
+  expect(screen.getByText('0 doses · 2 uncosted')).toBeInTheDocument();
 });
 it('suppresses only metrics with mixed contributors and keeps other metrics available', () => {
   ready(
