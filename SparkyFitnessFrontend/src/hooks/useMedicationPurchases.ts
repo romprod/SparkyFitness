@@ -34,6 +34,8 @@ export const medicationPurchaseKeys = {
   analytics: (owner: string, window: MedicationCostWindow) =>
     ['medication-purchases', owner, 'analytics', window] as const,
   list: (owner: string) => ['medication-purchases', owner, 'list'] as const,
+  courseCosts: (owner: string, generation: number) =>
+    ['medication-purchases', owner, 'course-costs', generation] as const,
   detail: (owner: string, id: string) =>
     ['medication-purchases', owner, 'detail', id] as const,
   analyticsWithPrescriptionEstimates: (
@@ -260,6 +262,33 @@ export const useMedicationCostAnalytics = (
       allowed && scope.isCurrent() && !query.isPlaceholderData
         ? query.data
         : undefined,
+  };
+};
+
+export const useMedicationCourseCosts = (owner: string, enabled: boolean) => {
+  const scope = useMedicationPurchaseScope();
+  const allowed = enabled && scope.ready && scope.ownerId === owner;
+  const client = useQueryClient();
+  const queryKey = useMemo(
+    () => medicationPurchaseKeys.courseCosts(owner, scope.generation),
+    [owner, scope.generation]
+  );
+  useLayoutEffect(() => {
+    if (!allowed) void client.cancelQueries({ queryKey, exact: true });
+  }, [allowed, client, queryKey]);
+  const query = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => {
+      if (!allowed || !scope.isCurrent())
+        throw new Error('The active profile changed.');
+      return api.getMedicationCourseCosts(owner, signal);
+    },
+    enabled: allowed,
+    gcTime: Infinity,
+  });
+  return {
+    ...query,
+    data: allowed && scope.isCurrent() ? query.data : undefined,
   };
 };
 

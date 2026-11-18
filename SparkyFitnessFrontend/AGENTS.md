@@ -52,6 +52,9 @@ Features are organized by domain, and the same domain folder name appears in `sr
 
 ## Source Map
 
+- Course costs (C07): owner-only `GET /api/v2/medication-purchases/course-costs` returns per-course actual consumed cost plus an estimate for planned doses still to come. Calculator: shared `buildMedicationCourseCosts` (`shared/src/medications/courseCosts.ts`, built on the same per-dose costing helpers as the cost report); server: `models/medicationCourseCostsRepository.ts`, planned demand from `buildMedicationForecastPlanInput`; web: `pages/Medications/MedicationCourseCosts.tsx` on the Costs tab via `useMedicationCourseCosts`. Never extrapolate past the forecast's own basis, and never price volume/unit-based planned doses.
+
+
 - Food assistant state: owner-only preferences, recoverable tasks and operation history use `FoodAssistant.api.zod.ts` / `FoodAssistant.zod.ts` in shared. Server: `routes/v2/foodAssistantRoutes.ts`, `services/foodAssistantService.ts`, `models/foodAssistantRepository.ts`, `ai/tools/foodAssistantTools.ts`. Web: `src/components/ai/FoodAssistantState.tsx`, `src/api/Chatbot/foodAssistantService.ts`.
 
 - `src/main.tsx` - app bootstrap; creates the shared `QueryClient` with global `QueryCache`/`MutationCache` handlers that render toasts from query/mutation `meta` (`errorTitle`, `errorMessage`, `successMessage`).

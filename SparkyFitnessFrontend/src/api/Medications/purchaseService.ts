@@ -1,5 +1,7 @@
 import {
   medicationCostAnalyticsSchema,
+  medicationCourseCostsSchema,
+  medicationCourseCostsQuerySchema,
   medicationPrescriptionCostAnalyticsSchema,
   medicationPrescriptionCostAnalyticsQuerySchema,
   medicationPrescriptionVialCostsSchema,
@@ -84,6 +86,21 @@ export const getMedicationCostAnalytics = async (
     await apiCall(`${base}/analytics`, {
       method: 'GET',
       params: { expected_owner_id: ownerId, window },
+      signal,
+      suppressErrorToast: true,
+    })
+  );
+
+export const getMedicationCourseCosts = async (
+  ownerId: string,
+  signal?: AbortSignal
+) =>
+  medicationCourseCostsSchema.parse(
+    await apiCall(`${base}/course-costs`, {
+      method: 'GET',
+      params: medicationCourseCostsQuerySchema.parse({
+        expected_owner_id: ownerId,
+      }),
       signal,
       suppressErrorToast: true,
     })

@@ -18,6 +18,111 @@ import {
   type InventoryForecastSnapshot,
 } from '../models/medicationInventoryForecastRepository.js';
 import { resolveCourseDevice } from './medicationCourseDeviceService.js';
+/** The forecast plan input for one medication, shared by the stock forecast and course-cost estimates. */
+export function buildMedicationForecastPlanInput(
+  snapshot: InventoryForecastSnapshot,
+  med: InventoryForecastSnapshot['medications'][number],
+  now: Date,
+  mode: 'committed' | 'planned_cycles'
+) {
+  const route = resolvePreparedMedicationRoute(med);
+  if (!route) return null;
+  const devices: Record<string, InventoryForecastDevice | null> = {};
+  const device_basis: MedicationInventoryForecast['device_basis'] = [];
+  const limitations: InventoryForecastLimitationCode[] = [];
+  for (const course of med.courses)
+    for (const revision of course.revisions) {
+      if (revision.deleted_at) continue;
+      const r = resolveCourseDevice(
+        revision,
+        snapshot.devices,
+        snapshot.preferred_device_id,
+        route
+      );
+      devices[revision.id] = r.device
+        ? {
+            id: r.device.id,
+            device: r.device,
+            basis: r.binding.source === 'plan' ? 'plan' : 'preferred',
+          }
+        : null;
+      device_basis.push({
+        plan_id: revision.id,
+        plan_kind: 'course_revision',
+        device_id: r.binding.device_id,
+        device_name: r.binding.device_name,
+        source: r.binding.source,
+      });
+    }
+  const legacy_plans: InventoryForecastLegacyPlan[] = [];
+  const preferred = resolveCourseDevice(
+    { device_choice: 'preferred', device_id: null },
+    snapshot.devices,
+    snapshot.preferred_device_id,
+    route
+  );
+  for (const schedule of med.legacy_schedules) {
+    if (
+      !med.is_active ||
+      !schedule.active ||
+      (schedule.end_date && schedule.end_date < snapshot.today)
+    )
+      continue;
+    if (med.is_active && schedule.schedule_type_id === 'prn') {
+      limitations.push('unmodelled_legacy_demand');
+      continue;
+    }
+    // Medication-global legacy titration has no explicit fixed-plan binding.
+    if (med.legacy_titration.some((step) => step.status === 'active')) {
+      limitations.push('unmodelled_legacy_demand');
+      continue;
+    }
+    const { dose_amount: ruleDose, ...rule } = schedule;
+    legacy_plans.push({
+      id: schedule.id,
+      rule,
+      dose_amount: ruleDose ?? med.dose_amount,
+      dose_unit: med.dose_unit,
+      timezone: snapshot.timezone,
+      device: preferred.device
+        ? {
+            id: preferred.device.id,
+            device: preferred.device,
+            basis: 'preferred',
+          }
+        : null,
+    });
+    device_basis.push({
+      plan_id: schedule.id,
+      plan_kind: 'legacy_schedule',
+      device_id: preferred.binding.device_id,
+      device_name: preferred.binding.device_name,
+      source: preferred.binding.source,
+    });
+  }
+  const planInput = {
+    ...(mode === 'planned_cycles'
+      ? { forecast_mode: 'planned_cycles' as const }
+      : {}),
+    today: snapshot.today,
+    now: now.toISOString(),
+    timezone: snapshot.timezone,
+    medication_active: med.is_active,
+    route,
+    courses: med.courses,
+    actuals: deliveredCourseInputs(med.actuals),
+    phase_actuals: deliveredCourseInputs(med.phase_actuals),
+    devices,
+    legacy_plans,
+    legacy_actuals: med.legacy_entries.map((row) => ({
+      ...row,
+      id: `${row.source_kind}:${row.id}`,
+      course_origin: row.course_origin === true,
+    })),
+    limitations,
+  };
+  return { route, planInput, device_basis, limitations };
+}
 export function forecastInventorySnapshot(
   snapshot: InventoryForecastSnapshot,
   now: Date,
@@ -48,102 +153,9 @@ export function forecastInventorySnapshot(
       'medication_id' | 'name' | 'route' | 'device_basis'
     >)[] = [];
   for (const med of snapshot.medications) {
-    const route = resolvePreparedMedicationRoute(med);
-    if (!route) continue;
-    const devices: Record<string, InventoryForecastDevice | null> = {};
-    const device_basis: MedicationInventoryForecast['device_basis'] = [];
-    const limitations: InventoryForecastLimitationCode[] = [];
-    for (const course of med.courses)
-      for (const revision of course.revisions) {
-        if (revision.deleted_at) continue;
-        const r = resolveCourseDevice(
-          revision,
-          snapshot.devices,
-          snapshot.preferred_device_id,
-          route
-        );
-        devices[revision.id] = r.device
-          ? {
-              id: r.device.id,
-              device: r.device,
-              basis: r.binding.source === 'plan' ? 'plan' : 'preferred',
-            }
-          : null;
-        device_basis.push({
-          plan_id: revision.id,
-          plan_kind: 'course_revision',
-          device_id: r.binding.device_id,
-          device_name: r.binding.device_name,
-          source: r.binding.source,
-        });
-      }
-    const legacy_plans: InventoryForecastLegacyPlan[] = [];
-    const preferred = resolveCourseDevice(
-      { device_choice: 'preferred', device_id: null },
-      snapshot.devices,
-      snapshot.preferred_device_id,
-      route
-    );
-    for (const schedule of med.legacy_schedules) {
-      if (
-        !med.is_active ||
-        !schedule.active ||
-        (schedule.end_date && schedule.end_date < snapshot.today)
-      )
-        continue;
-      if (med.is_active && schedule.schedule_type_id === 'prn') {
-        limitations.push('unmodelled_legacy_demand');
-        continue;
-      }
-      // Medication-global legacy titration has no explicit fixed-plan binding.
-      if (med.legacy_titration.some((step) => step.status === 'active')) {
-        limitations.push('unmodelled_legacy_demand');
-        continue;
-      }
-      const { dose_amount: ruleDose, ...rule } = schedule;
-      legacy_plans.push({
-        id: schedule.id,
-        rule,
-        dose_amount: ruleDose ?? med.dose_amount,
-        dose_unit: med.dose_unit,
-        timezone: snapshot.timezone,
-        device: preferred.device
-          ? {
-              id: preferred.device.id,
-              device: preferred.device,
-              basis: 'preferred',
-            }
-          : null,
-      });
-      device_basis.push({
-        plan_id: schedule.id,
-        plan_kind: 'legacy_schedule',
-        device_id: preferred.binding.device_id,
-        device_name: preferred.binding.device_name,
-        source: preferred.binding.source,
-      });
-    }
-    const planInput = {
-      ...(mode === 'planned_cycles'
-        ? { forecast_mode: 'planned_cycles' as const }
-        : {}),
-      today: snapshot.today,
-      now: now.toISOString(),
-      timezone: snapshot.timezone,
-      medication_active: med.is_active,
-      route,
-      courses: med.courses,
-      actuals: deliveredCourseInputs(med.actuals),
-      phase_actuals: deliveredCourseInputs(med.phase_actuals),
-      devices,
-      legacy_plans,
-      legacy_actuals: med.legacy_entries.map((row) => ({
-        ...row,
-        id: `${row.source_kind}:${row.id}`,
-        course_origin: row.course_origin === true,
-      })),
-      limitations,
-    };
+    const built = buildMedicationForecastPlanInput(snapshot, med, now, mode);
+    if (!built) continue;
+    const { route, planInput, device_basis, limitations } = built;
     const contributing = new Set(
       buildInventoryForecastPlan(planInput).slots.map((slot) => slot.plan_id)
     );

@@ -20,6 +20,10 @@ const analytics = vi.hoisted(() => ({
   getMedicationPrescriptionVialCosts: vi.fn(),
 }));
 vi.mock('../models/medicationCostAnalyticsRepository.js', () => analytics);
+const courseCosts = vi.hoisted(() => ({
+  getMedicationCourseCosts: vi.fn(),
+}));
+vi.mock('../models/medicationCourseCostsRepository.js', () => courseCosts);
 import router, {
   requirePurchaseOwner,
 } from '../routes/v2/medicationPurchaseRoutes.js';
@@ -162,6 +166,33 @@ describe('invoice route integration', () => {
       ).status
     ).toBe(403);
     expect(analytics.getMedicationCostAnalytics).not.toHaveBeenCalled();
+  });
+  it('routes course costs before invoice IDs and keeps them owner-only', async () => {
+    const value = { as_of: '2026-11-18T00:00:00.000Z', rows: [] };
+    courseCosts.getMedicationCourseCosts.mockResolvedValue(value);
+    const ok = await request(routed())
+      .get('/api/v2/medication-purchases/course-costs')
+      .query({ expected_owner_id: owner });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual(value);
+    expect(courseCosts.getMedicationCourseCosts).toHaveBeenCalledWith(owner);
+    expect(repository.getPurchase).not.toHaveBeenCalled();
+    courseCosts.getMedicationCourseCosts.mockClear();
+    expect(
+      (
+        await request(routed(other)).get(
+          '/api/v2/medication-purchases/course-costs'
+        )
+      ).status
+    ).toBe(403);
+    expect(
+      (
+        await request(routed())
+          .get('/api/v2/medication-purchases/course-costs')
+          .query({ expected_owner_id: other })
+      ).status
+    ).toBe(403);
+    expect(courseCosts.getMedicationCourseCosts).not.toHaveBeenCalled();
   });
   it('rejects missing expected owner or revision on writes', async () => {
     expect(

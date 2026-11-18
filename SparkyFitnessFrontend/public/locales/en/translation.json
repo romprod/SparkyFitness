@@ -1722,6 +1722,32 @@
         "ended": "The planned run period has ended.",
         "restart_due": "The planned restart date has been reached."
       }
+    },
+    "courseCosts": {
+      "title": "By course",
+      "note": "Spent is the cost of doses logged under each course, priced like the medication report. The remaining estimate prices the planned doses still to come at the cost per mg of this course, else of the medication. It is an estimate, not a forecast of purchases.",
+      "loading": "Loading course costs…",
+      "loadFailed": "Could not load course costs.",
+      "empty": "No courses or logged doses to cost yet.",
+      "table": "Course cost report",
+      "course": "Course",
+      "spent": "Spent so far",
+      "perDose": "Per dose",
+      "remaining": "Remaining plan (estimate)",
+      "total": "Projected total",
+      "counts": "{{costed}} costed doses · {{uncosted}} uncosted",
+      "mixed": "Unavailable: this course has costs in different currencies.",
+      "plannedBasis": "{{doses}} planned doses at {{rate}}/mg ({{source}}), {{through}}",
+      "sourceCourse": "this course",
+      "sourceMedication": "this medication",
+      "toCourseEnd": "to course end",
+      "throughDate": "through {{date}} only",
+      "partialPlan": "part of the plan only",
+      "noPlan": "No planned doses left",
+      "nonMass": "Planned doses are not set in mass units",
+      "noRate": "No costed doses to price this from",
+      "mixedRate": "Price unavailable: costs are in different currencies",
+      "unattributed": "Not linked to a course"
     }
   },
   "nav": {

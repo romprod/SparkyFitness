@@ -5,9 +5,11 @@ import {
   medicationPurchaseUpdateSchema,
   medicationPurchaseDeleteSchema,
   medicationPrescriptionCostAnalyticsQuerySchema,
+  medicationCourseCostsQuerySchema,
   medicationPrescriptionVialCostsQuerySchema,
 } from '@workspace/shared';
 import * as purchases from '../../models/medicationPurchaseRepository.js';
+import { getMedicationCourseCosts } from '../../models/medicationCourseCostsRepository.js';
 import {
   getMedicationCostAnalytics,
   getMedicationPrescriptionVialCosts,
@@ -120,6 +122,25 @@ router.get('/analytics', async (req, res, next) => {
           )
         : await getMedicationCostAnalytics(req.userId, query.data.window)
     );
+  } catch (error) {
+    next(error);
+  }
+});
+/** Owner-only spend per course: consumed cost plus an estimate for the planned doses still to come. */
+router.get('/course-costs', async (req, res, next) => {
+  try {
+    const query = medicationCourseCostsQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res
+        .status(400)
+        .json({ error: 'Invalid request', details: query.error.flatten() });
+      return;
+    }
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.json(await getMedicationCourseCosts(req.userId));
   } catch (error) {
     next(error);
   }
