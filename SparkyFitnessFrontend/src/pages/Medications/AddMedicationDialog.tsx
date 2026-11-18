@@ -88,12 +88,18 @@ export default function AddMedicationDialog({
   trigger,
   defaultIsSupplement = false,
   defaultTypeId,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseAutoFocus,
 }: {
   editMed?: Medication;
   trigger?: ReactNode;
   /** Opens with the supplement toggle already on — used by the "Add supplement" entry point. */
   defaultIsSupplement?: boolean;
   defaultTypeId?: 'injection';
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 } = {}) {
   const { t } = useTranslation();
   const { energyUnit, convertEnergy } = usePreferences();
@@ -106,7 +112,12 @@ export default function AddMedicationDialog({
   const { hasWritePermission } = useActiveUser();
   const canEditNutrients = hasWritePermission('diary');
   const isEdit = Boolean(editMed);
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = (value: boolean) => {
+    setLocalOpen(value);
+    onOpenChange?.(value);
+  };
   const [name, setName] = useState(editMed?.name ?? '');
   const [typeId, setTypeId] = useState(() => {
     const isSupp = editMed?.is_supplement ?? defaultIsSupplement;
@@ -633,15 +644,20 @@ export default function AddMedicationDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />{' '}
-            {t('medications.cabinet.addMed', 'Add medication')}
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      {trigger !== false && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />{' '}
+              {t('medications.cabinet.addMed', 'Add medication')}
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
+      <DialogContent
+        onCloseAutoFocus={onCloseAutoFocus}
+        className="sm:max-w-2xl max-h-[90vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>
             {isSupplement

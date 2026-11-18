@@ -390,3 +390,44 @@ describe('AddMedicationDialog dose fields', () => {
     });
   });
 });
+
+it('supports a controlled triggerless dialog and restores focus to its persistent launcher on cancel', async () => {
+  const onOpenChange = jest.fn();
+  const onCloseAutoFocus = jest.fn((event: Event) => {
+    event.preventDefault();
+    screen.getByRole('button', { name: 'Persistent stock tools' }).focus();
+  });
+  const view = render(
+    <>
+      <button>Persistent stock tools</button>
+      <AddMedicationDialog
+        trigger={false}
+        open
+        onOpenChange={onOpenChange}
+        onCloseAutoFocus={onCloseAutoFocus}
+      />
+    </>
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Add medication' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  view.rerender(
+    <>
+      <button>Persistent stock tools</button>
+      <AddMedicationDialog
+        trigger={false}
+        open={false}
+        onOpenChange={onOpenChange}
+        onCloseAutoFocus={onCloseAutoFocus}
+      />
+    </>
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Persistent stock tools' })
+    ).toHaveFocus()
+  );
+  expect(onCloseAutoFocus).toHaveBeenCalled();
+});

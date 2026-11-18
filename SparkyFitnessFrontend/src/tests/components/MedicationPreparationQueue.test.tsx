@@ -237,12 +237,12 @@ it('does not mount preparation with stale medication route details', () => {
   expect(mockWizard).not.toHaveBeenCalled();
 });
 
-it('compact stock cards keep their own preparation body closed and footer accessible independently', () => {
+it('compact stock cards reveal metadata and exact-vial actions only inside their expanded preparation body', () => {
   const { container } = render(
     <>
       <MedicationPreparationQueueEntry
         compact
-        row={queueItem()}
+        row={queueItem({ expiry_date: '2026-12-01' })}
         med={meds[0]}
         canWrite
         footer={<button>Edit exact vial</button>}
@@ -261,11 +261,19 @@ it('compact stock cards keep their own preparation body closed and footer access
   expect(cards[0]).not.toHaveAttribute('open');
   expect(cards[1]).not.toHaveAttribute('open');
   expect(
-    screen.getByRole('button', { name: 'Edit exact vial' }).closest('details')
-  ).toBeNull();
+    screen.queryByRole('button', { name: 'Edit exact vial' })
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/Formatted 2026-12-01/)).not.toBeInTheDocument();
   cards[0]!.open = true;
   fireEvent(cards[0]!, new Event('toggle'));
   expect(screen.getAllByTestId('inline-wizard')).toHaveLength(1);
+  expect(
+    screen.getByRole('button', { name: 'Edit exact vial' }).closest('details')
+  ).toBe(cards[0]);
+  expect(screen.getByText(/Formatted 2026-12-01/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Edit another vial' })
+  ).not.toBeInTheDocument();
   expect(cards[1]).not.toHaveAttribute('open');
   expect(mockWizard.mock.calls.at(-1)![0]).toMatchObject({
     inline: true,

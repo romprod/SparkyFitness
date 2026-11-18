@@ -61,12 +61,14 @@ function PreparationSurface({
   pending,
   onClose,
   children,
+  onCloseAutoFocus,
 }: {
   inline: boolean;
   title: string;
   pending: boolean;
   onClose: () => void;
   children: ReactNode;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   if (inline)
     return (
@@ -82,7 +84,10 @@ function PreparationSurface({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        onCloseAutoFocus={onCloseAutoFocus}
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-lg"
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -99,11 +104,13 @@ export default function MedicationPreparationWizard({
   onClose,
   inline = false,
   queueContext,
+  onCloseAutoFocus,
 }: {
   med: Medication;
   pen?: MedicationPen;
   onClose: () => void;
   inline?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
   queueContext?: { state: string; isCurrent: () => boolean };
 }) {
   const { t } = useTranslation();
@@ -429,6 +436,7 @@ export default function MedicationPreparationWizard({
       inline={inline}
       pending={pending}
       onClose={onClose}
+      onCloseAutoFocus={onCloseAutoFocus}
       title={
         correcting
           ? t('medications.preparationFlow.edit', 'Edit preparation')

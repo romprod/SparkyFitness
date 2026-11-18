@@ -954,6 +954,8 @@
       "correctError": "Could not update preparation."
     },
     "stockLayout": {
+      "more": "More stock tools",
+      "inUse": "In use",
       "recordedDose": "Recorded dose",
       "balance": "Stock balance",
       "subtitle": "Vials, preparation and remaining stock across your medications.",

@@ -106,13 +106,31 @@ export function MedicationPreparationQueueEntry({
   const { t } = useTranslation();
   const { formatDate } = usePreferences();
   const [open, setOpen] = useState(false);
+  const metadata = row.expiry_date ? (
+    <span className="block text-sm text-muted-foreground">
+      {t('medications.stockDashboard.expiry', 'Expiry')}:{' '}
+      {formatDate(row.expiry_date)}{' '}
+      {row.expired && (
+        <Badge
+          variant="outline"
+          className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
+        >
+          {t('medications.stockDashboard.expired', 'Expired')}
+        </Badge>
+      )}
+    </span>
+  ) : null;
+  const customLabel =
+    row.label &&
+    row.label !== row.medication_name &&
+    row.label.replace(/\s/g, '').toLowerCase() !== `${row.label_mass_mg}mg`;
   const identity = (
-    <span className="block min-w-0 space-y-1">
+    <span className="block min-w-0 flex-1 space-y-1">
       <span className="block break-words font-medium">
         {row.medication_name}
-        {row.label ? ` · ${row.label}` : ''}
+        {customLabel ? ` · ${row.label}` : ''}
       </span>
-      {compact && (
+      {compact ? (
         <span className="block text-xs text-muted-foreground">
           {row.label_mass_mg ? `${row.label_mass_mg} mg · ` : ''}
           {t(
@@ -120,26 +138,16 @@ export function MedicationPreparationQueueEntry({
             'Needs preparation'
           )}
         </span>
-      )}
-      {!compact && row.label_mass_mg !== null && (
-        <span className="block text-sm text-muted-foreground">
-          {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
-          {row.label_mass_mg}
-        </span>
-      )}
-      {row.expiry_date && (
-        <span className="block text-sm text-muted-foreground">
-          {t('medications.stockDashboard.expiry', 'Expiry')}:{' '}
-          {formatDate(row.expiry_date)}{' '}
-          {row.expired && (
-            <Badge
-              variant="outline"
-              className="border-destructive bg-destructive/10 text-foreground hover:bg-destructive/10"
-            >
-              {t('medications.stockDashboard.expired', 'Expired')}
-            </Badge>
+      ) : (
+        <>
+          {row.label_mass_mg !== null && (
+            <span className="block text-sm text-muted-foreground">
+              {t('medications.labelMass.label', 'Vial label amount (mg)')}:{' '}
+              {row.label_mass_mg}
+            </span>
           )}
-        </span>
+          {metadata}
+        </>
       )}
     </span>
   );
@@ -147,6 +155,14 @@ export function MedicationPreparationQueueEntry({
     return (
       <div className="space-y-2 rounded-md border p-3">
         {identity}
+        {compact && (
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">
+              {t('medications.stockLayout.details', 'Details')}
+            </summary>
+            {metadata}
+          </details>
+        )}
         <p className="text-sm text-muted-foreground">
           {t(
             'medications.stockDashboard.readOnly',
@@ -168,10 +184,22 @@ export function MedicationPreparationQueueEntry({
         open={open}
         onToggle={(event) => setOpen(event.currentTarget.open)}
       >
-        <summary className="cursor-pointer">
-          <span className="inline-flex w-[calc(100%-1.5rem)] flex-wrap items-start justify-between gap-2 align-top">
+        <summary
+          className={
+            compact
+              ? 'list-none cursor-pointer [&::-webkit-details-marker]:hidden'
+              : 'cursor-pointer'
+          }
+        >
+          <span
+            className={
+              compact
+                ? 'flex w-full items-center justify-between gap-3'
+                : 'inline-flex w-[calc(100%-1.5rem)] flex-wrap items-start justify-between gap-2 align-top'
+            }
+          >
             {identity}
-            <span className="text-sm font-medium">
+            <span className="shrink-0 text-sm font-medium">
               {t('medications.stockDashboard.prepare', 'Prepare')} ›
             </span>
           </span>
@@ -191,8 +219,14 @@ export function MedicationPreparationQueueEntry({
               )}
             </p>
           ))}
+        {compact && open && (
+          <div className="mt-3 space-y-3">
+            {metadata}
+            {footer}
+          </div>
+        )}
       </details>
-      {footer}
+      {!compact && footer}
     </div>
   );
 }

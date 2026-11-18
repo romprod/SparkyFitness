@@ -1,6 +1,6 @@
 import MedicationPrescriptionLink from './MedicationPrescriptionLink';
 import { useMedicationPrescriptionScope } from '@/hooks/Medications/useMedicationPrescriptions';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
@@ -74,6 +74,12 @@ interface Glp1InventoryManagerProps {
   stockView?: 'controls' | 'active' | 'closed' | 'queue';
   queueItems?: MedicationPreparationQueueItem[];
   stockCanWrite?: boolean;
+  stockOnAddMedication?: () => void;
+  stockMoreRef?: RefObject<HTMLButtonElement | null>;
+  onStockCounts?: (
+    medicationId: string,
+    counts: { active: number; closed: number }
+  ) => void;
 }
 
 export default function Glp1InventoryManager(props: Glp1InventoryManagerProps) {
@@ -94,11 +100,16 @@ function InventorySession({
   stockView,
   queueItems = [],
   stockCanWrite = false,
+  stockOnAddMedication,
+  stockMoreRef,
+  onStockCounts,
 }: Glp1InventoryManagerProps & {
   prescriptionScope: ReturnType<typeof useMedicationPrescriptionScope>;
 }) {
   const { t } = useTranslation();
   const medId = med.id;
+  const localMoreRef = useRef<HTMLButtonElement>(null);
+  const moreRef = stockMoreRef ?? localMoreRef;
 
   const pensQ = useMedicationPens(medId);
   const addPenMutation = useCreatePenMutation(medId);
@@ -378,6 +389,22 @@ function InventorySession({
   const closedPens = (pensQ.data ?? []).filter(
     (pen) => pen.status === 'finished' || pen.status === 'discarded'
   );
+  useEffect(() => {
+    if (stockView === 'active') {
+      const loaded = !pensQ.isError ? (pensQ.data ?? []) : [];
+      onStockCounts?.(medId, {
+        active: loaded.filter(
+          (p) =>
+            p.status !== 'finished' &&
+            p.status !== 'discarded' &&
+            !queueItems.some((row) => row.stock_id === p.id)
+        ).length,
+        closed: loaded.filter(
+          (p) => p.status === 'finished' || p.status === 'discarded'
+        ).length,
+      });
+    }
+  }, [stockView, pensQ.data, pensQ.isError, queueItems, onStockCounts, medId]);
   const stockActions = (p: MedicationPen) => {
     if (!stockCanWrite) return null;
     const canPrepare =
@@ -770,14 +797,36 @@ function InventorySession({
       {stockView ? (
         <>
           {stockView === 'controls' && stockCanWrite && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <Button onClick={openAddDialog}>
                 <Plus className="mr-2 h-4 w-4" />
                 {t('medications.glp1.addInventory', 'Add Inventory')}
               </Button>
-              <Button variant="outline" onClick={() => openPreparation()}>
-                {t('medications.stock.prepare', 'Prepare a vial')}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    ref={moreRef}
+                    variant="outline"
+                    size="icon"
+                    aria-label={t(
+                      'medications.stockLayout.more',
+                      'More stock tools'
+                    )}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => openPreparation()}>
+                    {t('medications.stock.prepare', 'Prepare a vial')}
+                  </DropdownMenuItem>
+                  {stockOnAddMedication && (
+                    <DropdownMenuItem onSelect={stockOnAddMedication}>
+                      {t('medications.stock.add', 'Add peptide / injectable')}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
           {(stockView === 'active' || stockView === 'closed') &&
@@ -887,6 +936,14 @@ function InventorySession({
           med={med}
           pen={preparationPen}
           onClose={() => setPreparationOpen(false)}
+          onCloseAutoFocus={
+            stockView === 'controls'
+              ? (event) => {
+                  event.preventDefault();
+                  moreRef.current?.focus();
+                }
+              : undefined
+          }
         />
       )}
       {/* Add/Edit Inventory Dialog */}

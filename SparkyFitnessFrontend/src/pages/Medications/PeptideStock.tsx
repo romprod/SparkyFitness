@@ -1,7 +1,14 @@
 import { resolvePreparedMedicationRoute } from '@workspace/shared';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -33,6 +40,31 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
     injectables.find((m) => m.is_active) ??
     injectables[0];
   const scope = dashboard.scope;
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const [addMedication, setAddMedication] = useState<string | null>(null);
+  const [counts, setCounts] = useState<
+    Record<string, { active: number; closed: number }>
+  >({});
+  const reportCounts = useCallback(
+    (medicationId: string, value: { active: number; closed: number }) => {
+      const key = `${scope.key}:${medicationId}`;
+      setCounts((previous) =>
+        previous[key]?.active === value.active &&
+        previous[key]?.closed === value.closed
+          ? previous
+          : { ...previous, [key]: value }
+      );
+    },
+    [scope.key]
+  );
+  const activeCount = injectables.reduce(
+    (sum, med) => sum + (counts[`${scope.key}:${med.id}`]?.active ?? 0),
+    0
+  );
+  const closedCount = injectables.reduce(
+    (sum, med) => sum + (counts[`${scope.key}:${med.id}`]?.closed ?? 0),
+    0
+  );
   const queue = !dashboard.query.isError
     ? (dashboard.data?.preparation_queue ?? [])
     : [];
@@ -45,6 +77,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
       med={med}
       stockView={stockView}
       stockCanWrite={scope.canWrite}
+      onStockCounts={stockView === 'active' ? reportCounts : undefined}
       queueItems={queue.filter((row) => row.medication_id === med.id)}
       forecastTimezone={forecast.data?.timezone}
       forecast={
@@ -70,10 +103,13 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex min-w-0 w-full items-end gap-2 xl:w-auto">
           {selected && (
-            <div className="w-full space-y-1 sm:w-52">
-              <Label htmlFor="stock-medication" className="text-xs">
+            <div className="min-w-0 flex-1 space-y-1 xl:w-52">
+              <Label
+                htmlFor="stock-medication"
+                className="block truncate text-xs"
+              >
                 {t(
                   'medications.stockLayout.newStockMedication',
                   'Medication for new stock'
@@ -90,7 +126,10 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                   })
                 }
               >
-                <SelectTrigger id="stock-medication">
+                <SelectTrigger
+                  id="stock-medication"
+                  className="min-w-0 w-full [&>span]:truncate"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -109,19 +148,45 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
               med={selected}
               stockView="controls"
               stockCanWrite={scope.canWrite}
+              stockMoreRef={moreRef}
+              stockOnAddMedication={() => setAddMedication(scope.key)}
             />
           )}
-          <AddMedicationDialog
-            defaultTypeId="injection"
-            trigger={
-              <Button variant="ghost" size="sm">
-                <Plus className="mr-2 h-4 w-4" />
-                {t('medications.stock.add', 'Add peptide / injectable')}
-              </Button>
-            }
-          />
+          {!selected && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ref={moreRef}
+                  variant="outline"
+                  size="icon"
+                  aria-label={t(
+                    'medications.stockLayout.more',
+                    'More stock tools'
+                  )}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setAddMedication(scope.key)}>
+                  {t('medications.stock.add', 'Add peptide / injectable')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </header>
+      <AddMedicationDialog
+        key={`${scope.key}:add-medication`}
+        defaultTypeId="injection"
+        trigger={false}
+        open={addMedication === scope.key && scope.ready && scope.isCurrent()}
+        onOpenChange={(open) => setAddMedication(open ? scope.key : null)}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          moreRef.current?.focus();
+        }}
+      />
       {!selected && (
         <p className="text-sm text-muted-foreground">
           {t(
@@ -160,6 +225,11 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
         dashboard.data &&
         !dashboard.query.isError && (
           <div key={scope.key} className="space-y-6">
+            {activeCount > 0 && (
+              <h3 className="text-sm font-semibold">
+                {t('medications.stockLayout.inUse', 'In use')}
+              </h3>
+            )}
             <section
               aria-label={t('medications.stockLayout.tracked', 'Tracked stock')}
               className="grid min-w-0 gap-3 lg:grid-cols-2"
@@ -210,17 +280,19 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                 )}
               </section>
             )}
-            <details className="rounded-lg border bg-card p-4">
-              <summary className="cursor-pointer text-sm font-medium">
-                {t(
-                  'medications.stock.finishedDiscarded',
-                  'Finished / discarded'
-                )}
-              </summary>
-              <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-2">
-                {injectables.map((med) => manager(med, 'closed'))}
-              </div>
-            </details>
+            {closedCount > 0 && (
+              <details className="rounded-lg border bg-card p-4">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {t(
+                    'medications.stock.finishedDiscarded',
+                    'Finished / discarded'
+                  )}
+                </summary>
+                <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-2">
+                  {injectables.map((med) => manager(med, 'closed'))}
+                </div>
+              </details>
+            )}
           </div>
         )}
       <details className="rounded-lg border bg-card p-4">

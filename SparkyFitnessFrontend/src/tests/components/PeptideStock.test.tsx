@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import PeptideStock from '@/pages/Medications/PeptideStock';
@@ -14,13 +14,14 @@ const mockPens = jest.fn(
 );
 let mockDashboard = dashboardFixture({ preparation_queue: [] });
 let mockReady = true;
+let mockScopeKey = 'owner:1';
 let mockError = false;
 jest.mock('@/hooks/Medications/useMedicationStockDashboard', () => ({
   useMedicationStockDashboard: () => ({
     scope: {
       ready: mockReady,
       canWrite: true,
-      key: 'owner:1',
+      key: mockScopeKey,
       isCurrent: () => mockReady,
     },
     query: { isError: mockError },
@@ -38,7 +39,7 @@ jest.mock('@/hooks/Medications/useMedicationInventoryForecast', () => ({
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescriptionScope: () => ({
     ready: false,
-    key: 'owner:1',
+    key: mockScopeKey,
     canWrite: false,
     isCurrent: () => false,
   }),
@@ -93,9 +94,20 @@ jest.mock('@/contexts/PreferencesContext', () => ({
 }));
 jest.mock('@/pages/Medications/AddMedicationDialog', () => ({
   __esModule: true,
-  default: ({ defaultTypeId }: { defaultTypeId: string }) => (
-    <button>{`Add ${defaultTypeId}`}</button>
-  ),
+  default: ({
+    open,
+    onOpenChange,
+  }: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) =>
+    open ? (
+      <div role="dialog">
+        <button onClick={() => onOpenChange(false)}>
+          Cancel new medication
+        </button>
+      </div>
+    ) : null,
 }));
 jest.mock('@/pages/Medications/Glp1LogInjection', () => ({
   __esModule: true,
@@ -122,6 +134,7 @@ beforeEach(() => {
   mockPens.mockReturnValue({ data: [] });
   mockDashboard = dashboardFixture({ preparation_queue: [] });
   mockReady = true;
+  mockScopeKey = 'owner:1';
   mockError = false;
 });
 it('shows preparation tools without injection logging or history for a non-GLP-1 peptide', () => {
@@ -137,7 +150,11 @@ it('shows preparation tools without injection logging or history for a non-GLP-1
   );
   expect(screen.queryByText('Log injection: peptide')).not.toBeInTheDocument();
   expect(screen.queryByText('Injection history')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Prepare a vial' }));
+  fireEvent.pointerDown(
+    screen.getByRole('button', { name: 'More stock tools' }),
+    { button: 0, ctrlKey: false }
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Prepare a vial' }));
   fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
   fireEvent.change(screen.getByLabelText('Prepared date'), {
     target: { value: '2026-11-15' },
@@ -170,9 +187,18 @@ it('shows a clear add-injectable entry point without existing peptides', () => {
       <PeptideStock meds={[]} />
     </MemoryRouter>
   );
-  expect(
-    screen.getByRole('button', { name: 'Add injection' })
-  ).toBeInTheDocument();
+  fireEvent.pointerDown(
+    screen.getByRole('button', { name: 'More stock tools' }),
+    { button: 0, ctrlKey: false }
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Add peptide / injectable' })
+  );
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Cancel new medication' })
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(
     screen.getByText(
       /Existing injectable medications appear here automatically/
@@ -301,4 +327,78 @@ it('drops overview and stock actions when authoritative profile readiness is los
   expect(
     screen.queryByRole('region', { name: 'Tracked stock' })
   ).not.toBeInTheDocument();
+});
+
+it('closes the preparation dialog back to More and drops its draft across medication/profile changes', async () => {
+  const other = { ...peptide, id: 'second', name: 'Other medication' };
+  const view = render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  const more = screen.getByRole('button', { name: 'More stock tools' });
+  fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Prepare a vial' }));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(more).toHaveFocus());
+  fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Prepare a vial' }));
+  view.rerender(
+    <MemoryRouter>
+      <PeptideStock meds={[other]} />
+    </MemoryRouter>
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  fireEvent.pointerDown(
+    screen.getByRole('button', { name: 'More stock tools' }),
+    { button: 0, ctrlKey: false }
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Add peptide / injectable' })
+  );
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  mockScopeKey = 'owner:2';
+  view.rerender(
+    <MemoryRouter>
+      <PeptideStock meds={[other]} />
+    </MemoryRouter>
+  );
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(mockSave).not.toHaveBeenCalled();
+});
+it('uses loaded counts without a render loop and hides empty groups after data or scope changes', () => {
+  mockPens.mockReturnValue({
+    data: [dashboardPen({ medication_id: peptide.id, status: 'discarded' })],
+  });
+  const view = render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  expect(screen.getByText('Finished / discarded')).toBeInTheDocument();
+  expect(
+    screen.queryByRole('heading', { name: 'In use' })
+  ).not.toBeInTheDocument();
+  mockPens.mockReturnValue({
+    data: [dashboardPen({ medication_id: peptide.id, status: 'in_use' })],
+  });
+  view.rerender(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  expect(screen.queryByText('Finished / discarded')).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'In use' })).toBeInTheDocument();
+  mockScopeKey = 'owner:2';
+  mockPens.mockReturnValue({ data: [] });
+  view.rerender(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  expect(
+    screen.queryByRole('heading', { name: 'In use' })
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText('Finished / discarded')).not.toBeInTheDocument();
 });
