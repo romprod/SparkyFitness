@@ -132,6 +132,7 @@ export const MCP_TOOL_READ_ACCESS: Readonly<Record<string, ToolReadAccess>> = {
     'list_entries',
     'list_injections',
     'list_schedules',
+    'list_packs',
   ],
   // admin-only dev tools (registered only when enabled for an admin)
   sparky_inspect_schema: 'read',

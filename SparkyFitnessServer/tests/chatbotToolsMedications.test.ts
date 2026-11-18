@@ -1,6 +1,8 @@
 import { vi, beforeEach, describe, expect, it } from 'vitest';
 import { buildMedicationTools } from '../ai/tools/medicationTools.js';
 import medicationRepository from '../models/medicationRepository.js';
+import medicationEntryRepository from '../models/medicationEntryRepository.js';
+import * as packRepository from '../models/medicationPackRepository.js';
 import { toolOpts } from './helpers/toolExecutionOptions.js';
 
 vi.mock('../models/medicationRepository', () => ({
@@ -13,6 +15,12 @@ vi.mock('../models/medicationRepository', () => ({
     addSchedule: vi.fn(),
     deleteSchedule: vi.fn(),
   },
+}));
+vi.mock('../models/medicationPackRepository', () => ({
+  listPacks: vi.fn(),
+  createPack: vi.fn(),
+  updatePack: vi.fn(),
+  deletePack: vi.fn(),
 }));
 vi.mock('../models/medicationEntryRepository', () => ({
   default: {
@@ -340,3 +348,151 @@ type MedicationDetailScheduleShape = {
   dose_amount: number | null;
   prn_reason: string | null;
 }[];
+
+describe('sparky_manage_medications tablet and capsule packs', () => {
+  const PACK_ID = '323e4567-e89b-12d3-a456-426614174000';
+  const pack = (over: Record<string, unknown> = {}) => ({
+    id: PACK_ID,
+    medication_id: MED_ID,
+    medication_name: 'Sertraline',
+    label: null,
+    unit_label: 'tablets',
+    status: 'in_use',
+    units_total: '60.000',
+    units_used: '52.000',
+    units_remaining: '8.000',
+    overdrawn: false,
+    doses_left: '4',
+    observed_days_left: 4,
+    planned_days_left: 4,
+    planned_empty_date: '2026-11-22',
+    low: true,
+    expiry_date: '2027-03-01',
+    expired: false,
+    ...over,
+  });
+  const run = (args: Record<string, unknown>) =>
+    tools.sparky_manage_medications.execute!(args as never, opts);
+
+  it('list_packs shows units left, run-out and the low flag, and hides closed packs by default', async () => {
+    vi.mocked(packRepository.listPacks).mockResolvedValue({
+      today: '2026-11-18',
+      packs: [
+        pack(),
+        pack({ id: 'x', status: 'finished', medication_id: 'other' }),
+      ],
+    } as never);
+    const result = (await run({ action: 'list_packs' })) as string;
+    expect(result).toContain('8 of 60 tablets left');
+    expect(result).toContain('4 doses left');
+    expect(result).toContain('runs out 2026-11-22 (~4 days)');
+    expect(result).toContain('LOW');
+    expect(result).toContain(`ID: ${PACK_ID}`);
+    expect(result).not.toContain('finished');
+    const all = (await run({
+      action: 'list_packs',
+      include_closed: true,
+    })) as string;
+    expect(all).toContain('finished');
+    const filtered = (await run({
+      action: 'list_packs',
+      medication_id: MED_ID,
+      include_closed: true,
+    })) as string;
+    expect(filtered).not.toContain('finished');
+  });
+
+  it('add_pack creates a pack for a named medication', async () => {
+    vi.mocked(medicationRepository.listMedications).mockResolvedValue([
+      { id: MED_ID, name: 'Sertraline', display_name: null },
+    ] as never);
+    vi.mocked(packRepository.createPack).mockResolvedValue(PACK_ID);
+    const result = await run({
+      action: 'add_pack',
+      medication_name: 'Sertraline',
+      unit_label: 'tablets',
+      units_total: 60,
+      pack_status: 'in_use',
+      expiry_date: '2027-03-01',
+    });
+    expect(result).toBe(`✅ Pack added (60 tablets, ID: ${PACK_ID}).`);
+    expect(packRepository.createPack).toHaveBeenCalledWith('user-1', MED_ID, {
+      unit_label: 'tablets',
+      units_total: 60,
+      status: 'in_use',
+      expiry_date: '2027-03-01',
+    });
+  });
+
+  it('update_pack marks a state change as deliberate and reports a missing pack', async () => {
+    vi.mocked(packRepository.updatePack).mockResolvedValue(true);
+    expect(
+      await run({
+        action: 'update_pack',
+        pack_id: PACK_ID,
+        pack_status: 'finished',
+      })
+    ).toBe('✅ Pack updated.');
+    expect(packRepository.updatePack).toHaveBeenCalledWith('user-1', PACK_ID, {
+      status: 'finished',
+      lifecycle_intent: true,
+    });
+    vi.mocked(packRepository.updatePack).mockResolvedValue(false);
+    expect(
+      await run({ action: 'update_pack', pack_id: PACK_ID, notes: 'x' })
+    ).toContain('NOT_FOUND');
+  });
+
+  it('delete_pack confirms, reports a missing pack and surfaces a rejected edit as validation', async () => {
+    vi.mocked(packRepository.deletePack).mockResolvedValue(true);
+    expect(await run({ action: 'delete_pack', pack_id: PACK_ID })).toContain(
+      'Pack deleted'
+    );
+    vi.mocked(packRepository.deletePack).mockResolvedValue(false);
+    expect(await run({ action: 'delete_pack', pack_id: PACK_ID })).toContain(
+      'NOT_FOUND'
+    );
+    vi.mocked(packRepository.updatePack).mockRejectedValue(
+      Object.assign(new Error('Add a pack as sealed or in use.'), {
+        statusCode: 422,
+      })
+    );
+    const result = (await run({
+      action: 'update_pack',
+      pack_id: PACK_ID,
+      pack_status: 'sealed',
+    })) as string;
+    expect(result).toContain('VALIDATION');
+    expect(result).toContain('Add a pack as sealed or in use.');
+  });
+
+  it('log passes an explicit pack or an opt-out through to the entry repository', async () => {
+    vi.mocked(medicationEntryRepository.createEntry).mockResolvedValue({
+      status: 'taken',
+      med_name_snapshot: 'Sertraline',
+      entry_date: '2026-11-18',
+      dose_amount_snapshot: 2,
+      dose_unit_snapshot: 'tablet',
+    } as never);
+    await run({
+      action: 'log',
+      medication_id: MED_ID,
+      pack_id: PACK_ID,
+      entry_date: '2026-11-18',
+    });
+    expect(medicationEntryRepository.createEntry).toHaveBeenLastCalledWith(
+      'user-1',
+      expect.objectContaining({ pack_id: PACK_ID })
+    );
+    await run({
+      action: 'log',
+      medication_id: MED_ID,
+      deduct_pack: false,
+      entry_date: '2026-11-18',
+    });
+    expect(medicationEntryRepository.createEntry).toHaveBeenLastCalledWith(
+      'user-1',
+      expect.objectContaining({ deduct_pack: false })
+    );
+  });
+});

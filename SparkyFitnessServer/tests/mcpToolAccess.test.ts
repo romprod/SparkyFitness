@@ -79,6 +79,9 @@ describe('MCP_TOOL_READ_ACCESS (#2678)', () => {
       ['sparky_manage_food', 'delete_entry'],
       ['sparky_manage_exercise', 'delete_exercise_entry'],
       ['sparky_manage_medications', 'delete_medication'],
+      ['sparky_manage_medications', 'add_pack'],
+      ['sparky_manage_medications', 'update_pack'],
+      ['sparky_manage_medications', 'delete_pack'],
       ['sparky_manage_workout_plans', 'delete_workout_plan'],
       ['sparky_get_sleep_science', 'recalculate_baseline'],
     ] as const) {
@@ -99,6 +102,11 @@ describe('MCP_TOOL_READ_ACCESS (#2678)', () => {
         action
       ).toBe(false);
     }
+    expect(
+      isToolCallAllowedReadOnly('sparky_manage_medications', {
+        action: 'list_packs',
+      })
+    ).toBe(true);
     expect(isReadOnlyTool('sparky_manage_food')).toBe(false);
     expect(isReadOnlyTool('sparky_get_food_diary')).toBe(true);
   });

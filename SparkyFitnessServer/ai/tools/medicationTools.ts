@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { todayInZone } from '@workspace/shared';
 import { log } from '../../config/logging.js';
 import medicationRepository from '../../models/medicationRepository.js';
+import * as packRepository from '../../models/medicationPackRepository.js';
 import medicationEntryRepository from '../../models/medicationEntryRepository.js';
 import injectionRepository from '../../models/injectionRepository.js';
 import { ERRORS, formatZodError } from './errors.js';
@@ -145,7 +146,34 @@ const VALID_ACTIONS = [
   'list_schedules',
   'add_schedule',
   'delete_schedule',
+  'list_packs',
+  'add_pack',
+  'update_pack',
+  'delete_pack',
 ];
+
+/** The optional pack fields shared by add_pack and update_pack, only when provided. */
+function packOptional(args: {
+  label?: string | null;
+  expiry_date?: string;
+  lot_number?: string | null;
+  storage_location?: string | null;
+  reorder_threshold_units?: number | null;
+  notes?: string | null;
+}) {
+  return {
+    ...(args.label !== undefined ? { label: args.label } : {}),
+    ...(args.expiry_date ? { expiry_date: args.expiry_date } : {}),
+    ...(args.lot_number !== undefined ? { lot_number: args.lot_number } : {}),
+    ...(args.storage_location !== undefined
+      ? { storage_location: args.storage_location }
+      : {}),
+    ...(args.reorder_threshold_units !== undefined
+      ? { reorder_threshold_units: args.reorder_threshold_units }
+      : {}),
+    ...(args.notes !== undefined ? { notes: args.notes } : {}),
+  };
+}
 
 async function resolveMedicationId(
   userId: string,
@@ -180,7 +208,11 @@ Actions:
 - list_schedules(medication_id)
 - add_schedule(medication_id, schedule_type_id?, time_of_day?, dose_amount?, days_of_week?, interval_days?, with_meal?, prn_reason?, start_date?)
 - delete_schedule(schedule_id)
-- log(medication_id?|medication_name?, status?, taken_at?, entry_date?, dosage?, dosage_unit?, notes?)
+- log(medication_id?|medication_name?, status?, taken_at?, entry_date?, dosage?, dosage_unit?, notes?, pack_id?, deduct_pack?) — a taken dose is deducted from the matching tablet/capsule pack automatically
+- list_packs(medication_id?|medication_name?, include_closed?) — tablet, capsule, softgel and scoop packs with units left, doses left, run-out and low flag
+- add_pack(medication_id?|medication_name?, unit_label, units_total, pack_status?, units_used?, expiry_date?, label?, lot_number?, storage_location?, reorder_threshold_units?, notes?)
+- update_pack(pack_id, unit_label?, units_total?, units_used?, pack_status?, expiry_date?, label?, lot_number?, storage_location?, reorder_threshold_units?, notes?)
+- delete_pack(pack_id)
 - list_entries(medication_id?, from_date?, to_date?)
 - update_entry(entry_id, status?, taken_at?, entry_date?, notes?)
 - delete_entry(entry_id)
@@ -356,6 +388,8 @@ Actions:
                   dose_amount_snapshot: args.dose_amount_snapshot ?? undefined,
                   dose_unit_snapshot: args.dose_unit_snapshot ?? undefined,
                   notes: args.notes ?? null,
+                  ...(args.pack_id ? { pack_id: args.pack_id } : {}),
+                  ...(args.deduct_pack === false ? { deduct_pack: false } : {}),
                 });
               let detail = `"${entry.status}"`;
               if (entry.dose_amount_snapshot) {
@@ -550,6 +584,75 @@ Actions:
                 `Schedule added (${schedule.schedule_type_id}${schedule.time_of_day ? ` at ${schedule.time_of_day}` : ''}, ID: ${schedule.id}).`
               );
             }
+            case 'list_packs': {
+              const list = await packRepository.listPacks(userId);
+              const shown = list.packs.filter(
+                (p) =>
+                  (!args.medication_id ||
+                    p.medication_id === args.medication_id) &&
+                  (args.include_closed ||
+                    (p.status !== 'finished' && p.status !== 'discarded'))
+              );
+              return formatList(shown, 'Packs', (p) => {
+                let text = `**${p.medication_name}**${p.label ? ` — ${p.label}` : ''} (${p.status.replace('_', ' ')})`;
+                text += `\n  ${p.overdrawn ? `Overdrawn by ${Math.abs(Number(p.units_remaining))}` : `${Number(p.units_remaining)} of ${Number(p.units_total)} ${p.unit_label} left`}`;
+                if (p.doses_left !== null && !p.overdrawn)
+                  text += `\n  ${p.doses_left} doses left`;
+                if (p.planned_empty_date)
+                  text += `\n  On the schedule it runs out ${p.planned_empty_date}${p.planned_days_left ? ` (~${p.planned_days_left} days)` : ''}`;
+                if (p.observed_days_left !== null)
+                  text += `\n  ~${p.observed_days_left} days at the recent pace`;
+                if (p.expiry_date)
+                  text += `\n  Expires ${p.expiry_date}${p.expired ? ' (expired)' : ''}`;
+                if (p.low) text += '\n  LOW — reorder soon';
+                text += `\n  ID: ${p.id}`;
+                return text;
+              });
+            }
+            case 'add_pack': {
+              const id = await packRepository.createPack(
+                userId,
+                args.medication_id,
+                {
+                  unit_label: args.unit_label,
+                  units_total: args.units_total,
+                  ...(args.pack_status ? { status: args.pack_status } : {}),
+                  ...(args.units_used !== undefined
+                    ? { units_used: args.units_used }
+                    : {}),
+                  ...packOptional(args),
+                }
+              );
+              if (!id)
+                return ERRORS.NOT_FOUND('Medication', args.medication_id);
+              return formatConfirmation(
+                `Pack added (${args.units_total} ${args.unit_label}, ID: ${id}).`
+              );
+            }
+            case 'update_pack': {
+              const ok = await packRepository.updatePack(userId, args.pack_id, {
+                ...(args.unit_label ? { unit_label: args.unit_label } : {}),
+                ...(args.units_total !== undefined
+                  ? { units_total: args.units_total }
+                  : {}),
+                ...(args.units_used !== undefined
+                  ? { units_used: args.units_used }
+                  : {}),
+                ...(args.pack_status
+                  ? { status: args.pack_status, lifecycle_intent: true }
+                  : {}),
+                ...packOptional(args),
+              });
+              if (!ok) return ERRORS.NOT_FOUND('Pack', args.pack_id);
+              return formatConfirmation('Pack updated.');
+            }
+            case 'delete_pack': {
+              const ok = await packRepository.deletePack(userId, args.pack_id);
+              if (!ok) return ERRORS.NOT_FOUND('Pack', args.pack_id);
+              return formatConfirmation(
+                'Pack deleted. Logged doses are kept but no longer link to it.'
+              );
+            }
             case 'delete_schedule': {
               const ok = await medicationRepository.deleteSchedule(
                 userId,
@@ -565,6 +668,8 @@ Actions:
               );
           }
         } catch (error) {
+          if ((error as { statusCode?: number }).statusCode === 422)
+            return ERRORS.VALIDATION((error as Error).message);
           log('error', '[Medication Tool] Error:', error);
           return ERRORS.DB_ERROR(error);
         }

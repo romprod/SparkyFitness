@@ -50,6 +50,15 @@ const logDoseSchema = z
       .optional()
       .describe('Dose unit (e.g. mg, mL)'),
     notes: z.string().optional().describe('Optional notes about the dose'),
+    pack_id: uuidSchema
+      .optional()
+      .describe(
+        'Take the dose from this tablet/capsule pack (default: the open pack that expires first)'
+      ),
+    deduct_pack: z
+      .boolean()
+      .optional()
+      .describe('Set false to log the dose without taking from any pack'),
   })
   .strict();
 
@@ -306,6 +315,82 @@ const deleteScheduleSchema = z
   })
   .strict();
 
+const packStatus = z.enum(['sealed', 'in_use', 'finished', 'discarded']);
+const packFields = {
+  label: z
+    .string()
+    .max(200)
+    .nullable()
+    .optional()
+    .describe('Pack name or label'),
+  units_used: z.number().min(0).optional().describe('Units already used'),
+  expiry_date: optionalDateSchema,
+  lot_number: z.string().max(200).nullable().optional(),
+  storage_location: z.string().max(200).nullable().optional(),
+  reorder_threshold_units: z
+    .number()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe('Warn when this few units are left'),
+  notes: z.string().max(2000).nullable().optional(),
+};
+
+const listPacksSchema = z
+  .object({
+    action: z.literal('list_packs'),
+    medication_id: uuidSchema
+      .optional()
+      .describe('Only packs of this medication (or use medication_name)'),
+    include_closed: z
+      .boolean()
+      .optional()
+      .describe('Also list finished and discarded packs'),
+  })
+  .strict();
+
+const addPackSchema = z
+  .object({
+    action: z.literal('add_pack'),
+    medication_id: uuidSchema.describe(
+      'UUID of the medication or supplement (or use medication_name)'
+    ),
+    unit_label: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe('What the pack counts: tablets, capsules, softgels, scoops'),
+    units_total: z.number().positive().describe('Units in the full pack'),
+    pack_status: z
+      .enum(['sealed', 'in_use'])
+      .optional()
+      .describe('Starting state (default sealed)'),
+    ...packFields,
+  })
+  .strict();
+
+const updatePackSchema = z
+  .object({
+    action: z.literal('update_pack'),
+    pack_id: uuidSchema.describe('UUID of the pack'),
+    unit_label: z.string().min(1).max(200).optional(),
+    units_total: z.number().positive().optional(),
+    pack_status: packStatus
+      .optional()
+      .describe(
+        'Deliberate state change: in_use (open it), finished (retire it) or discarded'
+      ),
+    ...packFields,
+  })
+  .strict();
+
+const deletePackSchema = z
+  .object({
+    action: z.literal('delete_pack'),
+    pack_id: uuidSchema.describe('UUID of the pack to delete'),
+  })
+  .strict();
+
 export const manageMedicationsSchema = z
   .discriminatedUnion('action', [
     listMedicationsSchema,
@@ -322,6 +407,10 @@ export const manageMedicationsSchema = z
     listSchedulesSchema,
     addScheduleSchema,
     deleteScheduleSchema,
+    listPacksSchema,
+    addPackSchema,
+    updatePackSchema,
+    deletePackSchema,
   ])
   .refine(
     (data) => {
@@ -352,6 +441,10 @@ export const manageMedicationsInput = z.object({
       'list_schedules',
       'add_schedule',
       'delete_schedule',
+      'list_packs',
+      'add_pack',
+      'update_pack',
+      'delete_pack',
     ])
     .optional()
     .describe('Action to perform'),
@@ -482,4 +575,36 @@ export const manageMedicationsInput = z.object({
     .describe('Timing relative to a meal'),
   prn_reason: z.string().optional().describe('Reason for a PRN schedule'),
   start_date: optionalDateSchema,
+  pack_id: uuidSchema
+    .optional()
+    .describe('UUID of a tablet/capsule pack (log, update_pack, delete_pack)'),
+  deduct_pack: z
+    .boolean()
+    .optional()
+    .describe('For log: false means do not take the dose from any pack'),
+  include_closed: z
+    .boolean()
+    .optional()
+    .describe('For list_packs: also list finished and discarded packs'),
+  unit_label: z
+    .string()
+    .max(200)
+    .optional()
+    .describe('Pack unit: tablets, capsules, softgels, scoops'),
+  units_total: z.number().positive().optional().describe('Units in the pack'),
+  units_used: z.number().min(0).optional().describe('Units already used'),
+  pack_status: z
+    .enum(['sealed', 'in_use', 'finished', 'discarded'])
+    .optional()
+    .describe('Pack state for add_pack (sealed or in_use) or update_pack'),
+  label: z.string().max(200).nullable().optional().describe('Pack label'),
+  expiry_date: optionalDateSchema,
+  lot_number: z.string().max(200).nullable().optional(),
+  storage_location: z.string().max(200).nullable().optional(),
+  reorder_threshold_units: z
+    .number()
+    .min(0)
+    .nullable()
+    .optional()
+    .describe('Warn when this few pack units are left'),
 });
