@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MedicationCourseCosts from '@/pages/Medications/MedicationCourseCosts';
 import type {
@@ -34,19 +34,6 @@ const row = (
   start_date: '2026-11-01',
   end_date: null,
   actual: actual(),
-  remaining: {
-    planned_mg: '2.5',
-    planned_doses: 2,
-    basis: 'course_end',
-    through: '2026-12-31',
-    rate_per_mg: '10',
-    rate_source: 'course_actual',
-    currency: 'GBP',
-    estimate: '25.00',
-    unavailable_reason: null,
-  },
-  projected_total: '55.00',
-  projected_currency: 'GBP',
   ...patch,
 });
 const data = (
@@ -70,78 +57,17 @@ const ready = (value: CourseCosts | undefined = data()) =>
   });
 beforeEach(() => mockCosts.mockReset());
 
-it('shows spent, per dose, remaining estimate with its basis and the projected total', () => {
+it('shows spent and per-dose cost with counts, and no projection columns', () => {
   ready();
   render(<MedicationCourseCosts ownerId="owner" />);
   expect(
     screen.getAllByRole('columnheader').map((cell) => cell.textContent)
-  ).toEqual([
-    'Course',
-    'Spent so far',
-    'Per dose',
-    'Remaining plan (estimate)',
-    'Projected total',
-  ]);
+  ).toEqual(['Course', 'Spent so far', 'Per dose']);
   expect(screen.getByText('Synthetic course')).toBeInTheDocument();
   expect(screen.getByText('GBP 30.00')).toBeInTheDocument();
   expect(screen.getByText('GBP 15.00')).toBeInTheDocument();
-  expect(screen.getByText('GBP 25.00')).toBeInTheDocument();
-  expect(
-    screen.getByText(
-      '2 planned doses at GBP 10.00/mg (this course), to course end'
-    )
-  ).toBeInTheDocument();
-  expect(screen.getByText('GBP 55.00')).toBeInTheDocument();
   expect(screen.getByText('2 costed doses · 1 uncosted')).toBeInTheDocument();
-});
-
-it('discloses a horizon-limited estimate rather than implying it covers the whole course', () => {
-  ready(
-    data([
-      row({
-        remaining: {
-          ...row().remaining,
-          basis: 'horizon',
-          through: '2027-11-18',
-          rate_source: 'medication_actual',
-        },
-      }),
-    ])
-  );
-  render(<MedicationCourseCosts ownerId="owner" />);
-  expect(
-    screen.getByText(
-      '2 planned doses at GBP 10.00/mg (this medication), through 2027-11-18 only'
-    )
-  ).toBeInTheDocument();
-});
-
-it('never invents an estimate or total when pricing is unavailable', () => {
-  ready(
-    data([
-      row({
-        remaining: {
-          planned_mg: null,
-          planned_doses: 1,
-          basis: 'course_end',
-          through: null,
-          rate_per_mg: null,
-          rate_source: null,
-          currency: null,
-          estimate: null,
-          unavailable_reason: 'non_mass_dose',
-        },
-        projected_total: null,
-        projected_currency: null,
-      }),
-    ])
-  );
-  render(<MedicationCourseCosts ownerId="owner" />);
-  expect(
-    screen.getByText('Planned doses are not set in mass units')
-  ).toBeInTheDocument();
-  const cells = within(screen.getAllByRole('row')[1]!).getAllByRole('cell');
-  expect(cells[4]).toHaveTextContent('—');
+  expect(screen.queryByText(/estimate|Projected/i)).not.toBeInTheDocument();
 });
 
 it('hides mixed-currency spend and keeps the reason available to screen readers', () => {
@@ -155,8 +81,6 @@ it('hides mixed-currency spend and keeps the reason available to screen readers'
           cost_per_dose: null,
           cost_per_mg: null,
         }),
-        projected_total: null,
-        projected_currency: null,
       }),
     ])
   );

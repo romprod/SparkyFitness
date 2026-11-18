@@ -37,6 +37,47 @@ export default function MedicationCostReport({ ownerId }: { ownerId: string }) {
   return (
     <>
       {data && <MedicationPrescriptionEstimates buckets={data.accounted} />}
+      {data && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {t('medications.costReport.runRate', 'Run rate')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xl font-semibold tabular-nums">
+              {data.run_rate.mixed_currency ||
+              data.run_rate.per_month === null ||
+              data.run_rate.currency === null
+                ? '—'
+                : t('medications.costReport.runRateValue', '{{amount}} /mo', {
+                    amount: formatPurchaseMoney(
+                      data.run_rate.per_month,
+                      data.run_rate.currency
+                    ),
+                  })}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {data.run_rate.mixed_currency
+                ? t(
+                    'medications.costReport.runRateMixed',
+                    'Unavailable because costs use different currencies.'
+                  )
+                : data.run_rate.months_of_data === 1
+                  ? t(
+                      'medications.costReport.runRateMonthsOne',
+                      'over {{count}} month of use',
+                      { count: 1 }
+                    )
+                  : t(
+                      'medications.costReport.runRateMonthsOther',
+                      'over {{count}} months of use',
+                      { count: data.run_rate.months_of_data }
+                    )}
+            </p>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader className="space-y-3">
           <CardTitle>

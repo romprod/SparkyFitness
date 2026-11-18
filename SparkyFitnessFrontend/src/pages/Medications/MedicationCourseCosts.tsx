@@ -47,69 +47,6 @@ function Spent({ actual }: { actual: Actual }) {
   );
 }
 
-function Remaining({ row }: { row: MedicationCourseCostRow }) {
-  const { t } = useTranslation();
-  const r = row.remaining;
-  if (r.estimate !== null && r.currency !== null)
-    return (
-      <>
-        <span>{formatPurchaseMoney(r.estimate, r.currency)}</span>
-        <span className="mt-1 block text-xs text-muted-foreground">
-          {t(
-            'medications.courseCosts.plannedBasis',
-            '{{doses}} planned doses at {{rate}}/mg ({{source}}), {{through}}',
-            {
-              doses: r.planned_doses,
-              rate: formatPurchaseRate(r.rate_per_mg, r.currency),
-              source:
-                r.rate_source === 'course_actual'
-                  ? t('medications.courseCosts.sourceCourse', 'this course')
-                  : t(
-                      'medications.courseCosts.sourceMedication',
-                      'this medication'
-                    ),
-              through:
-                r.basis === 'course_end'
-                  ? t('medications.courseCosts.toCourseEnd', 'to course end')
-                  : r.through
-                    ? t(
-                        'medications.courseCosts.throughDate',
-                        'through {{date}} only',
-                        {
-                          date: r.through,
-                        }
-                      )
-                    : t(
-                        'medications.courseCosts.partialPlan',
-                        'part of the plan only'
-                      ),
-            }
-          )}
-        </span>
-      </>
-    );
-  const reasons: Record<string, string> = {
-    no_plan: t('medications.courseCosts.noPlan', 'No planned doses left'),
-    non_mass_dose: t(
-      'medications.courseCosts.nonMass',
-      'Planned doses are not set in mass units'
-    ),
-    no_rate: t(
-      'medications.courseCosts.noRate',
-      'No costed doses to price this from'
-    ),
-    mixed_currency: t(
-      'medications.courseCosts.mixedRate',
-      'Price unavailable: costs are in different currencies'
-    ),
-  };
-  return (
-    <span className="text-xs text-muted-foreground">
-      {r.unavailable_reason ? reasons[r.unavailable_reason] : '—'}
-    </span>
-  );
-}
-
 export default function MedicationCourseCosts({
   ownerId,
 }: {
@@ -129,7 +66,7 @@ export default function MedicationCourseCosts({
         <p className="text-xs text-muted-foreground">
           {t(
             'medications.courseCosts.note',
-            'Spent is the cost of doses logged under each course, priced like the medication report. The remaining estimate prices the planned doses still to come at the cost per mg of this course, else of the medication. It is an estimate, not a forecast of purchases.'
+            'Spent is the cost of doses logged under each course, priced like the medication report. Doses not logged under a course are listed separately.'
           )}
         </p>
       </CardHeader>
@@ -185,15 +122,6 @@ export default function MedicationCourseCosts({
                     <th className="min-w-24 p-3 text-right font-medium">
                       {t('medications.courseCosts.perDose', 'Per dose')}
                     </th>
-                    <th className="min-w-44 p-3 text-right font-medium">
-                      {t(
-                        'medications.courseCosts.remaining',
-                        'Remaining plan (estimate)'
-                      )}
-                    </th>
-                    <th className="min-w-28 p-3 text-right font-medium">
-                      {t('medications.courseCosts.total', 'Projected total')}
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -222,18 +150,6 @@ export default function MedicationCourseCosts({
                               row.actual.currency
                             )}
                       </td>
-                      <td className="p-3 text-right tabular-nums">
-                        <Remaining row={row} />
-                      </td>
-                      <td className="p-3 text-right tabular-nums">
-                        {row.projected_total !== null &&
-                        row.projected_currency !== null
-                          ? formatPurchaseMoney(
-                              row.projected_total,
-                              row.projected_currency
-                            )
-                          : '—'}
-                      </td>
                     </tr>
                   ))}
                   {hasUnattributed && unattributed && (
@@ -258,8 +174,6 @@ export default function MedicationCourseCosts({
                               unattributed.currency
                             )}
                       </td>
-                      <td className="p-3 text-right">—</td>
-                      <td className="p-3 text-right">—</td>
                     </tr>
                   )}
                 </tbody>

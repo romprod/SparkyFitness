@@ -105,7 +105,7 @@ describe.runIf(process.env.COURSE_COSTS_INTEGRATION === '1')(
       );
       await endPool();
     });
-    it('prices actual doses per course, keeps unattributed apart and estimates the planned remainder', async () => {
+    it('prices actual doses per course and keeps unattributed doses apart', async () => {
       const report = await getMedicationCourseCosts(owner, now);
       const row = report.rows.find((r) => r.course_id === course)!;
       expect(row.name).toBe('Synthetic costed course');
@@ -121,11 +121,6 @@ describe.runIf(process.env.COURSE_COSTS_INTEGRATION === '1')(
         cost: '40.00',
         costed_doses: 1,
       });
-      expect(row.remaining.rate_source).toBe('course_actual');
-      expect(row.remaining.unavailable_reason).toBeNull();
-      expect(Number(row.remaining.planned_doses)).toBeGreaterThan(0);
-      expect(row.remaining.estimate).not.toBeNull();
-      expect(row.projected_total).not.toBeNull();
     });
     it('is owner-only and leaves other accounts empty', async () => {
       const report = await getMedicationCourseCosts(other, now);

@@ -63,6 +63,36 @@ it('shows exactly the source four columns with independent metric currencies and
     'true'
   );
 });
+it('shows the run rate over months of use, and hides it for mixed currencies or no rate', () => {
+  ready(
+    data([row()]) && {
+      ...data([row()]),
+      run_rate: {
+        per_month: '12.5',
+        months_of_data: 3,
+        currency: 'GBP',
+        mixed_currency: false,
+      },
+    }
+  );
+  const { rerender } = render(<MedicationCostReport ownerId="owner" />);
+  expect(screen.getByText('GBP 12.50 /mo')).toBeInTheDocument();
+  expect(screen.getByText('over 3 months of use')).toBeInTheDocument();
+  ready({
+    ...data([row()]),
+    run_rate: {
+      per_month: null,
+      months_of_data: 1,
+      currency: null,
+      mixed_currency: true,
+    },
+  });
+  rerender(<MedicationCostReport ownerId="owner" />);
+  expect(screen.queryByText(/\/mo/)).not.toBeInTheDocument();
+  expect(
+    screen.getByText('Unavailable because costs use different currencies.')
+  ).toBeInTheDocument();
+});
 it('distinguishes known zero, negative figures and absent unknown data', () => {
   ready(
     data([

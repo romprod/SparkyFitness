@@ -25,13 +25,6 @@ export interface MedicationCourseCostCourse {
   start_date: string | null;
   end_date: string | null;
 }
-/** Planned demand for one course, taken unchanged from the planned-cycle forecast. */
-export interface MedicationCoursePlannedDemand {
-  course_id: string;
-  slots: { value: string | null; unit: string | null }[];
-  basis: 'course_end' | 'horizon' | 'slot_cap';
-  coverage_end: string | null;
-}
 export interface MedicationCourseCostInput {
   as_of: string;
   courses: MedicationCourseCostCourse[];
@@ -40,7 +33,6 @@ export interface MedicationCourseCostInput {
   doses: MedicationCostDose[];
   /** When given, prescription-estimated vial costs are used exactly as the cost report does. */
   prescriptions?: MedicationCostPrescription[];
-  planned: MedicationCoursePlannedDemand[];
 }
 interface Tally {
   cost: Decimal;
@@ -72,34 +64,10 @@ function actual(t: Tally): MedicationCourseCostRow['actual'] {
       priced && t.mcg.gt(0) ? t.cost.div(t.mcg.div(1000)).toString() : null,
   };
 }
-function slotMg(value: string | null, unit: string | null): Decimal | null {
-  if (value === null || unit === null) return null;
-  let amount: Decimal;
-  try {
-    amount = new D(value);
-  } catch {
-    return null;
-  }
-  if (!amount.isFinite() || !amount.gt(0)) return null;
-  switch (unit.trim().toLowerCase()) {
-    case 'mg':
-      return amount;
-    case 'mcg':
-    case 'ug':
-    case 'µg':
-    case 'μg':
-      return amount.div(1000);
-    case 'g':
-      return amount.times(1000);
-    default:
-      return null;
-  }
-}
 /**
- * Course spend: actual consumed cost per course from logged doses (the same
- * per-dose costing as the cost report), plus an estimate for the planned doses
- * still to come. The estimate never invents a price: it needs a costed rate
- * from this course, else from the same medication, and mass-based planned doses.
+ * Course spend: actual consumed cost per course from logged doses, using the
+ * same per-dose costing as the cost report. Doses not logged under a course are
+ * reported separately so the totals reconcile. No projection is made.
  */
 export function buildMedicationCourseCosts(
   input: MedicationCourseCostInput
@@ -114,111 +82,33 @@ export function buildMedicationCourseCosts(
   );
   const known = new Set(input.courses.map((course) => course.course_id));
   const byCourse = new Map<string, Tally>();
-  const byMedication = new Map<string, Tally>();
   const unattributed = tally();
   for (const dose of input.doses) {
     const course =
       dose.course_id && known.has(dose.course_id) ? dose.course_id : null;
-    const targets = [
-      course
-        ? (byCourse.get(course) ?? byCourse.set(course, tally()).get(course)!)
-        : unattributed,
-      dose.medication_id
-        ? (byMedication.get(dose.medication_id) ??
-          byMedication
-            .set(dose.medication_id, tally())
-            .get(dose.medication_id)!)
-        : null,
-    ];
+    const target = course
+      ? (byCourse.get(course) ?? byCourse.set(course, tally()).get(course)!)
+      : unattributed;
     const costed = costDose(dose, rates, context);
-    for (const target of targets) {
-      if (!target) continue;
-      if (!costed) {
-        target.uncosted++;
-        continue;
-      }
-      target.cost = target.cost.plus(costed.cost);
-      target.mcg = target.mcg.plus(costed.mcg);
-      target.costed++;
-      target.currencies.add(costed.currency);
+    if (!costed) {
+      target.uncosted++;
+      continue;
     }
+    target.cost = target.cost.plus(costed.cost);
+    target.mcg = target.mcg.plus(costed.mcg);
+    target.costed++;
+    target.currencies.add(costed.currency);
   }
-  const plans = new Map(input.planned.map((plan) => [plan.course_id, plan]));
-  const rows: MedicationCourseCostRow[] = input.courses.map((course) => {
-    const t = byCourse.get(course.course_id) ?? tally();
-    const a = actual(t);
-    const plan = plans.get(course.course_id);
-    const remaining: MedicationCourseCostRow['remaining'] = {
-      planned_mg: null,
-      planned_doses: plan?.slots.length ?? 0,
-      basis: 'unavailable',
-      through: null,
-      rate_per_mg: null,
-      rate_source: null,
-      currency: null,
-      estimate: null,
-      unavailable_reason: null,
-    };
-    if (!plan || plan.slots.length === 0) {
-      remaining.unavailable_reason = 'no_plan';
-    } else {
-      remaining.basis = plan.basis;
-      remaining.through = plan.coverage_end;
-      const masses = plan.slots.map((slot) => slotMg(slot.value, slot.unit));
-      const mass = masses.filter((m): m is Decimal => m !== null);
-      if (mass.length !== masses.length) {
-        remaining.unavailable_reason = 'non_mass_dose';
-      } else {
-        const plannedMg = mass.reduce((sum, m) => sum.plus(m), new D(0));
-        remaining.planned_mg = plannedMg.toString();
-        const own = actual(t);
-        const med = course.medication_id
-          ? byMedication.get(course.medication_id)
-          : undefined;
-        const fallback = med ? actual(med) : null;
-        const pick =
-          own.cost_per_mg !== null
-            ? ([own, 'course_actual'] as const)
-            : fallback?.cost_per_mg
-              ? ([fallback, 'medication_actual'] as const)
-              : null;
-        if (!pick) {
-          const mixed = own.mixed_currency || fallback?.mixed_currency === true;
-          remaining.unavailable_reason = mixed ? 'mixed_currency' : 'no_rate';
-        } else {
-          const [source, label] = pick;
-          remaining.rate_per_mg = source.cost_per_mg;
-          remaining.rate_source = label;
-          remaining.currency = source.currency;
-          remaining.estimate = money(plannedMg.times(source.cost_per_mg!));
-        }
-      }
-    }
-    let projected_total: string | null = null;
-    let projected_currency: string | null = null;
-    if (remaining.estimate !== null) {
-      if (a.cost !== null && a.currency === remaining.currency) {
-        projected_total = money(new D(a.cost).plus(remaining.estimate));
-        projected_currency = remaining.currency;
-      } else if (t.costed === 0 && t.uncosted === 0) {
-        projected_total = remaining.estimate;
-        projected_currency = remaining.currency;
-      }
-    }
-    return {
-      course_id: course.course_id,
-      medication_id: course.medication_id,
-      medication_name: course.medication_name,
-      name: course.name,
-      status: course.status,
-      start_date: course.start_date,
-      end_date: course.end_date,
-      actual: a,
-      remaining,
-      projected_total,
-      projected_currency,
-    };
-  });
+  const rows: MedicationCourseCostRow[] = input.courses.map((course) => ({
+    course_id: course.course_id,
+    medication_id: course.medication_id,
+    medication_name: course.medication_name,
+    name: course.name,
+    status: course.status,
+    start_date: course.start_date,
+    end_date: course.end_date,
+    actual: actual(byCourse.get(course.course_id) ?? tally()),
+  }));
   rows.sort(
     (a, b) =>
       (b.start_date ?? '').localeCompare(a.start_date ?? '') ||

@@ -208,6 +208,26 @@ function costDose(
   return { cost: rate.rate.times(mcg), mcg, currency: rate.currency };
 }
 export { invoiceLinePrices, vialCostRates, costDose };
+/**
+ * Months of actual use a run rate divides by: first costed dose to today, capped
+ * at the window and floored at one month, so a short run never inflates the rate.
+ */
+export function usageMonths(args: {
+  firstDayKey: string | null;
+  todayKey: string;
+  windowMonths: number | null;
+}): number {
+  const { firstDayKey, todayKey, windowMonths } = args;
+  if (!firstDayKey) return windowMonths ?? 1;
+  const first = Date.parse(`${firstDayKey}T00:00:00Z`);
+  const today = Date.parse(`${todayKey}T00:00:00Z`);
+  if (!Number.isFinite(first) || !Number.isFinite(today) || today < first)
+    return 1;
+  const spanMonths = (today - first) / (86_400_000 * 30.436875);
+  const capped =
+    windowMonths === null ? spanMonths : Math.min(spanMonths, windowMonths);
+  return Math.max(1, Math.round(capped));
+}
 function buildCostAnalytics(
   input: MedicationCostAnalyticsInput,
   context?: CostResolutionContext
@@ -263,6 +283,9 @@ function buildCostAnalytics(
         touch(vial.medication_id);
     }
   const rates = vialCostRates(input.vials, prices, context);
+  let runCost = new D(0);
+  const runCurrencies = new Set<string>();
+  let firstCostedDay: string | null = null;
   for (const dose of input.doses) {
     if (
       !dose.medication_id ||
@@ -292,6 +315,10 @@ function buildCostAnalytics(
       }
     }
     row.usageCurrencies.add(costed.currency);
+    runCost = runCost.plus(costed.cost);
+    runCurrencies.add(costed.currency);
+    if (firstCostedDay === null || dose.entry_date < firstCostedDay)
+      firstCostedDay = dose.entry_date;
   }
   const reportSpendCurrencies = new Set(
     [...acc.values()].flatMap((row) => [...row.spendCurrencies])
@@ -339,10 +366,26 @@ function buildCostAnalytics(
         a.medication_id.localeCompare(b.medication_id)
       );
     });
+  const windowMonths = window.key === 'all' ? null : Number(window.key);
+  const monthsOfData = usageMonths({
+    firstDayKey: firstCostedDay,
+    todayKey: input.today,
+    windowMonths,
+  });
+  const runCurrency = runCurrencies.size === 1 ? [...runCurrencies][0]! : null;
   return {
     window,
     rows,
     ...buildCostBreakdown(input, window, prices, context),
+    run_rate: {
+      per_month:
+        runCurrency !== null && runCost.gt(0)
+          ? runCost.div(monthsOfData).toFixed(2, D.ROUND_HALF_UP)
+          : null,
+      months_of_data: monthsOfData,
+      currency: runCurrency,
+      mixed_currency: runCurrencies.size > 1,
+    },
   };
 }
 

@@ -1,18 +1,15 @@
 import type { PoolClient } from 'pg';
 import {
-  buildInventoryForecastPlan,
   buildMedicationCourseCosts,
   type MedicationCostDose,
   type MedicationCourse,
   type MedicationCourseCosts,
   type MedicationCourseCostCourse,
-  type MedicationCoursePlannedDemand,
 } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import { loadInventoryForecastSnapshot } from './medicationInventoryForecastRepository.js';
 import { loadMedicationPrescriptionFinancialSnapshot } from './medicationPrescriptionFinancialSnapshot.js';
 import { assertMedicationFinancialOwner } from './medicationPurchaseRepository.js';
-import { buildMedicationForecastPlanInput } from '../services/medicationInventoryForecastService.js';
 
 function currentRevision(course: MedicationCourse) {
   const live = course.revisions.filter((revision) => !revision.deleted_at);
@@ -23,8 +20,8 @@ function currentRevision(course: MedicationCourse) {
   );
 }
 /**
- * Owner-only course spend. One read snapshot supplies the financial facts, logged
- * doses and the planned-cycle forecast plans, so actual and estimate agree.
+ * Owner-only course spend: consumed cost per course from one read snapshot of
+ * the financial facts, logged doses and courses.
  */
 export async function getMedicationCourseCosts(
   userId: string,
@@ -44,14 +41,11 @@ export async function getMedicationCourseCosts(
       [userId]
     );
     const courses: MedicationCourseCostCourse[] = [];
-    const planned: MedicationCoursePlannedDemand[] = [];
     for (const med of snapshot.medications) {
-      const revisionCourse = new Map<string, string>();
       for (const course of med.courses) {
         if (course.deleted_at) continue;
         const revision = currentRevision(course);
         if (!revision) continue;
-        for (const r of course.revisions) revisionCourse.set(r.id, course.id);
         courses.push({
           course_id: course.id,
           medication_id: med.id,
@@ -62,35 +56,6 @@ export async function getMedicationCourseCosts(
           end_date: revision.end_date,
         });
       }
-      const built = buildMedicationForecastPlanInput(
-        snapshot,
-        med,
-        now,
-        'planned_cycles'
-      );
-      if (!built) continue;
-      const plan = buildInventoryForecastPlan(built.planInput);
-      const slotsByCourse = new Map<
-        string,
-        { value: string | null; unit: string | null }[]
-      >();
-      for (const slot of plan.slots) {
-        const courseId =
-          slot.plan_kind === 'course_revision'
-            ? revisionCourse.get(slot.plan_id)
-            : undefined;
-        if (!courseId) continue;
-        const list = slotsByCourse.get(courseId) ?? [];
-        list.push({ value: slot.value, unit: slot.unit });
-        slotsByCourse.set(courseId, list);
-      }
-      for (const [course_id, slots] of slotsByCourse)
-        planned.push({
-          course_id,
-          slots,
-          basis: plan.basis,
-          coverage_end: plan.coverage_end,
-        });
     }
     const result = buildMedicationCourseCosts({
       as_of: now.toISOString(),
@@ -99,7 +64,6 @@ export async function getMedicationCourseCosts(
       vials: financial.vials,
       prescriptions: financial.prescriptions,
       doses: doses.rows,
-      planned,
     });
     await client.query('COMMIT');
     return result;

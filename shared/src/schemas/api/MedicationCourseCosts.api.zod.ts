@@ -14,20 +14,6 @@ export const medicationCourseCostActualSchema = z.object({
   cost_per_dose: money,
   cost_per_mg: money,
 });
-export const medicationCourseCostRemainingSchema = z.object({
-  planned_mg: z.string().nullable(),
-  planned_doses: z.number().int().nonnegative(),
-  /** Where the planned-cycle forecast stopped counting; never extrapolated. */
-  basis: z.enum(['course_end', 'horizon', 'slot_cap', 'unavailable']),
-  through: z.string().nullable(),
-  rate_per_mg: money,
-  rate_source: z.enum(['course_actual', 'medication_actual']).nullable(),
-  currency: z.string().nullable(),
-  estimate: money,
-  unavailable_reason: z
-    .enum(['no_plan', 'non_mass_dose', 'no_rate', 'mixed_currency'])
-    .nullable(),
-});
 export const medicationCourseCostRowSchema = z.object({
   course_id: z.string().uuid(),
   medication_id: z.string().uuid().nullable(),
@@ -37,10 +23,6 @@ export const medicationCourseCostRowSchema = z.object({
   start_date: z.string().nullable(),
   end_date: z.string().nullable(),
   actual: medicationCourseCostActualSchema,
-  remaining: medicationCourseCostRemainingSchema,
-  /** Actual plus estimate, only when both are known in one currency. */
-  projected_total: money,
-  projected_currency: z.string().nullable(),
 });
 export const medicationCourseCostsSchema = z.object({
   as_of: z.string(),

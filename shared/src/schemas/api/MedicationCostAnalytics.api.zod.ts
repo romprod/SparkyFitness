@@ -70,6 +70,13 @@ export const medicationMonthlySpendSchema = z.object({
   currency: z.string().nullable(),
   mixed_currency: z.boolean(),
 });
+/** Monthly spend rate over months of actual use, as the Pitstop Costs page reports it. */
+export const medicationRunRateSchema = z.object({
+  per_month: z.string().nullable(),
+  months_of_data: z.number().int().positive(),
+  currency: z.string().nullable(),
+  mixed_currency: z.boolean(),
+});
 export const medicationCostAnalyticsSchema = z.object({
   window: z.object({
     key: medicationCostWindowSchema,
@@ -80,6 +87,7 @@ export const medicationCostAnalyticsSchema = z.object({
   consumables: medicationConsumableCostsSchema,
   waste: medicationWasteSchema,
   monthly_spend: z.array(medicationMonthlySpendSchema),
+  run_rate: medicationRunRateSchema,
 });
 export type MedicationCostAnalytics = z.infer<
   typeof medicationCostAnalyticsSchema

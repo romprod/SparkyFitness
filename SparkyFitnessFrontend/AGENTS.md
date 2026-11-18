@@ -52,8 +52,7 @@ Features are organized by domain, and the same domain folder name appears in `sr
 
 ## Source Map
 
-- Course costs (C07): owner-only `GET /api/v2/medication-purchases/course-costs` returns per-course actual consumed cost plus an estimate for planned doses still to come. Calculator: shared `buildMedicationCourseCosts` (`shared/src/medications/courseCosts.ts`, built on the same per-dose costing helpers as the cost report); server: `models/medicationCourseCostsRepository.ts`, planned demand from `buildMedicationForecastPlanInput`; web: `pages/Medications/MedicationCourseCosts.tsx` on the Costs tab via `useMedicationCourseCosts`. Never extrapolate past the forecast's own basis, and never price volume/unit-based planned doses.
-
+- Course costs (C07) and run rate: owner-only `GET /api/v2/medication-purchases/course-costs` returns per-course actual consumed cost (and unlinked doses), matching Pitstop's attribution; no projection is made (Pitstop has none). Calculator: shared `buildMedicationCourseCosts` (`shared/src/medications/courseCosts.ts`) on the same per-dose costing helpers as the cost report; server: `models/medicationCourseCostsRepository.ts`; web: `pages/Medications/MedicationCourseCosts.tsx` via `useMedicationCourseCosts`. The cost report's `run_rate` (shared `usageMonths`) is monthly spend over months of actual use from the first costed dose, as Pitstop's Costs page does; it is hidden for mixed currencies.
 
 - Food assistant state: owner-only preferences, recoverable tasks and operation history use `FoodAssistant.api.zod.ts` / `FoodAssistant.zod.ts` in shared. Server: `routes/v2/foodAssistantRoutes.ts`, `services/foodAssistantService.ts`, `models/foodAssistantRepository.ts`, `ai/tools/foodAssistantTools.ts`. Web: `src/components/ai/FoodAssistantState.tsx`, `src/api/Chatbot/foodAssistantService.ts`.
 

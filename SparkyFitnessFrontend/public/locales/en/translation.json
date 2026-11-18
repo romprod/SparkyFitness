@@ -1251,7 +1251,12 @@
       "wasteBasis": "Uses all logged delivered history, independent of the selected window. Includes priced, labelled finished or discarded vials with at most 70% delivered. Sealed and in-use vials are excluded. This is a display rule, not a clinical threshold.",
       "wasteUnavailable": "Closed vials with missing cost, label or delivered history: {{count}}. The estimate excludes them.",
       "unusedMass": "{{mass}} mg estimated unused",
-      "wasteFirstSix": "Showing six eligible closed vials."
+      "wasteFirstSix": "Showing six eligible closed vials.",
+      "runRate": "Run rate",
+      "runRateValue": "{{amount}} /mo",
+      "runRateMixed": "Unavailable because costs use different currencies.",
+      "runRateMonthsOne": "over {{count}} month of use",
+      "runRateMonthsOther": "over {{count}} months of use"
     },
     "labelMass": {
       "label": "Vial label amount (mg)",
@@ -1725,7 +1730,7 @@
     },
     "courseCosts": {
       "title": "By course",
-      "note": "Spent is the cost of doses logged under each course, priced like the medication report. The remaining estimate prices the planned doses still to come at the cost per mg of this course, else of the medication. It is an estimate, not a forecast of purchases.",
+      "note": "Spent is the cost of doses logged under each course, priced like the medication report. Doses not logged under a course are listed separately.",
       "loading": "Loading course costs…",
       "loadFailed": "Could not load course costs.",
       "empty": "No courses or logged doses to cost yet.",
@@ -1733,20 +1738,8 @@
       "course": "Course",
       "spent": "Spent so far",
       "perDose": "Per dose",
-      "remaining": "Remaining plan (estimate)",
-      "total": "Projected total",
       "counts": "{{costed}} costed doses · {{uncosted}} uncosted",
       "mixed": "Unavailable: this course has costs in different currencies.",
-      "plannedBasis": "{{doses}} planned doses at {{rate}}/mg ({{source}}), {{through}}",
-      "sourceCourse": "this course",
-      "sourceMedication": "this medication",
-      "toCourseEnd": "to course end",
-      "throughDate": "through {{date}} only",
-      "partialPlan": "part of the plan only",
-      "noPlan": "No planned doses left",
-      "nonMass": "Planned doses are not set in mass units",
-      "noRate": "No costed doses to price this from",
-      "mixedRate": "Price unavailable: costs are in different currencies",
       "unattributed": "Not linked to a course"
     }
   },
