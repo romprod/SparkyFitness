@@ -342,7 +342,7 @@ it('keeps syringe controls within a selected non-GLP1 injectable Cabinet detail'
 it('keeps Preparation & stock inventory-only through the full Medications route', async () => {
   open('/medications?tab=stock');
   await waitFor(() =>
-    expect(screen.getByLabelText('Peptide / medication')).toHaveTextContent(
+    expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
       'Synthetic injectable'
     )
   );
