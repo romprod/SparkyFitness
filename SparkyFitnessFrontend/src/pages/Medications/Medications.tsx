@@ -148,6 +148,13 @@ export default function Medications() {
     activeOnly: false,
   });
 
+  // The stock tab needs retired medications too (their vials can still await
+  // preparation), and the list endpoint treats `activeOnly=false` as true, so ask
+  // without a filter for this tab only.
+  const { data: stockMeds = [] } = useMedications(undefined, {
+    enabled: activeTab === 'stock',
+  });
+
   // Also check if any symptom entries exist — either meds or symptoms means
   // the user has already accepted the disclaimer.
   const { data: anySymptoms = [], isLoading: loadingSymptoms } =
@@ -423,7 +430,9 @@ export default function Medications() {
         </div>
       )}
 
-      {activeTab === 'stock' && <PeptideStock meds={meds} />}
+      {activeTab === 'stock' && (
+        <PeptideStock meds={stockMeds.length > 0 ? stockMeds : meds} />
+      )}
       {activeTab === 'costs' && purchaseScope.ready && <MedicationCosts />}
       {activeTab === 'prescriptions' && prescriptionScope.ready && (
         <MedicationPrescriptions medications={meds as MedicationDetail[]} />

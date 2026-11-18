@@ -402,3 +402,61 @@ it('uses loaded counts without a render loop and hides empty groups after data o
   ).not.toBeInTheDocument();
   expect(screen.queryByText('Finished / discarded')).not.toBeInTheDocument();
 });
+
+it('shows one empty message instead of a placeholder card per medication, so stock cards keep their grid slots', () => {
+  const other = {
+    ...peptide,
+    id: 'other',
+    name: 'Other peptide',
+  } as Medication;
+  mockPens.mockImplementation((id: string) => ({
+    data:
+      id === 'other'
+        ? [dashboardPen({ medication_id: 'other', status: 'in_use' })]
+        : [],
+  }));
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, other]} />
+    </MemoryRouter>
+  );
+  expect(screen.queryByText(/No stock tracked for/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/No vials yet/)).not.toBeInTheDocument();
+  const tracked = screen.getByRole('region', { name: 'Tracked stock' });
+  expect(tracked.querySelectorAll('article')).toHaveLength(1);
+});
+
+it('says so once when nothing is tracked for any medication', () => {
+  mockPens.mockReturnValue({ data: [] });
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  expect(screen.getAllByText(/No vials yet/)).toHaveLength(1);
+  expect(screen.queryByText(/No stock tracked for/)).not.toBeInTheDocument();
+});
+
+it('shows Prepare as a pill and a retired medication with a queued vial as a normal preparable card', () => {
+  const retired = {
+    ...peptide,
+    id: 'retired',
+    name: 'Retired blend',
+    is_active: false,
+  } as Medication;
+  mockDashboard = dashboardFixture({
+    preparation_queue: [
+      queueItem({ stock_id: 'queued', medication_id: 'retired' }),
+    ],
+  });
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, retired]} />
+    </MemoryRouter>
+  );
+  expect(
+    screen.queryByText('Preparing stock requires medication edit access.')
+  ).not.toBeInTheDocument();
+  const pill = screen.getByText('Prepare ›');
+  expect(pill).toHaveClass('rounded-full');
+});

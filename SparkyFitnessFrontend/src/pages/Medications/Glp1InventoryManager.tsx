@@ -831,7 +831,10 @@ function InventorySession({
           )}
           {(stockView === 'active' || stockView === 'closed') &&
             pensQ.isError && (
-              <p role="alert" className="text-sm text-muted-foreground">
+              <p
+                role="alert"
+                className="col-span-full text-sm text-muted-foreground"
+              >
                 {t(
                   'medications.stockLayout.loadError',
                   'Could not load stock for {{name}}.',
@@ -840,22 +843,13 @@ function InventorySession({
               </p>
             )}
           {stockView === 'active' && pensQ.isLoading && (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p
+              role="status"
+              className="col-span-full text-sm text-muted-foreground"
+            >
               {t('medications.stockLayout.loading', 'Loading current stock…')}
             </p>
           )}
-          {stockView === 'active' &&
-            !pensQ.isError &&
-            !pensQ.isLoading &&
-            (pensQ.data?.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t(
-                  'medications.stockLayout.emptyMedication',
-                  'No stock tracked for {{name}}.',
-                  { name: med.display_name || med.name }
-                )}
-              </p>
-            )}
           {stockView === 'active' &&
             !pensQ.isError &&
             activePens

@@ -971,7 +971,8 @@
       "kind": {
         "vial": "Vial",
         "pen": "Pen"
-      }
+      },
+      "emptyAll": "No vials yet. Add your first vial to start tracking stock."
     },
     "stock": {
       "title": "Preparation & stock",

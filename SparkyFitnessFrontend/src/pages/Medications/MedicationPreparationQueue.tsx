@@ -199,7 +199,7 @@ export function MedicationPreparationQueueEntry({
             }
           >
             {identity}
-            <span className="shrink-0 text-sm font-medium">
+            <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
               {t('medications.stockDashboard.prepare', 'Prepare')} ›
             </span>
           </span>

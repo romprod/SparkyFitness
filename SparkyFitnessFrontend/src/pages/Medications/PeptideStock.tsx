@@ -225,6 +225,20 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
         dashboard.data &&
         !dashboard.query.isError && (
           <div key={scope.key} className="space-y-6">
+            {injectables.length > 0 &&
+              injectables.every(
+                (med) => counts[`${scope.key}:${med.id}`] !== undefined
+              ) &&
+              activeCount === 0 &&
+              closedCount === 0 &&
+              queue.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    'medications.stockLayout.emptyAll',
+                    'No vials yet. Add your first vial to start tracking stock.'
+                  )}
+                </p>
+              )}
             {activeCount > 0 && (
               <h3 className="text-sm font-semibold">
                 {t('medications.stockLayout.inUse', 'In use')}
@@ -232,7 +246,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
             )}
             <section
               aria-label={t('medications.stockLayout.tracked', 'Tracked stock')}
-              className="grid min-w-0 gap-3 lg:grid-cols-2"
+              className="grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3"
             >
               {injectables.map((med) => manager(med, 'active'))}
             </section>
@@ -258,7 +272,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                     )}
                   </p>
                 ) : (
-                  <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+                  <div className="grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3">
                     {injectables.map((med) => manager(med, 'queue'))}
                     {queue
                       .filter(
@@ -288,7 +302,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                     'Finished / discarded'
                   )}
                 </summary>
-                <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-2">
+                <div className="mt-3 grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3">
                   {injectables.map((med) => manager(med, 'closed'))}
                 </div>
               </details>
