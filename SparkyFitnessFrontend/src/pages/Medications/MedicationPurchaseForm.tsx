@@ -56,6 +56,7 @@ export default function MedicationPurchaseForm({
     units_per_pack: '',
     units_per_dose: '',
     vial_ids: [],
+    pack_ids: [],
   });
   const [head, setHead] = useState({
     vendor: initial?.vendor ?? '',
@@ -84,6 +85,7 @@ export default function MedicationPurchaseForm({
         units_per_pack: line.units_per_pack,
         units_per_dose: line.units_per_dose,
         vial_ids: line.vial_ids,
+        pack_ids: line.pack_ids,
       })) ?? [blankLine('medication')]
   );
   const [error, setError] = useState('');
@@ -336,6 +338,37 @@ export default function MedicationPurchaseForm({
             vial.medication_id === line.medication_id && !elsewhere.has(vial.id)
         );
         const picked = line.vial_ids ?? [];
+        const packsElsewhere = new Set(
+          lines
+            .filter((other) => other.key !== line.key)
+            .flatMap((other) => other.pack_ids ?? [])
+        );
+        const packCandidates = data.packs.filter(
+          (pack) =>
+            pack.medication_id === line.medication_id &&
+            !packsElsewhere.has(pack.id)
+        );
+        const pickedPacks = line.pack_ids ?? [];
+        const matchedTotal = picked.length + pickedPacks.length;
+        const matchValues = { matched: matchedTotal, expected: line.quantity };
+        const matchHeading =
+          packCandidates.length === 0
+            ? t(
+                'medications.costs.match',
+                'Match vials ({{matched}} of {{expected}})',
+                matchValues
+              )
+            : candidates.length === 0
+              ? t(
+                  'medications.costs.matchPacks',
+                  'Match packs ({{matched}} of {{expected}})',
+                  matchValues
+                )
+              : t(
+                  'medications.costs.matchBoth',
+                  'Match vials and packs ({{matched}} of {{expected}})',
+                  matchValues
+                );
         const lineField = (
           key:
             | 'description'
@@ -410,6 +443,7 @@ export default function MedicationPurchaseForm({
                         patchLine(line.key, {
                           medication_id: e.target.value || null,
                           vial_ids: [],
+                          pack_ids: [],
                         })
                       }
                     >
@@ -507,13 +541,7 @@ export default function MedicationPurchaseForm({
               )}
               {line.kind === 'medication' && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">
-                    {t(
-                      'medications.costs.match',
-                      'Match vials ({{matched}} of {{expected}})',
-                      { matched: picked.length, expected: line.quantity }
-                    )}
-                  </p>
+                  <p className="text-sm font-medium">{matchHeading}</p>
                   {!line.medication_id ? (
                     <p className="text-sm text-muted-foreground">
                       {t(
@@ -521,14 +549,14 @@ export default function MedicationPurchaseForm({
                         'Choose a medication to see its vials.'
                       )}
                     </p>
-                  ) : candidates.length === 0 ? (
+                  ) : candidates.length === 0 && packCandidates.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
                       {t(
                         'medications.costs.noVials',
                         'No unmatched vials for this medication. Add them in Preparation & stock, then link them here.'
                       )}
                     </p>
-                  ) : (
+                  ) : candidates.length === 0 ? null : (
                     <div className="grid gap-2 sm:grid-cols-2">
                       {candidates.map((vial) => (
                         <label
@@ -563,7 +591,42 @@ export default function MedicationPurchaseForm({
                       ))}
                     </div>
                   )}
-                  {picked.length > Number(line.quantity) && (
+                  {packCandidates.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {packCandidates.map((pack) => (
+                          <label
+                            key={pack.id}
+                            className="flex min-w-0 items-start gap-2 rounded-md border p-2 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={pickedPacks.includes(pack.id)}
+                              disabled={locked}
+                              onChange={(e) =>
+                                patchLine(line.key, {
+                                  pack_ids: e.target.checked
+                                    ? [...pickedPacks, pack.id]
+                                    : pickedPacks.filter(
+                                        (id) => id !== pack.id
+                                      ),
+                                })
+                              }
+                            />
+                            <span className="min-w-0 break-words">
+                              {pack.label || pack.medication_name}
+                              {` · ${pack.units_total} ${pack.unit_label}`}
+                              {pack.lot_number &&
+                                ` · ${t('medications.costs.lot', 'Lot')} ${pack.lot_number}`}{' '}
+                              · {pack.status.replaceAll('_', ' ')}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {matchedTotal > Number(line.quantity) && (
                     <Badge variant="destructive" className={notice}>
                       {t(
                         'medications.costs.overmatched',

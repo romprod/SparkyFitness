@@ -77,6 +77,7 @@ export const medicationPurchaseItemInputSchema = z
     units_per_pack: optionalInteger,
     units_per_dose: optionalDecimal,
     vial_ids: z.array(z.string().uuid()).default([]),
+    pack_ids: z.array(z.string().uuid()).default([]),
   })
   .refine((item) => item.kind !== 'consumable' || Boolean(item.description), {
     path: ['description'],
@@ -162,6 +163,7 @@ export interface MedicationPurchaseView extends Omit<
   totals: PurchaseAllocation;
   vials_expected: number;
   vials_linked: number;
+  packs_linked: number;
 }
 export interface MedicationPurchaseEditorData {
   medications: { id: string; name: string }[];
@@ -178,6 +180,18 @@ export interface MedicationPurchaseEditorData {
     expiry_date: string | null;
     purchase_item_id: string | null;
   }[];
+  packs: {
+    id: string;
+    medication_id: string;
+    medication_name: string;
+    label: string | null;
+    unit_label: string;
+    units_total: string;
+    status: string;
+    lot_number: string | null;
+    expiry_date: string | null;
+    purchase_item_id: string | null;
+  }[];
 }
 export interface MedicationVialCost {
   pen_id: string;
@@ -186,4 +200,17 @@ export interface MedicationVialCost {
   purchase_item_id?: string;
   currency?: string;
   landed_unit?: string | null;
+}
+export interface MedicationPackCost {
+  pack_id: string;
+  is_costed: boolean;
+  purchase_id?: string;
+  purchase_item_id?: string;
+  currency?: string;
+  /** Landed cost of one pack from its invoice line. */
+  landed_pack?: string | null;
+  /** Landed cost per pack unit (tablet, capsule, scoop); null when the pack size is unknown. */
+  landed_per_unit?: string | null;
+  /** Cost of the units already used from this pack. */
+  consumed?: string | null;
 }

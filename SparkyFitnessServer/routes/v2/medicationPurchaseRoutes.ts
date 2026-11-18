@@ -96,6 +96,18 @@ router.get('/vial-costs', async (req, res, next) => {
     next(error);
   }
 });
+/** Owner-only landed cost per pack and per unit, from current invoice links. */
+router.get('/pack-costs', async (req, res, next) => {
+  try {
+    res.set({
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.json({ packs: await purchases.getPackCosts(req.userId) });
+  } catch (error) {
+    next(error);
+  }
+});
 /** Owner-only estimates from current invoice links and explicit labelled mass. */
 router.get('/analytics', async (req, res, next) => {
   try {

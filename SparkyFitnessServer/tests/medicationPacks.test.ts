@@ -3,6 +3,7 @@ import {
   observedDaysLeft,
   packDeduction,
   packDosesLeft,
+  packUnitCost,
   packUnitFamily,
   packUnitsRemaining,
 } from '@workspace/shared';
@@ -101,6 +102,28 @@ describe('pack figures', () => {
     ).toBe(0);
     expect(
       observedDaysLeft({ ...base, unitsTakenInWindow: '0', dosesInWindow: 5 })
+    ).toBeNull();
+  });
+});
+
+describe('pack unit cost', () => {
+  it('derives exact per-unit and consumed cost from one pack landed cost', () => {
+    expect(
+      packUnitCost({ landedPack: '33', unitsTotal: '60', unitsUsed: '12' })
+    ).toEqual({ perUnit: '0.55', consumed: '6.6' });
+    expect(
+      packUnitCost({ landedPack: '30', unitsTotal: '90', unitsUsed: '0' })
+    ).toEqual({ perUnit: '0.333333', consumed: '0' });
+  });
+  it('is unknown without a cost or a positive pack size, and never throws on bad input', () => {
+    expect(
+      packUnitCost({ landedPack: null, unitsTotal: '60', unitsUsed: '1' })
+    ).toBeNull();
+    expect(
+      packUnitCost({ landedPack: '33', unitsTotal: '0', unitsUsed: '1' })
+    ).toBeNull();
+    expect(
+      packUnitCost({ landedPack: 'x', unitsTotal: '60', unitsUsed: '1' })
     ).toBeNull();
   });
 });

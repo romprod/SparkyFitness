@@ -203,7 +203,7 @@ beforeEach(() => {
         };
       if (endpoint === '/v2/medication-purchases') return { purchases: [] };
       if (endpoint === '/v2/medication-purchases/editor-data')
-        return { medications: [], vials: [] };
+        return { medications: [], vials: [], packs: [] };
       if (endpoint === '/v2/medications')
         return mockEmptyMedications
           ? []

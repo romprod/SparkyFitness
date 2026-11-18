@@ -173,6 +173,7 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     medication_purchases: 'owner',
     medication_purchase_items: 'owner',
     medication_purchase_vials: 'owner',
+    medication_purchase_packs: 'owner',
     medication_purchase_operations: 'owner',
     api_key: 'owner',
     sparky_chat_history: 'owner',

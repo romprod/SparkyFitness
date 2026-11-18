@@ -210,9 +210,13 @@ function OwnedCosts({
                         {item.kind === 'medication' &&
                           item.vial_ids.length > 0 &&
                           ` · ${item.vial_ids.length === 1 ? t('medications.costs.cardMatchedOne', '1 vial matched') : t('medications.costs.cardMatched', '{{matched}} vials matched', { matched: item.vial_ids.length })}`}
+                        {item.kind === 'medication' &&
+                          item.pack_ids.length > 0 &&
+                          ` · ${item.pack_ids.length === 1 ? t('medications.costs.cardMatchedPackOne', '1 pack matched') : t('medications.costs.cardMatchedPacks', '{{matched}} packs matched', { matched: item.pack_ids.length })}`}
                       </p>
                       {item.kind === 'medication' &&
-                        item.vial_ids.length > item.quantity && (
+                        item.vial_ids.length + item.pack_ids.length >
+                          item.quantity && (
                           <Badge variant="destructive" className={notice}>
                             {t(
                               'medications.costs.overmatched',
@@ -223,16 +227,28 @@ function OwnedCosts({
                     </li>
                   ))}
                 </ul>
-                {purchase.vials_expected > purchase.vials_linked && (
+                {purchase.vials_expected >
+                  purchase.vials_linked + purchase.packs_linked && (
                   <p className="text-xs text-muted-foreground">
-                    {t(
-                      'medications.costs.cardUnmatched',
-                      '{{missing}} vials on this invoice not yet matched to inventory.',
-                      {
-                        missing:
-                          purchase.vials_expected - purchase.vials_linked,
-                      }
-                    )}
+                    {purchase.packs_linked > 0
+                      ? t(
+                          'medications.costs.cardUnmatchedAny',
+                          '{{missing}} items on this invoice not yet matched to inventory.',
+                          {
+                            missing:
+                              purchase.vials_expected -
+                              purchase.vials_linked -
+                              purchase.packs_linked,
+                          }
+                        )
+                      : t(
+                          'medications.costs.cardUnmatched',
+                          '{{missing}} vials on this invoice not yet matched to inventory.',
+                          {
+                            missing:
+                              purchase.vials_expected - purchase.vials_linked,
+                          }
+                        )}
                   </p>
                 )}
                 {purchase.totals.unallocated !== '0.00' && (

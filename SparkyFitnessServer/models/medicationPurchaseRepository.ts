@@ -14,6 +14,8 @@ import {
   type MedicationPurchaseItem,
   type MedicationPurchaseEditorData,
   type MedicationVialCost,
+  type MedicationPackCost,
+  packUnitCost,
 } from '@workspace/shared';
 import { getClient, dbContextStorage } from '../db/poolManager.js';
 import { encrypt, decrypt, ENCRYPTION_KEY } from '../security/encryption.js';
@@ -60,6 +62,10 @@ type ItemRow = MedicationPurchaseItem & {
   purchase_id: string;
   sort_index: number;
 };
+interface PackRow {
+  id: string;
+  medication_id: string;
+}
 interface PenRow {
   id: string;
   medication_id: string;
@@ -68,7 +74,8 @@ interface PenRow {
 const HEADER_COLS =
   'id,user_id,vendor,reference_encrypted,ordered_date::text,received_date::text,currency,shipping_cost::text,tax_cost::text,other_fees::text,discount::text,allocation_method,notes_encrypted,revision,created_at::text';
 const ITEM_COLS = `i.id,i.purchase_id,i.kind,i.medication_id,i.category,i.description,i.quantity,i.unit_cost::text,i.units_per_pack,i.units_per_dose::text,i.sort_index,m.name AS medication_name,
- COALESCE((SELECT array_agg(v.pen_id ORDER BY v.pen_id) FROM medication_purchase_vials v WHERE v.purchase_item_id=i.id AND v.user_id=i.user_id),ARRAY[]::uuid[]) AS vial_ids`;
+ COALESCE((SELECT array_agg(v.pen_id ORDER BY v.pen_id) FROM medication_purchase_vials v WHERE v.purchase_item_id=i.id AND v.user_id=i.user_id),ARRAY[]::uuid[]) AS vial_ids,
+ COALESCE((SELECT array_agg(k.pack_id ORDER BY k.pack_id) FROM medication_purchase_packs k WHERE k.purchase_item_id=i.id AND k.user_id=i.user_id),ARRAY[]::uuid[]) AS pack_ids`;
 async function encode(value: string | null): Promise<Envelope | null> {
   return value ? ((await encrypt(value, ENCRYPTION_KEY)) as Envelope) : null;
 }
@@ -137,6 +144,9 @@ async function readPurchases(
         vials_linked: lines
           .filter((line) => line.kind === 'medication')
           .reduce((sum, line) => sum + line.vial_ids.length, 0),
+        packs_linked: lines
+          .filter((line) => line.kind === 'medication')
+          .reduce((sum, line) => sum + line.pack_ids.length, 0),
       };
     })
   );
@@ -194,7 +204,17 @@ export async function getEditorData(
       "SELECT p.id,p.medication_id,m.name AS medication_name,p.label,p.label_mass_mg::text,prep.mass_mg::text AS prepared_mass_mg,p.status,p.lot_number,p.expiry_date::text,v.purchase_item_id FROM medication_pens p JOIN medications m ON m.id=p.medication_id AND m.user_id=p.user_id LEFT JOIN medication_preparations prep ON prep.pen_id=p.id AND prep.user_id=p.user_id AND prep.medication_id=p.medication_id LEFT JOIN medication_purchase_vials v ON v.pen_id=p.id AND v.user_id=p.user_id LEFT JOIN medication_purchase_items i ON i.id=v.purchase_item_id AND i.user_id=v.user_id WHERE p.user_id=$1 AND p.kind='vial' AND (v.pen_id IS NULL OR i.purchase_id=$2) ORDER BY p.status,m.name,p.id",
       [userId, purchaseId ?? null]
     );
-    return { medications: medications.rows, vials: vials.rows };
+    const packs = await client.query<
+      MedicationPurchaseEditorData['packs'][number]
+    >(
+      'SELECT p.id,p.medication_id,m.name AS medication_name,p.label,p.unit_label,p.units_total::text,p.status,p.lot_number,p.expiry_date::text,k.purchase_item_id FROM medication_packs p JOIN medications m ON m.id=p.medication_id AND m.user_id=p.user_id LEFT JOIN medication_purchase_packs k ON k.pack_id=p.id AND k.user_id=p.user_id LEFT JOIN medication_purchase_items i ON i.id=k.purchase_item_id AND i.user_id=k.user_id WHERE p.user_id=$1 AND (k.pack_id IS NULL OR i.purchase_id=$2) ORDER BY p.status,m.name,p.id',
+      [userId, purchaseId ?? null]
+    );
+    return {
+      medications: medications.rows,
+      vials: vials.rows,
+      packs: packs.rows,
+    };
   });
 }
 export async function getVialCosts(
@@ -223,6 +243,58 @@ export async function getVialCosts(
     );
   });
 }
+export async function getPackCosts(
+  userId: string
+): Promise<MedicationPackCost[]> {
+  return readSnapshot(userId, async (client) => {
+    const invoices = await readPurchases(client, userId);
+    const linked = new Map<
+      string,
+      {
+        purchase_id: string;
+        item_id: string;
+        currency: string;
+        landed: string | null;
+      }
+    >();
+    for (const invoice of invoices)
+      for (const item of invoice.items)
+        for (const packId of item.pack_ids)
+          linked.set(packId, {
+            purchase_id: invoice.id,
+            item_id: item.id,
+            currency: invoice.currency,
+            landed: item.landed_unit,
+          });
+    const packs = await client.query<{
+      id: string;
+      units_total: string;
+      units_used: string;
+    }>(
+      'SELECT id,units_total::text,units_used::text FROM medication_packs WHERE user_id=$1 ORDER BY id',
+      [userId]
+    );
+    return packs.rows.map((pack): MedicationPackCost => {
+      const link = linked.get(pack.id);
+      if (!link) return { pack_id: pack.id, is_costed: false };
+      const cost = packUnitCost({
+        landedPack: link.landed,
+        unitsTotal: pack.units_total,
+        unitsUsed: pack.units_used,
+      });
+      return {
+        pack_id: pack.id,
+        is_costed: true,
+        purchase_id: link.purchase_id,
+        purchase_item_id: link.item_id,
+        currency: link.currency,
+        landed_pack: link.landed,
+        landed_per_unit: cost?.perUnit ?? null,
+        consumed: cost?.consumed ?? null,
+      };
+    });
+  });
+}
 function normalized(input: unknown): MedicationPurchaseValues {
   const data = medicationPurchaseInputSchema.parse(input);
   return {
@@ -230,6 +302,7 @@ function normalized(input: unknown): MedicationPurchaseValues {
     items: data.items.map((item) => ({
       ...item,
       vial_ids: [...new Set(item.vial_ids)],
+      pack_ids: [...new Set(item.pack_ids)],
       medication_id:
         item.kind === 'medication' ? (item.medication_id ?? null) : null,
       category:
@@ -280,6 +353,10 @@ async function lockContext(
     'SELECT v.pen_id FROM medication_purchase_vials v JOIN medication_purchase_items i ON i.id=v.purchase_item_id AND i.user_id=v.user_id WHERE v.user_id=$1 AND i.purchase_id=$2 ORDER BY v.pen_id',
     [userId, id ?? null]
   );
+  const initialPacks = await client.query<{ pack_id: string }>(
+    'SELECT k.pack_id FROM medication_purchase_packs k JOIN medication_purchase_items i ON i.id=k.purchase_item_id AND i.user_id=k.user_id WHERE k.user_id=$1 AND i.purchase_id=$2 ORDER BY k.pack_id',
+    [userId, id ?? null]
+  );
   const lineIds =
     data?.items.flatMap((item) => (item.id ? [item.id] : [])) ?? [];
   if (new Set(lineIds).size !== lineIds.length)
@@ -287,6 +364,16 @@ async function lockContext(
   const requested = data?.items.flatMap((item) => item.vial_ids) ?? [];
   if (new Set(requested).size !== requested.length)
     throw problem('The same vial is matched to more than one line.');
+  const requestedPacks = data?.items.flatMap((item) => item.pack_ids) ?? [];
+  if (new Set(requestedPacks).size !== requestedPacks.length)
+    throw problem('The same pack is matched to more than one line.');
+  const packIds = [
+    ...new Set([...initialPacks.rows.map((k) => k.pack_id), ...requestedPacks]),
+  ].sort();
+  const packReferences = await client.query<PackRow>(
+    'SELECT id,medication_id FROM medication_packs WHERE user_id=$1 AND id=ANY($2::uuid[])',
+    [userId, packIds]
+  );
   const penIds = [
     ...new Set([...initial.rows.map((v) => v.pen_id), ...requested]),
   ].sort();
@@ -303,6 +390,7 @@ async function lockContext(
         item.medication_id ? [item.medication_id] : []
       ) ?? []),
       ...references.rows.map((pen) => pen.medication_id),
+      ...packReferences.rows.map((pack) => pack.medication_id),
     ]),
   ].sort();
   const medications = await client.query<{ id: string }>(
@@ -312,6 +400,10 @@ async function lockContext(
   const pens = await client.query<PenRow>(
     'SELECT id,medication_id,kind FROM medication_pens WHERE user_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR UPDATE',
     [userId, penIds]
+  );
+  const packs = await client.query<PackRow>(
+    'SELECT id,medication_id FROM medication_packs WHERE user_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR KEY SHARE',
+    [userId, packIds]
   );
   const header = id
     ? (
@@ -334,12 +426,20 @@ async function lockContext(
     'SELECT v.pen_id FROM medication_purchase_vials v JOIN medication_purchase_items i ON i.id=v.purchase_item_id AND i.user_id=v.user_id WHERE v.user_id=$1 AND i.purchase_id=$2 ORDER BY v.pen_id',
     [userId, id ?? null]
   );
-  if (canonical(initial.rows) !== canonical(current.rows))
+  const currentPacks = await client.query<{ pack_id: string }>(
+    'SELECT k.pack_id FROM medication_purchase_packs k JOIN medication_purchase_items i ON i.id=k.purchase_item_id AND i.user_id=k.user_id WHERE k.user_id=$1 AND i.purchase_id=$2 ORDER BY k.pack_id',
+    [userId, id ?? null]
+  );
+  if (
+    canonical(initial.rows) !== canonical(current.rows) ||
+    canonical(initialPacks.rows) !== canonical(currentPacks.rows)
+  )
     throw problem('Inventory links changed. Reload the invoice.', 409);
   if (data) {
     const byItem = new Map(items.rows.map((item) => [item.id, item]));
     const medSet = new Set(medications.rows.map((m) => m.id));
     const byPen = new Map(pens.rows.map((pen) => [pen.id, pen]));
+    const byPack = new Map(packs.rows.map((pack) => [pack.id, pack]));
     for (const item of data.items) {
       if (item.id && !byItem.has(item.id))
         throw problem('An invoice line does not belong to this invoice.');
@@ -353,8 +453,8 @@ async function lockContext(
             throw problem('Choose a medication for this line.');
         } else if (!medSet.has(item.medication_id))
           throw problem('Medication not found.');
-      } else if (item.vial_ids.length)
-        throw problem('Consumable lines cannot match vials.');
+      } else if (item.vial_ids.length || item.pack_ids.length)
+        throw problem('Consumable lines cannot match vials or packs.');
       for (const penId of item.vial_ids) {
         const pen = byPen.get(penId);
         if (
@@ -367,6 +467,20 @@ async function lockContext(
           );
       }
     }
+    for (const item of data.items)
+      for (const packId of item.pack_ids) {
+        const pack = byPack.get(packId);
+        if (!pack || pack.medication_id !== item.medication_id)
+          throw problem(
+            'A matched pack is missing or is a different medication.'
+          );
+      }
+    const packClaims = await client.query<{ purchase_id: string }>(
+      'SELECT i.purchase_id FROM medication_purchase_packs k JOIN medication_purchase_items i ON i.id=k.purchase_item_id AND i.user_id=k.user_id WHERE k.user_id=$1 AND k.pack_id=ANY($2::uuid[])',
+      [userId, requestedPacks]
+    );
+    if (packClaims.rows.some((claim) => claim.purchase_id !== id))
+      throw problem('A matched pack is already on another invoice.', 409);
     const claims = await client.query<{ pen_id: string; purchase_id: string }>(
       'SELECT v.pen_id,i.purchase_id FROM medication_purchase_vials v JOIN medication_purchase_items i ON i.id=v.purchase_item_id AND i.user_id=v.user_id WHERE v.user_id=$1 AND v.pen_id=ANY($2::uuid[])',
       [userId, requested]
@@ -417,6 +531,10 @@ async function writePurchase(
     'DELETE FROM medication_purchase_vials WHERE user_id=$1 AND purchase_item_id IN (SELECT id FROM medication_purchase_items WHERE purchase_id=$2 AND user_id=$1)',
     [userId, id]
   );
+  await client.query(
+    'DELETE FROM medication_purchase_packs WHERE user_id=$1 AND purchase_item_id IN (SELECT id FROM medication_purchase_items WHERE purchase_id=$2 AND user_id=$1)',
+    [userId, id]
+  );
   const kept: string[] = [];
   for (const [index, item] of data.items.entries()) {
     const itemId = item.id ?? randomUUID();
@@ -443,6 +561,11 @@ async function writePurchase(
       await client.query(
         'INSERT INTO medication_purchase_vials(user_id,pen_id,purchase_item_id) VALUES($1,$2,$3)',
         [userId, penId, itemId]
+      );
+    for (const packId of item.pack_ids)
+      await client.query(
+        'INSERT INTO medication_purchase_packs(user_id,pack_id,purchase_item_id) VALUES($1,$2,$3)',
+        [userId, packId, itemId]
       );
   }
   await client.query(

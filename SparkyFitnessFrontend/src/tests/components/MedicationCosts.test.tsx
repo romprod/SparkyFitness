@@ -67,6 +67,7 @@ const view = (
       units_per_pack: null,
       units_per_dose: null,
       vial_ids: [],
+      pack_ids: [],
       subtotal: '20.00',
       allocated: '0.00',
       landed: '20.00',
@@ -79,6 +80,7 @@ const view = (
   }),
   vials_expected: 1,
   vials_linked: 0,
+  packs_linked: 0,
   created_at: '2026-11-15T10:00:00Z',
   ...patch,
 });
@@ -114,6 +116,7 @@ beforeEach(() => {
   jest.mocked(api.getMedicationPurchaseEditorData).mockResolvedValue({
     medications: [{ id: med, name: 'Synthetic medication' }],
     vials: [],
+    packs: [],
   });
   jest.mocked(api.createMedicationPurchase).mockImplementation(async () => {
     const row = view();
@@ -269,6 +272,7 @@ it('refreshes matching candidates as well as the saved invoice after a claim con
   jest.mocked(api.getMedicationPurchaseEditorData).mockResolvedValue({
     medications: [{ id: med, name: 'Synthetic medication' }],
     vials: [candidate],
+    packs: [],
   });
   jest
     .mocked(api.updateMedicationPurchase)
@@ -284,6 +288,7 @@ it('refreshes matching candidates as well as the saved invoice after a claim con
   jest.mocked(api.getMedicationPurchaseEditorData).mockResolvedValue({
     medications: [{ id: med, name: 'Synthetic medication' }],
     vials: [],
+    packs: [],
   });
   fireEvent.click(screen.getByRole('button', { name: 'Reload saved invoice' }));
   await screen.findByText(/No unmatched vials for this medication/);

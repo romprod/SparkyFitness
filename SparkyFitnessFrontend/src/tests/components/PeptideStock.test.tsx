@@ -73,6 +73,10 @@ jest.mock('@/pages/Medications/MedicationVialCostLink', () => ({
   __esModule: true,
   default: () => <p>Existing cost link</p>,
 }));
+jest.mock('@/pages/Medications/MedicationPackCostLink', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: (id: string) => mockPens(id),
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),

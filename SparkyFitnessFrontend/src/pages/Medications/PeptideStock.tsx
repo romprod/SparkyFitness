@@ -110,8 +110,9 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
   const [choosing, setChoosing] = useState<'add' | 'prepare' | null>(null);
   const [chosenMedication, setChosenMedication] = useState('');
   const chooseVialMedication = (kind: 'add' | 'prepare') => {
-    if (injectables.length === 1) {
-      setRequest({ medicationId: injectables[0].id, kind });
+    const [only] = injectables;
+    if (injectables.length === 1 && only) {
+      setRequest({ medicationId: only.id, kind });
       return;
     }
     setChosenMedication(selected?.id ?? '');

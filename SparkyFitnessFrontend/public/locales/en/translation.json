@@ -1210,7 +1210,12 @@
       "reloadFailed": "Could not reload the invoice and matching stock. Your draft is kept.",
       "preparedContent": "Prepared content: {{mass}} mg",
       "bookkeeping": "Bookkeeping only. Not medical advice.",
-      "invoices": "Invoices"
+      "invoices": "Invoices",
+      "matchPacks": "Match packs ({{matched}} of {{expected}})",
+      "matchBoth": "Match vials and packs ({{matched}} of {{expected}})",
+      "cardMatchedPacks": "{{matched}} packs matched",
+      "cardMatchedPackOne": "1 pack matched",
+      "cardUnmatchedAny": "{{missing}} items on this invoice not yet matched to inventory."
     },
     "costEstimates": {
       "costPerVial": "Cost per vial",
@@ -1819,7 +1824,8 @@
       "saveFailed": "Could not save this pack.",
       "loadError": "Could not load pack stock. Vial stock above is unaffected.",
       "deleteTitle": "Delete this pack?",
-      "deleteHint": "Logged doses are kept. They stay recorded, but no longer link to this pack."
+      "deleteHint": "Logged doses are kept. They stay recorded, but no longer link to this pack.",
+      "costLine": "{{each}} each · {{used}} used · Invoice"
     }
   },
   "nav": {

@@ -16,6 +16,7 @@ import type {
   MedicationPurchaseUpdateInput,
   MedicationPurchaseView,
   MedicationVialCost,
+  MedicationPackCost,
 } from '@workspace/shared';
 
 const base = '/v2/medication-purchases';
@@ -57,6 +58,15 @@ export const getMedicationVialCosts = (
   apiCall(`${base}/vial-costs`, {
     method: 'GET',
     params: { expected_owner_id: ownerId },
+  });
+export const getMedicationPackCosts = (
+  ownerId: string,
+  signal?: AbortSignal
+): Promise<{ packs: MedicationPackCost[] }> =>
+  apiCall(`${base}/pack-costs`, {
+    method: 'GET',
+    params: { expected_owner_id: ownerId },
+    signal,
   });
 export const createMedicationPurchase = (
   body: MedicationPurchaseCreateInput

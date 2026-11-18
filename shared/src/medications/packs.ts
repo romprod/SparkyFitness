@@ -91,3 +91,30 @@ export function observedDaysLeft(input: {
   if (left.lte(0)) return 0;
   return left.div(perDay).floor().toNumber();
 }
+
+/**
+ * Cost of one pack unit and of the units already used, from one pack's landed cost.
+ * Exact decimals; null when the pack size or cost is not a positive amount.
+ */
+export function packUnitCost(input: {
+  landedPack: string | null;
+  unitsTotal: string;
+  unitsUsed: string;
+}): { perUnit: string; consumed: string } | null {
+  if (input.landedPack === null) return null;
+  try {
+    const total = new D(input.unitsTotal);
+    const landed = new D(input.landedPack);
+    if (!total.gt(0) || !landed.isFinite() || landed.lt(0)) return null;
+    const perUnit = landed.div(total);
+    return {
+      perUnit: perUnit.toDecimalPlaces(6).toString(),
+      consumed: perUnit
+        .mul(new D(input.unitsUsed))
+        .toDecimalPlaces(6)
+        .toString(),
+    };
+  } catch {
+    return null;
+  }
+}

@@ -4,6 +4,7 @@ import type { MedicationPackView } from '@workspace/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import MedicationPackCostLink from './MedicationPackCostLink';
 
 export interface PackCardActions {
   onOpen: (pack: MedicationPackView) => void;
@@ -139,6 +140,13 @@ export default function MedicationPackCard({
           )}
         </div>
       )}
+      <div className={closed ? 'px-4 pb-3' : 'px-4 pb-3 -mt-2'}>
+        <MedicationPackCostLink
+          packId={pack.id}
+          unitsTotal={pack.units_total}
+          unitsUsed={pack.units_used}
+        />
+      </div>
       {canWrite && (
         <div className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 border-t px-4 py-2 text-xs">
           {pack.status === 'sealed' && (

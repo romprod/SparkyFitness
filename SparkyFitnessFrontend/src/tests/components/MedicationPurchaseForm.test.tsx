@@ -10,6 +10,7 @@ import {
   allocateMedicationPurchase,
   type MedicationPurchaseView,
 } from '@workspace/shared';
+import type { MedicationPurchaseEditorData } from '@workspace/shared';
 import { HttpApiError } from '@/api/api';
 import MedicationPurchaseForm from '@/pages/Medications/MedicationPurchaseForm';
 const mockSave = jest.fn();
@@ -39,6 +40,7 @@ const data = {
     expiry_date: null,
     purchase_item_id: null,
   })),
+  packs: [] as MedicationPurchaseEditorData['packs'],
 };
 const props = () => ({
   ownerId: owner,
@@ -115,7 +117,7 @@ it('saves a consumable-only invoice without medication records', async () => {
   render(
     <MedicationPurchaseForm
       {...props()}
-      data={{ medications: [], vials: [] }}
+      data={{ medications: [], vials: [], packs: [] }}
     />
   );
   fireEvent.click(screen.getByRole('button', { name: 'Add consumable' }));
@@ -202,6 +204,7 @@ it('pins the original revision if the saved invoice refreshes while editing', as
         units_per_pack: null,
         units_per_dose: null,
         vial_ids: [],
+        pack_ids: [],
         subtotal: '20',
         allocated: '0',
         landed: '20',
@@ -214,6 +217,7 @@ it('pins the original revision if the saved invoice refreshes while editing', as
     }),
     vials_expected: 1,
     vials_linked: 0,
+    packs_linked: 0,
     created_at: '',
   } as MedicationPurchaseView;
   const p = props();
@@ -247,7 +251,7 @@ it('allows a named zero-cost consumable', async () => {
   render(
     <MedicationPurchaseForm
       {...props()}
-      data={{ medications: [], vials: [] }}
+      data={{ medications: [], vials: [], packs: [] }}
     />
   );
   fireEvent.click(screen.getByRole('button', { name: 'Add consumable' }));
@@ -338,6 +342,7 @@ it('distinguishes otherwise identical vials by authoritative prepared content', 
       {...props()}
       data={{
         medications: data.medications,
+        packs: [],
         vials: [
           { ...same, id: vial1, prepared_mass_mg: '10' },
           { ...same, id: vial2, prepared_mass_mg: '20' },
@@ -359,6 +364,7 @@ it('does not invent content for a legacy vial without saved preparation', () => 
       {...props()}
       data={{
         medications: data.medications,
+        packs: [],
         vials: [{ ...data.vials[0]!, prepared_mass_mg: null }],
       }}
     />
@@ -375,6 +381,7 @@ it('prefers an explicit vial label amount over preparation content in matching l
       {...props()}
       data={{
         medications: data.medications,
+        packs: [],
         vials: [
           { ...data.vials[0]!, label_mass_mg: '20', prepared_mass_mg: '10' },
         ],
@@ -385,4 +392,60 @@ it('prefers an explicit vial label amount over preparation content in matching l
     screen.getByRole('checkbox', { name: /Vial label amount: 20 mg/ })
   ).toBeInTheDocument();
   expect(screen.queryByText(/Prepared content: 10 mg/)).not.toBeInTheDocument();
+});
+const packOf = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  medication_id: medId,
+  medication_name: 'Synthetic medication',
+  label: `Synthetic pack ${id.slice(0, 1)}`,
+  unit_label: 'tablets',
+  units_total: '60',
+  status: 'sealed',
+  lot_number: null,
+  expiry_date: null,
+  purchase_item_id: null,
+  ...over,
+});
+const pack1 = '50000000-0000-4000-8000-000000000005';
+const pack2 = '60000000-0000-4000-8000-000000000006';
+it('matches packs to a line, counts them with vials and saves their ids', async () => {
+  render(
+    <MedicationPurchaseForm
+      {...props()}
+      data={{
+        medications: data.medications,
+        vials: [],
+        packs: [packOf(pack1), packOf(pack2)],
+      }}
+    />
+  );
+  expect(screen.getByText(/Match packs/)).toHaveTextContent('(0 of 1)');
+  expect(
+    screen.queryByText(/No unmatched vials for this medication/)
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText(/Synthetic pack 5/));
+  expect(screen.getByText(/Match packs/)).toHaveTextContent('(1 of 1)');
+  expect(screen.queryByText(/More vials matched/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByLabelText(/Synthetic pack 6/));
+  expect(screen.getByText(/More vials matched/)).toBeInTheDocument();
+  save();
+  await waitFor(() => expect(mockSave).toHaveBeenCalled());
+  expect(mockSave.mock.calls[0][0].body.items[0]).toMatchObject({
+    vial_ids: [],
+    pack_ids: [pack1, pack2],
+  });
+});
+it('offers vials and packs together and hides a pack already picked on another line', () => {
+  render(
+    <MedicationPurchaseForm
+      {...props()}
+      data={{ ...data, packs: [packOf(pack1)] }}
+    />
+  );
+  expect(screen.getByText(/Match vials and packs/)).toHaveTextContent(
+    '(0 of 1)'
+  );
+  fireEvent.click(screen.getByLabelText(/Synthetic pack 5/));
+  fireEvent.click(screen.getByRole('button', { name: 'Add medication' }));
+  expect(screen.getAllByLabelText(/Synthetic pack 5/)).toHaveLength(1);
 });
