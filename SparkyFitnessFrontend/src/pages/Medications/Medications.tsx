@@ -62,6 +62,7 @@ import ScheduleManager from './ScheduleManager';
 import MedicationCourseTimeline from './MedicationCourseTimeline';
 import TodayMedications from './TodayMedications';
 import MedicationLogCalendar from './MedicationLogCalendar';
+import MedicationSmoothWeek from './MedicationSmoothWeek';
 import MedicationSupplyTile from './MedicationSupplyTile';
 import SymptomsHub from '../Symptoms/SymptomsHub';
 import MedicationDisclaimer from './MedicationDisclaimer';
@@ -452,6 +453,7 @@ export default function Medications() {
               })
             }
           />
+          <MedicationSmoothWeek medications={meds as MedicationDetail[]} />
           <TodayMedications
             selectedDate={selectedDate}
             today={today}

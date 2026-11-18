@@ -63,6 +63,7 @@ jest.mock('@/hooks/useMedicationDisplayPreferences', () => ({
 }));
 
 jest.mock('@/pages/Reports/MedicationLogTable', () => () => null);
+jest.mock('@/pages/Reports/MedicationDoseHistory', () => () => null);
 jest.mock('@/pages/Reports/AppointmentPdfExport', () => () => (
   <div>Owner appointment PDF controls</div>
 ));

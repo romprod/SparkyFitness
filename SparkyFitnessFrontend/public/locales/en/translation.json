@@ -434,7 +434,19 @@
         "pending": "Preparing PDF…",
         "download": "Download PDF",
         "error": "Could not download the PDF report. Try again."
-      }
+      },
+      "heatmapTitle": "Dose history",
+      "heatmapSince": "Since {{date}}",
+      "heatmapDoses_one": "{{count}} dose",
+      "heatmapDoses_other": "{{count}} doses",
+      "heatmapLess": "Less",
+      "heatmapMore": "More",
+      "exposureTitle": "Cumulative exposure",
+      "exposureSubtitle": "All logged doses, all time.",
+      "exposureCompound": "Compound",
+      "exposureDoses": "Doses",
+      "exposureTotal": "Total",
+      "exposureNote": "Counts only doses recorded in mass units (mcg, mg, g). Doses logged in tablets, millilitres or other units are not converted."
     },
     "locations": {
       "general": "General",
@@ -1828,6 +1840,20 @@
       "costLine": "{{each}} each · {{used}} used · Invoice",
       "planRunsOut": "On your plan: runs out {{date}} (~{{amount}} days)",
       "planRunsOutToday": "On your plan: runs out today"
+    },
+    "smoothWeek": {
+      "title": "Smooth your week",
+      "subtitle": "Doses per day in the coming week, and how moving weekly injections to other days would spread them. Amounts, times and doses per week do not change.",
+      "weekOf": "Week of {{date}}",
+      "current": "Doses per day this plan",
+      "proposed": "Doses per day after moves",
+      "suggested": "With these moves",
+      "move": "{{name}}: {{from}} → {{to}}",
+      "flat": "Your week is already as flat as moving weekly injections can make it.",
+      "apply": "These are suggestions only. To use one, change the weekdays in that medication’s schedule.",
+      "managed": "follows a course plan, not moved here",
+      "notWeekly": "not a weekly pattern",
+      "endsSoon": "schedule ends within a week"
     }
   },
   "nav": {

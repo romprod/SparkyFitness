@@ -384,6 +384,8 @@ export * from './schemas/database/MedicationStockStatusAudit.zod.ts';
 export * from './schemas/database/MedicationPacks.zod.ts';
 export * from './schemas/api/MedicationPacks.api.zod.ts';
 export * from './medications/packs.ts';
+export * from './medications/doseHistory.ts';
+export * from './medications/weekSmoothing.ts';
 export * from './utils/labComparison.ts';
 export * from './medications/administration.ts';
 export * from './medications/preparationCorrection.ts';

@@ -56,6 +56,7 @@ import {
 } from '@/hooks/useMedicationDisplayPreferences';
 import Papa from 'papaparse';
 
+import MedicationDoseHistory from './MedicationDoseHistory';
 import MedicationLogTable from './MedicationLogTable';
 import AppointmentPdfExport from './AppointmentPdfExport';
 
@@ -645,6 +646,8 @@ const MedicationReports = ({
           </CardContent>
         </Card>
       </div>
+
+      <MedicationDoseHistory />
 
       {/* Charts Grid */}
       <div className="space-y-6">
