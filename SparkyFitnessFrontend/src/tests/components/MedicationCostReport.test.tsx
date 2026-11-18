@@ -93,6 +93,72 @@ it('shows the run rate over months of use, and hides it for mixed currencies or 
     screen.getByText('Unavailable because costs use different currencies.')
   ).toBeInTheDocument();
 });
+it('leads with Pitstop-style headline figures and discloses partial costing', () => {
+  const base = data([row()]);
+  ready({
+    ...base,
+    accounted: [
+      {
+        currency: 'GBP',
+        invoice_cash: '292.24',
+        prescription_estimate: '0.00',
+        accounted_total: '292.24',
+        estimated_vials: 0,
+        undated_vials: 0,
+      },
+    ],
+    summary: {
+      invoice_count: 5,
+      invoice_total: '292.24',
+      overhead_total: '24.65',
+      currency: 'GBP',
+      mixed_currency: false,
+      per_dose: {
+        peptide: '0.927',
+        sundries: '0.429',
+        total: '1.356',
+        currency: 'GBP',
+        basis: 'modelled',
+      },
+      coverage: {
+        vials_total: 10,
+        vials_costed: 4,
+        doses_in_window: 8,
+        doses_costed: 3,
+      },
+    },
+  });
+  render(<MedicationCostReport ownerId="owner" />);
+  expect(screen.getByText('Last 12 months')).toBeInTheDocument();
+  const stat = (label: string) =>
+    within(screen.getByText(label).parentElement as HTMLElement);
+  expect(stat('Total spend').getByText('GBP 292.24')).toBeInTheDocument();
+  expect(stat('Total spend').getByText('5 invoices')).toBeInTheDocument();
+  expect(stat('Cost per dose').getByText('GBP 1.36')).toBeInTheDocument();
+  expect(
+    stat('Cost per dose').getByText(
+      'medication GBP 0.927 + sundries GBP 0.429 (modelled)'
+    )
+  ).toBeInTheDocument();
+  expect(stat('Shipping & fees').getByText('GBP 24.65')).toBeInTheDocument();
+  const note = screen.getByRole('note');
+  expect(note).toHaveTextContent('Figures are partial');
+  expect(note).toHaveTextContent('6 of 10 vials have no invoice line');
+  expect(note).toHaveTextContent('5 of 8 doses in this window');
+});
+
+it('keeps the window picker as a pressed-state group of buttons', () => {
+  ready();
+  render(<MedicationCostReport ownerId="owner" />);
+  const nav = screen.getByRole('navigation', { name: 'Reporting window' });
+  expect(
+    within(nav)
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+  ).toEqual(['3m', '6m', '12m', 'All']);
+  fireEvent.click(within(nav).getByRole('button', { name: '3m' }));
+  expect(mockReport).toHaveBeenLastCalledWith('owner', '3', true);
+});
 it('distinguishes known zero, negative figures and absent unknown data', () => {
   ready(
     data([

@@ -1118,7 +1118,7 @@
     "costs": {
       "loadFailed": "Could not load your invoices.",
       "title": "Costs",
-      "ledgerHint": "Invoices and landed cost for existing stock. Each invoice keeps its own currency.",
+      "ledgerHint": "Landed cost per vial, per mg and per dose — shipping and sundries included.",
       "addInvoice": "Add invoice",
       "empty": "No invoices yet",
       "emptyHint": "Add an invoice to record purchase spend. Confirmed stock-linked prescription estimates can still appear in the report above.",
@@ -1192,7 +1192,9 @@
       },
       "uncertain": "The save result is unconfirmed. Retry this same invoice before editing it.",
       "reloadFailed": "Could not reload the invoice and matching stock. Your draft is kept.",
-      "preparedContent": "Prepared content: {{mass}} mg"
+      "preparedContent": "Prepared content: {{mass}} mg",
+      "bookkeeping": "Bookkeeping only. Not medical advice.",
+      "invoices": "Invoices"
     },
     "costEstimates": {
       "costPerVial": "Cost per vial",
@@ -1256,7 +1258,21 @@
       "runRateValue": "{{amount}} /mo",
       "runRateMixed": "Unavailable because costs use different currencies.",
       "runRateMonthsOne": "over {{count}} month of use",
-      "runRateMonthsOther": "over {{count}} months of use"
+      "runRateMonthsOther": "over {{count}} months of use",
+      "allTime": "All time",
+      "lastMonths": "Last {{count}} months",
+      "totalSpend": "Total spend",
+      "invoiceCount": "{{count}} invoices",
+      "invoicesPlusScripts": "{{count}} invoices + {{amount}} from prescriptions",
+      "perDoseTotal": "Cost per dose",
+      "perDoseNone": "No costed doses yet",
+      "perDoseSplit": "medication {{peptide}} + sundries {{sundries}} ({{basis}})",
+      "perDosePeptideOnly": "medication only — no sundries recorded",
+      "overheadSub": "shipping, tax and discounts",
+      "partial": "Figures are partial",
+      "partialVials": "{{missing}} of {{total}} vials have no invoice line and no prescription cost — their doses are excluded, not counted as free.",
+      "partialDoses": "{{missing}} of {{total}} doses in this window came from an uncosted or unlinked vial.",
+      "piecesEach": "{{pieces}} pieces · {{rate}} each"
     },
     "labelMass": {
       "label": "Vial label amount (mg)",

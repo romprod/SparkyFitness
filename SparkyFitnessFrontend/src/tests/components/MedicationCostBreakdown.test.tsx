@@ -1,9 +1,22 @@
 import { render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type { MedicationCostAnalytics } from '@workspace/shared';
-import MedicationCostBreakdown from '@/pages/Medications/MedicationCostBreakdown';
+import {
+  MedicationSpendByMonth,
+  MedicationSundries,
+  MedicationWaste,
+} from '@/pages/Medications/MedicationCostBreakdown';
 import { emptyCostBreakdown } from '../fixtures/medicationCostBreakdown';
 
+function MedicationCostBreakdown({ data }: { data: MedicationCostAnalytics }) {
+  return (
+    <>
+      <MedicationSpendByMonth data={data} />
+      <MedicationSundries data={data} />
+      <MedicationWaste data={data} />
+    </>
+  );
+}
 const report = (): MedicationCostAnalytics => ({
   window: { key: '12', from_date: '2025-11-15', to_date: '2026-11-15' },
   rows: [],
@@ -65,20 +78,18 @@ const report = (): MedicationCostAnalytics => ({
   },
 });
 
-it('keeps signed monthly invoice components and their exact net total, with accessible tables', () => {
+it('keeps signed monthly components readable and the exact net total, as horizontal bars', () => {
   const { container } = render(<MedicationCostBreakdown data={report()} />);
-  const table = within(
-    screen.getByRole('region', { name: 'Monthly invoice spend' })
+  const list = within(
+    screen.getByRole('list', { name: 'Monthly invoice spend' })
   );
-  expect(table.getByText('GBP -5.00')).toBeInTheDocument();
-  expect(table.getByText('GBP 115.00')).toBeInTheDocument();
-  expect(table.getByText('Nov 2026')).toBeInTheDocument();
-  expect(
-    screen.getByRole('region', { name: 'Monthly invoice spend' })
-  ).toHaveAttribute('tabindex', '0');
+  expect(list.getByText('GBP 115.00')).toBeInTheDocument();
+  expect(list.getByText('Nov 2026')).toBeInTheDocument();
+  // The signed components stay available to screen readers.
+  expect(list.getByText(/Shipping & fees GBP -5.00/)).toBeInTheDocument();
   expect(
     container.querySelector('.recharts-responsive-container')
-  ).toBeInTheDocument();
+  ).not.toBeInTheDocument();
   expect(
     screen.getAllByRole('heading').map((heading) => heading.textContent)
   ).toEqual(['Spend by month', 'Sundries & consumables', 'Wasted product']);
@@ -105,12 +116,12 @@ it('labels partial modelled assumptions and closed-stock lifetime estimates expl
   ).toBeInTheDocument();
   expect(
     within(
-      screen.getByRole('region', { name: 'Consumable costs by category' })
-    ).getByText('GBP 0.200')
+      screen.getByRole('list', { name: 'Consumable costs by category' })
+    ).getByText('100 pieces · GBP 0.200 each')
   ).toBeInTheDocument();
 });
 
-it('suppresses incomparable chart axes but preserves separate known month currencies and modelled-only rate currency', () => {
+it('hides bars when months use different currencies but keeps each known month total', () => {
   const data = report();
   data.monthly_spend.push({
     month: '2026-12',
@@ -124,12 +135,9 @@ it('suppresses incomparable chart axes but preserves separate known month curren
   data.consumables.spend_mixed_currency = true;
   data.consumables.spend_currency = null;
   const { container } = render(<MedicationCostBreakdown data={data} />);
-  expect(
-    container.querySelector('.recharts-responsive-container')
-  ).not.toBeInTheDocument();
-  expect(screen.getAllByText('EUR 50.00')).toHaveLength(2);
+  expect(container.querySelector('.rounded-full.bg-muted')).toBeNull();
+  expect(screen.getByText('EUR 50.00')).toBeInTheDocument();
   expect(screen.getByText('GBP 115.00')).toBeInTheDocument();
-  expect(screen.getAllByText('GBP 0.200')).toHaveLength(2);
   expect(
     screen.getAllByText('Mixed currencies: affected figures are hidden.')
   ).toHaveLength(2);
@@ -153,9 +161,9 @@ it('renders known zero, absent and mixed values without inventing money or a zer
   const { rerender } = render(<MedicationCostBreakdown data={data} />);
   expect(
     within(
-      screen.getByRole('region', { name: 'Monthly invoice spend' })
-    ).getAllByText('—')
-  ).toHaveLength(4);
+      screen.getByRole('list', { name: 'Monthly invoice spend' })
+    ).getByText('—')
+  ).toBeInTheDocument();
   expect(screen.getByText('GBP 0.00')).toBeInTheDocument();
   expect(
     screen.getByText(/Amortised: landed sundry spend.*4 logged doses/)
@@ -218,7 +226,7 @@ it('labels estimate-valued waste while keeping monthly cash invoice-only', () =>
   ).toBeInTheDocument();
   expect(
     within(
-      screen.getByRole('region', { name: 'Monthly invoice spend' })
+      screen.getByRole('list', { name: 'Monthly invoice spend' })
     ).getByText('GBP 115.00')
   ).toBeInTheDocument();
 });

@@ -284,6 +284,8 @@ function buildCostAnalytics(
     }
   const rates = vialCostRates(input.vials, prices, context);
   let runCost = new D(0);
+  let runDoses = 0;
+  let dosesInWindow = 0;
   const runCurrencies = new Set<string>();
   let firstCostedDay: string | null = null;
   for (const dose of input.doses) {
@@ -295,6 +297,7 @@ function buildCostAnalytics(
       continue;
     const row = touch(dose.medication_id);
     if (!row) continue;
+    dosesInWindow++;
     const costed = costDose(dose, rates, context);
     if (!costed) {
       row.uncosted++;
@@ -316,6 +319,7 @@ function buildCostAnalytics(
     }
     row.usageCurrencies.add(costed.currency);
     runCost = runCost.plus(costed.cost);
+    runDoses++;
     runCurrencies.add(costed.currency);
     if (firstCostedDay === null || dose.entry_date < firstCostedDay)
       firstCostedDay = dose.entry_date;
@@ -373,10 +377,52 @@ function buildCostAnalytics(
     windowMonths,
   });
   const runCurrency = runCurrencies.size === 1 ? [...runCurrencies][0]! : null;
+  const breakdown = buildCostBreakdown(input, window, prices, context);
+  const monthly = breakdown.monthly_spend;
+  const monthlyCurrencies = new Set(
+    monthly.map((m) => m.currency).filter((x): x is string => x !== null)
+  );
+  const singleCurrency =
+    monthlyCurrencies.size === 1 && !monthly.some((m) => m.mixed_currency)
+      ? [...monthlyCurrencies][0]!
+      : null;
+  const sumMonthly = (pick: (m: (typeof monthly)[number]) => string | null) =>
+    singleCurrency === null || monthly.length === 0
+      ? null
+      : monthly
+          .reduce((sum, m) => sum.plus(pick(m) ?? 0), new D(0))
+          .toFixed(2, D.ROUND_HALF_UP);
+  const peptidePerDose =
+    runCurrency !== null && runDoses > 0
+      ? runCost.div(runDoses).toString()
+      : null;
+  const sundries = breakdown.consumables;
+  const sundriesPerDose =
+    sundries.cost_per_dose_basis !== 'unavailable' &&
+    !sundries.cost_per_dose_mixed_currency
+      ? sundries.cost_per_dose
+      : null;
+  const perDoseCurrency =
+    peptidePerDose !== null &&
+    (sundriesPerDose === null ||
+      sundries.cost_per_dose_currency === runCurrency)
+      ? runCurrency
+      : null;
+  const perDoseTotal =
+    perDoseCurrency === null || peptidePerDose === null
+      ? null
+      : new D(peptidePerDose)
+          .plus(sundriesPerDose !== null ? sundriesPerDose : 0)
+          .toString();
+  const invoiceCount = input.invoices.filter(
+    (invoice) =>
+      invoice.ordered_date >= window.from_date &&
+      invoice.ordered_date <= window.to_date
+  ).length;
   return {
     window,
     rows,
-    ...buildCostBreakdown(input, window, prices, context),
+    ...breakdown,
     run_rate: {
       per_month:
         runCurrency !== null && runCost.gt(0)
@@ -385,6 +431,35 @@ function buildCostAnalytics(
       months_of_data: monthsOfData,
       currency: runCurrency,
       mixed_currency: runCurrencies.size > 1,
+    },
+    summary: {
+      invoice_count: invoiceCount,
+      invoice_total: sumMonthly((m) => m.total),
+      overhead_total: sumMonthly((m) => m.overhead),
+      currency: singleCurrency,
+      mixed_currency:
+        monthlyCurrencies.size > 1 || monthly.some((m) => m.mixed_currency),
+      per_dose: {
+        peptide: perDoseCurrency !== null ? peptidePerDose : null,
+        sundries:
+          perDoseCurrency !== null && sundriesPerDose !== null
+            ? sundriesPerDose
+            : null,
+        total: perDoseTotal,
+        currency: perDoseCurrency,
+        basis:
+          perDoseCurrency !== null &&
+          sundriesPerDose !== null &&
+          sundries.cost_per_dose_basis !== 'unavailable'
+            ? sundries.cost_per_dose_basis
+            : null,
+      },
+      coverage: {
+        vials_total: input.vials.length,
+        vials_costed: rates.size,
+        doses_in_window: dosesInWindow,
+        doses_costed: runDoses,
+      },
     },
   };
 }

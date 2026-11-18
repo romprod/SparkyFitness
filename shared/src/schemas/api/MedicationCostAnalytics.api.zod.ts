@@ -77,6 +77,28 @@ export const medicationRunRateSchema = z.object({
   currency: z.string().nullable(),
   mixed_currency: z.boolean(),
 });
+/** Headline figures for the Costs page: invoice totals, per-dose split and how complete the costing is. */
+export const medicationCostSummarySchema = z.object({
+  invoice_count: z.number().int().nonnegative(),
+  /** Recorded invoice cash in the window; null when empty or mixed currencies. */
+  invoice_total: z.string().nullable(),
+  overhead_total: z.string().nullable(),
+  currency: z.string().nullable(),
+  mixed_currency: z.boolean(),
+  per_dose: z.object({
+    peptide: z.string().nullable(),
+    sundries: z.string().nullable(),
+    total: z.string().nullable(),
+    currency: z.string().nullable(),
+    basis: z.enum(['modelled', 'amortised']).nullable(),
+  }),
+  coverage: z.object({
+    vials_total: z.number().int().nonnegative(),
+    vials_costed: z.number().int().nonnegative(),
+    doses_in_window: z.number().int().nonnegative(),
+    doses_costed: z.number().int().nonnegative(),
+  }),
+});
 export const medicationCostAnalyticsSchema = z.object({
   window: z.object({
     key: medicationCostWindowSchema,
@@ -88,6 +110,7 @@ export const medicationCostAnalyticsSchema = z.object({
   waste: medicationWasteSchema,
   monthly_spend: z.array(medicationMonthlySpendSchema),
   run_rate: medicationRunRateSchema,
+  summary: medicationCostSummarySchema,
 });
 export type MedicationCostAnalytics = z.infer<
   typeof medicationCostAnalyticsSchema

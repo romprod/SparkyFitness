@@ -12,8 +12,9 @@ import {
   useMedicationPurchaseScope,
   useDeleteMedicationPurchase,
 } from '@/hooks/useMedicationPurchases';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -135,19 +136,26 @@ function OwnedCosts({
   }
   return (
     <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-3xl font-semibold tracking-tight">
             {t('medications.costs.title', 'Costs')}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground">
             {t(
               'medications.costs.ledgerHint',
-              'Invoices and landed cost for existing stock. Each invoice keeps its own currency.'
+              'Landed cost per vial, per mg and per dose — shipping and sundries included.'
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'medications.costs.bookkeeping',
+              'Bookkeeping only. Not medical advice.'
             )}
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>
+        <Button className="shrink-0" onClick={() => setCreating(true)}>
+          <Plus aria-hidden="true" className="mr-1 h-4 w-4" />
           {t('medications.costs.addInvoice', 'Add invoice')}
         </Button>
       </div>
@@ -174,106 +182,126 @@ function OwnedCosts({
           </CardContent>
         </Card>
       )}
-      {purchases.data?.purchases.map((purchase) => (
-        <Card key={purchase.id}>
-          <CardHeader className="space-y-2">
-            <CardTitle className="break-words text-base">
-              {purchase.vendor || t('medications.costs.invoice', 'Invoice')}
-              {purchase.reference && ` · ${purchase.reference}`}
-            </CardTitle>
-            <div className="flex flex-wrap justify-between gap-2 text-sm">
-              <span>
-                {purchase.ordered_date}
-                {purchase.received_date &&
-                  ` · ${t('medications.costs.received', 'Received')} ${purchase.received_date}`}
-              </span>
-              <span className="break-words font-semibold">
-                {money(purchase.totals.total, purchase.currency)}
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <ul className="space-y-3">
-              {purchase.items.map((item) => (
-                <li key={item.id} className="min-w-0 text-sm">
-                  <p className="break-words font-medium">
-                    {item.quantity} ×{' '}
-                    {item.description ||
-                      item.medication_name ||
-                      t(
-                        'medications.costs.removedMedication',
-                        'Removed medication'
-                      )}
-                  </p>
-                  <p className="break-words text-muted-foreground">
-                    {money(item.subtotal, purchase.currency)} +{' '}
-                    {money(item.allocated, purchase.currency)}{' '}
-                    {t('medications.costs.shareAmount', 'Shipping share')} ·{' '}
-                    {item.landed_unit === null
-                      ? t('medications.costs.uncosted', 'Uncosted')
-                      : money(item.landed_unit, purchase.currency)}{' '}
-                    {t('medications.costs.each', 'each')}
-                    {item.kind === 'medication' &&
-                      ` · ${t('medications.costs.match', 'Match vials ({{matched}} of {{expected}})', { matched: item.vial_ids.length, expected: item.quantity })}`}
-                  </p>
-                  {item.kind === 'medication' &&
-                    item.vial_ids.length > item.quantity && (
-                      <Badge variant="destructive" className={notice}>
-                        {t(
-                          'medications.costs.overmatched',
-                          'More vials matched than this line bought. Raise the count or untick a vial.'
-                        )}
-                      </Badge>
-                    )}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm text-muted-foreground">
-              {t(
-                'medications.costs.matchedTotal',
-                '{{matched}} of {{expected}} vials matched',
-                {
-                  matched: purchase.vials_linked,
-                  expected: purchase.vials_expected,
-                }
-              )}
-            </p>
-            {purchase.totals.unallocated !== '0.00' && (
-              <p className="text-sm text-muted-foreground">
-                {t(
-                  'medications.costs.unallocatedAmount',
-                  '{{amount}} stays unallocated.',
-                  {
-                    amount: money(
-                      purchase.totals.unallocated,
-                      purchase.currency
-                    ),
-                  }
-                )}
-              </p>
-            )}
-            {purchase.notes && (
-              <p className="whitespace-pre-wrap break-words text-sm">
-                {purchase.notes}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setEditing(purchase.id)}>
-                {t('common.edit', 'Edit')}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setDeleting(purchase);
-                  setDeleteError('');
-                }}
+      {!!purchases.data?.purchases.length && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold">
+            {t('medications.costs.invoices', 'Invoices')}
+          </h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {purchases.data.purchases.map((purchase) => (
+              <div
+                key={purchase.id}
+                className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card p-4 text-card-foreground shadow-sm"
               >
-                {t('common.delete', 'Delete')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="min-w-0 break-words text-base font-semibold">
+                    {purchase.vendor ||
+                      t('medications.costs.invoice', 'Invoice')}
+                    {purchase.reference && ` · ${purchase.reference}`}
+                  </h3>
+                  <span className="shrink-0 break-words text-lg font-semibold tabular-nums">
+                    {money(purchase.totals.total, purchase.currency)}
+                  </span>
+                </div>
+                <p className="-mt-2 text-sm text-muted-foreground">
+                  {purchase.ordered_date}
+                  {purchase.received_date &&
+                    ` · ${t('medications.costs.received', 'Received')} ${purchase.received_date}`}
+                </p>
+                <ul className="space-y-3">
+                  {purchase.items.map((item) => (
+                    <li key={item.id} className="min-w-0 text-sm">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="min-w-0 break-words font-medium">
+                          {item.quantity} ×{' '}
+                          {item.description ||
+                            item.medication_name ||
+                            t(
+                              'medications.costs.removedMedication',
+                              'Removed medication'
+                            )}
+                        </p>
+                        <span className="shrink-0 tabular-nums">
+                          {item.landed_unit === null
+                            ? t('medications.costs.uncosted', 'Uncosted')
+                            : money(item.landed_unit, purchase.currency)}{' '}
+                          {t('medications.costs.each', 'each')}
+                        </span>
+                      </div>
+                      <p className="break-words text-xs text-muted-foreground">
+                        {money(item.subtotal, purchase.currency)} +{' '}
+                        {money(item.allocated, purchase.currency)}{' '}
+                        {t('medications.costs.shareAmount', 'Shipping share')}
+                        {item.kind === 'medication' &&
+                          ` · ${t('medications.costs.match', 'Match vials ({{matched}} of {{expected}})', { matched: item.vial_ids.length, expected: item.quantity })}`}
+                      </p>
+                      {item.kind === 'medication' &&
+                        item.vial_ids.length > item.quantity && (
+                          <Badge variant="destructive" className={notice}>
+                            {t(
+                              'medications.costs.overmatched',
+                              'More vials matched than this line bought. Raise the count or untick a vial.'
+                            )}
+                          </Badge>
+                        )}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'medications.costs.matchedTotal',
+                    '{{matched}} of {{expected}} vials matched',
+                    {
+                      matched: purchase.vials_linked,
+                      expected: purchase.vials_expected,
+                    }
+                  )}
+                </p>
+                {purchase.totals.unallocated !== '0.00' && (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'medications.costs.unallocatedAmount',
+                      '{{amount}} stays unallocated.',
+                      {
+                        amount: money(
+                          purchase.totals.unallocated,
+                          purchase.currency
+                        ),
+                      }
+                    )}
+                  </p>
+                )}
+                {purchase.notes && (
+                  <p className="whitespace-pre-wrap break-words text-sm">
+                    {purchase.notes}
+                  </p>
+                )}
+                <div className="mt-auto flex items-center justify-between gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="px-2 text-muted-foreground"
+                    onClick={() => {
+                      setDeleting(purchase);
+                      setDeleteError('');
+                    }}
+                  >
+                    {t('common.delete', 'Delete')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="px-2 text-primary"
+                    onClick={() => setEditing(purchase.id)}
+                  >
+                    {t('common.edit', 'Edit')}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <Dialog
         open={!!deleting}
         onOpenChange={(open) =>

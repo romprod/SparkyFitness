@@ -153,3 +153,67 @@ describe('cost report run rate', () => {
     });
   });
 });
+
+describe('cost report summary', () => {
+  const summary = (
+    doses: MedicationCostDose[],
+    extra: Partial<Parameters<typeof buildMedicationCostAnalytics>[0]> = {}
+  ) =>
+    buildMedicationCostAnalytics({
+      today: '2026-08-14',
+      window: '12',
+      medications: [{ id: 'med', name: 'Med' }],
+      invoices: [{ ...invoice(), shipping_cost: '10' }],
+      vials: [vial('v1')],
+      doses,
+      ...extra,
+    }).summary;
+  it('reports invoice cash, shipping and the per-dose split', () => {
+    const s = summary([dose('2026-08-01', '1'), dose('2026-08-02', '3')]);
+    expect(s).toMatchObject({
+      invoice_count: 1,
+      invoice_total: '110.00',
+      overhead_total: '10.00',
+      currency: 'GBP',
+      mixed_currency: false,
+    });
+    // Landed 110 / 10 mg = 11 per mg; 4 mg over two costed doses; no sundries.
+    expect(s.per_dose).toMatchObject({
+      peptide: '22',
+      sundries: null,
+      total: '22',
+      currency: 'GBP',
+    });
+  });
+  it('reports how much of the ledger could be costed', () => {
+    const s = summary(
+      [dose('2026-08-01', '1'), dose('2026-08-02', '1', null)],
+      {
+        vials: [vial('v1'), vial('v2', 'missing')],
+      }
+    );
+    expect(s.coverage).toEqual({
+      vials_total: 2,
+      vials_costed: 1,
+      doses_in_window: 2,
+      doses_costed: 1,
+    });
+  });
+  it('withholds totals across currencies and counts only invoices in the window', () => {
+    const s = summary([], {
+      invoices: [
+        invoice('GBP'),
+        { ...invoice('USD', 'l2'), ordered_date: '2020-01-01' },
+      ],
+    });
+    expect(s.invoice_count).toBe(1);
+    const mixed = summary([], {
+      invoices: [invoice('GBP'), invoice('USD', 'l2')],
+    });
+    expect(mixed).toMatchObject({
+      invoice_total: null,
+      currency: null,
+      mixed_currency: true,
+    });
+  });
+});

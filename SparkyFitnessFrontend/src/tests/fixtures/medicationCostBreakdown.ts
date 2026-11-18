@@ -2,7 +2,7 @@ import type { MedicationCostAnalytics } from '@workspace/shared';
 
 export const emptyCostBreakdown: Pick<
   MedicationCostAnalytics,
-  'consumables' | 'waste' | 'monthly_spend' | 'run_rate'
+  'consumables' | 'waste' | 'monthly_spend' | 'run_rate' | 'summary'
 > = {
   consumables: {
     rows: [],
@@ -31,5 +31,25 @@ export const emptyCostBreakdown: Pick<
     months_of_data: 12,
     currency: null,
     mixed_currency: false,
+  },
+  summary: {
+    invoice_count: 0,
+    invoice_total: null,
+    overhead_total: null,
+    currency: null,
+    mixed_currency: false,
+    per_dose: {
+      peptide: null,
+      sundries: null,
+      total: null,
+      currency: null,
+      basis: null,
+    },
+    coverage: {
+      vials_total: 0,
+      vials_costed: 0,
+      doses_in_window: 0,
+      doses_costed: 0,
+    },
   },
 };

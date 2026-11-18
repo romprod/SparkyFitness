@@ -250,7 +250,8 @@ it('renders each invoice currency without a mixed-currency aggregate', async () 
   expect(screen.getByText('Synthetic supplier · SYN-2')).toBeInTheDocument();
   expect(screen.getAllByText(/AUD 20\.00/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/GBP 20\.00/).length).toBeGreaterThan(0);
-  expect(screen.queryByText('Total spend')).not.toBeInTheDocument();
+  // No single total is invented across currencies: the headline stays blank.
+  expect(screen.queryByText(/(AUD|GBP) 40\.00/)).not.toBeInTheDocument();
 });
 
 it('refreshes matching candidates as well as the saved invoice after a claim conflict', async () => {
