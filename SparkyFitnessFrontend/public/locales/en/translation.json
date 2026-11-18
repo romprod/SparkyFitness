@@ -951,7 +951,9 @@
       "budBase": "BUD basis date",
       "budDays": "BUD interval (days)",
       "budHelp": "Enter the date or interval from your product or clinician guidance. No stability interval is assumed.",
-      "correctError": "Could not update preparation."
+      "correctError": "Could not update preparation.",
+      "bud": "Beyond-use date (BUD)",
+      "concentration": "Concentration"
     },
     "stockLayout": {
       "more": "More stock tools",
@@ -4579,7 +4581,11 @@
       "Thu": "Thu",
       "Fri": "Fri",
       "Sat": "Sat"
-    }
+    },
+    "details": "Details",
+    "none": "None",
+    "notes": "Notes",
+    "remove": "Remove"
   },
   "diary": {
     "nutritionSummary": "Nutrition Summary",
