@@ -4,7 +4,7 @@ import {
 } from '@workspace/shared';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { MoreHorizontal, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import {
   DropdownMenu,
@@ -13,6 +13,13 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -96,6 +103,20 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
       />
     ));
   const moreRef = useRef<HTMLButtonElement>(null);
+  const [request, setRequest] = useState<{
+    medicationId: string;
+    kind: 'add' | 'prepare';
+  } | null>(null);
+  const [choosing, setChoosing] = useState<'add' | 'prepare' | null>(null);
+  const [chosenMedication, setChosenMedication] = useState('');
+  const chooseVialMedication = (kind: 'add' | 'prepare') => {
+    if (injectables.length === 1) {
+      setRequest({ medicationId: injectables[0].id, kind });
+      return;
+    }
+    setChosenMedication(selected?.id ?? '');
+    setChoosing(kind);
+  };
   const [addMedication, setAddMedication] = useState<string | null>(null);
   const [counts, setCounts] = useState<
     Record<string, { active: number; closed: number }>
@@ -146,7 +167,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
   );
   return (
     <div className="min-w-0 space-y-6">
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold">
             {t('medications.stock.title', 'Preparation & stock')}
@@ -158,92 +179,108 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
             )}
           </p>
         </div>
-        <div className="flex min-w-0 w-full items-end gap-2 xl:w-auto">
-          {selected && (
-            <div className="min-w-0 flex-1 space-y-1 xl:w-52">
-              <Label
-                htmlFor="stock-medication"
-                className="block truncate text-xs"
-              >
-                {t(
-                  'medications.stockLayout.newStockMedication',
-                  'Medication for new stock'
-                )}
-              </Label>
-              <Select
-                value={selected.id}
-                onValueChange={(id) =>
-                  setParams((previous) => {
-                    const next = new URLSearchParams(previous);
-                    next.set('tab', 'stock');
-                    next.set('medication', id);
-                    return next;
-                  })
-                }
-              >
-                <SelectTrigger
-                  id="stock-medication"
-                  className="min-w-0 w-full [&>span]:truncate"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {injectables.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.display_name || m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {selected && scope.ready && scope.isCurrent() && (
-            <Glp1InventoryManager
-              key={`${scope.key}:${selected.id}:controls`}
-              med={selected}
-              stockView="controls"
-              stockCanWrite={scope.canWrite}
-              stockMoreRef={moreRef}
-              stockOnAddMedication={() => setAddMedication(scope.key)}
-            />
-          )}
-          {scope.ready &&
-            scope.isCurrent() &&
-            scope.canWrite &&
-            packMedications.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => setPackDialog({})}
-                className="shrink-0"
-              >
+        {scope.ready && scope.isCurrent() && scope.canWrite && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button ref={moreRef} className="shrink-0 self-start">
                 <Plus aria-hidden="true" className="mr-1 h-4 w-4" />
-                {t('medications.packs.add', 'Add pack')}
+                {t('medications.stockLayout.addStock', 'Add stock')}
               </Button>
-            )}
-          {!selected && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  ref={moreRef}
-                  variant="outline"
-                  size="icon"
-                  aria-label={t(
-                    'medications.stockLayout.more',
-                    'More stock tools'
-                  )}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setAddMedication(scope.key)}>
-                  {t('medications.stock.add', 'Add peptide / injectable')}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {injectables.length > 0 && (
+                <DropdownMenuItem onSelect={() => chooseVialMedication('add')}>
+                  {t('medications.stockLayout.addVial', 'Add a vial or pen')}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+              )}
+              {injectables.length > 0 && (
+                <DropdownMenuItem
+                  onSelect={() => chooseVialMedication('prepare')}
+                >
+                  {t('medications.stock.prepare', 'Prepare a vial')}
+                </DropdownMenuItem>
+              )}
+              {packMedications.length > 0 && (
+                <DropdownMenuItem onSelect={() => setPackDialog({})}>
+                  {t('medications.packs.add', 'Add pack')}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => setAddMedication(scope.key)}>
+                {t('medications.stock.add', 'Add peptide / injectable')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {selected && scope.ready && scope.isCurrent() && (
+          <Glp1InventoryManager
+            key={`${scope.key}:${selected.id}:controls`}
+            med={selected}
+            stockView="controls"
+            stockCanWrite={scope.canWrite}
+            stockMoreRef={moreRef}
+            stockRequest={
+              request?.medicationId === selected.id ? request.kind : undefined
+            }
+            onStockRequestHandled={() => setRequest(null)}
+          />
+        )}
       </header>
+      <Dialog
+        open={choosing !== null}
+        onOpenChange={(open) => !open && setChoosing(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {t(
+                'medications.stockLayout.chooseMedication',
+                'Which medication is this for?'
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="stock-medication">
+              {t('medications.stockLayout.medication', 'Medication')}
+            </Label>
+            <Select
+              value={chosenMedication}
+              onValueChange={setChosenMedication}
+            >
+              <SelectTrigger id="stock-medication">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {injectables.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.display_name || m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChoosing(null)}>
+              {t('common.cancel', 'Cancel')}
+            </Button>
+            <Button
+              disabled={!chosenMedication}
+              onClick={() => {
+                if (!choosing || !chosenMedication) return;
+                setParams((previous) => {
+                  const next = new URLSearchParams(previous);
+                  next.set('tab', 'stock');
+                  next.set('medication', chosenMedication);
+                  return next;
+                });
+                setRequest({ medicationId: chosenMedication, kind: choosing });
+                setChoosing(null);
+              }}
+            >
+              {t('medications.stockLayout.continue', 'Continue')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AddMedicationDialog
         key={`${scope.key}:add-medication`}
         defaultTypeId="injection"

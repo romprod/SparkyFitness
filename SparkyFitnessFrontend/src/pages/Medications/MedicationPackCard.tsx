@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Archive, Pencil, Trash2 } from 'lucide-react';
 import type { MedicationPackView } from '@workspace/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -34,31 +35,34 @@ export default function MedicationPackCard({
     total > 0
       ? Math.max(0, Math.min(1, Number(pack.units_remaining) / total))
       : 0;
-  const name = pack.label
-    ? `${pack.medication_name} · ${pack.label}`
-    : pack.medication_name;
+  const name = pack.medication_name;
+  const cardName = pack.label ? `${name} · ${pack.label}` : name;
   return (
     <article
-      className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground"
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card text-card-foreground"
       aria-label={t('medications.packs.cardLabel', 'Pack of {{name}}', {
-        name,
+        name: cardName,
       })}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 p-4">
         <div className="min-w-0 space-y-1">
           <p className="break-words font-medium">{name}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
+            {pack.label && `${pack.label} · `}
             {t('medications.packs.summary', '{{total}} {{unit}}', {
               total: trim(pack.units_total),
               unit: pack.unit_label,
             })}
             {pack.expiry_date &&
-              ` · ${t('medications.packs.expiry', 'Expiry {{date}}', { date: formatDate(pack.expiry_date) })}`}
+              ` · ${t('medications.packs.expiry', 'exp {{date}}', { date: formatDate(pack.expiry_date) })}`}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1">
           {pack.status === 'in_use' && (
-            <Badge variant="secondary">
+            <Badge
+              variant="secondary"
+              className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
+            >
               {t('medications.packs.status.in_use', 'In use')}
             </Badge>
           )}
@@ -88,7 +92,7 @@ export default function MedicationPackCard({
         </div>
       </div>
       {!closed && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 px-4 pb-4">
           <div
             className="h-2 overflow-hidden rounded-full bg-muted"
             role="progressbar"
@@ -136,38 +140,44 @@ export default function MedicationPackCard({
         </div>
       )}
       {canWrite && (
-        <div className="mt-auto flex flex-wrap items-center justify-end gap-1">
+        <div className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 border-t px-4 py-2 text-xs">
           {pack.status === 'sealed' && (
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
+              className="h-7 px-1 text-primary hover:text-primary"
               onClick={() => actions.onOpen(pack)}
             >
               {t('medications.packs.open', 'Open')}
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-1 text-primary hover:text-primary"
+            onClick={() => actions.onEdit(pack)}
+          >
+            <Pencil aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+            {t('common.edit', 'Edit')}
+          </Button>
           {pack.status === 'in_use' && (
             <Button
               size="sm"
               variant="ghost"
+              className="h-7 px-1 text-muted-foreground"
               onClick={() => actions.onFinish(pack)}
             >
-              {t('medications.packs.finish', 'Mark finished')}
+              <Archive aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+              {t('medications.packs.finish', 'Retire')}
             </Button>
           )}
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => actions.onEdit(pack)}
-          >
-            {t('common.edit', 'Edit')}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-destructive"
+            className="h-7 px-1 text-destructive hover:text-destructive"
             onClick={() => actions.onDelete(pack)}
           >
+            <Trash2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
             {t('common.delete', 'Delete')}
           </Button>
         </div>

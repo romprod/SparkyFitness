@@ -1,13 +1,17 @@
 import MedicationPrescriptionLink from './MedicationPrescriptionLink';
-import { useMedicationPrescriptionScope } from '@/hooks/Medications/useMedicationPrescriptions';
+import {
+  useMedicationPrescriptionScope,
+  useMedicationPrescriptions,
+} from '@/hooks/Medications/useMedicationPrescriptions';
 import { useEffect, useState, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangle,
+  Archive,
+  FlaskConical,
   Pencil,
   Trash2,
   MoreHorizontal,
-  Plus,
 } from 'lucide-react';
 import {
   todayInZone,
@@ -74,8 +78,10 @@ interface Glp1InventoryManagerProps {
   stockView?: 'controls' | 'active' | 'closed' | 'queue';
   queueItems?: MedicationPreparationQueueItem[];
   stockCanWrite?: boolean;
-  stockOnAddMedication?: () => void;
   stockMoreRef?: RefObject<HTMLButtonElement | null>;
+  /** Opens the add or preparation dialog once, when the stock header asks. */
+  stockRequest?: 'add' | 'prepare';
+  onStockRequestHandled?: () => void;
   onStockCounts?: (
     medicationId: string,
     counts: { active: number; closed: number }
@@ -100,8 +106,9 @@ function InventorySession({
   stockView,
   queueItems = [],
   stockCanWrite = false,
-  stockOnAddMedication,
   stockMoreRef,
+  stockRequest,
+  onStockRequestHandled,
   onStockCounts,
 }: Glp1InventoryManagerProps & {
   prescriptionScope: ReturnType<typeof useMedicationPrescriptionScope>;
@@ -282,6 +289,15 @@ function InventorySession({
     setInventoryOpen(true);
   };
 
+  useEffect(() => {
+    if (stockView !== 'controls' || !stockRequest || !stockCanWrite) return;
+    if (stockRequest === 'add') openAddDialog();
+    else openPreparation();
+    onStockRequestHandled?.();
+    // Fires once per request; the openers only set local state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockRequest]);
+
   const handleSaveInventory = () => {
     if (stockView && !stockCanWrite) return;
     if (
@@ -405,6 +421,11 @@ function InventorySession({
       });
     }
   }, [stockView, pensQ.data, pensQ.isError, queueItems, onStockCounts, medId]);
+  const retirePen = (p: MedicationPen) =>
+    updatePenMutation.mutate({
+      id: p.id,
+      body: { status: 'finished', lifecycle_intent: true },
+    });
   const stockActions = (p: MedicationPen) => {
     if (!stockCanWrite) return null;
     const canPrepare =
@@ -412,27 +433,50 @@ function InventorySession({
     const preparationLabel = p.preparation
       ? t('medications.preparationFlow.edit', 'Edit preparation')
       : t('medications.stock.prepare', 'Prepare a vial');
+    const canRetire = p.status === 'in_use' || p.status === 'sealed';
     return (
       <>
-        <div className="hidden sm:flex flex-wrap items-center justify-end gap-1">
-          <Button variant="ghost" size="sm" onClick={() => openEditDialog(p)}>
+        <div className="hidden sm:flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-1 text-primary hover:text-primary"
+            onClick={() => openEditDialog(p)}
+          >
+            <Pencil aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
             {t('common.edit', 'Edit')}
           </Button>
           {canPrepare && stockView !== 'queue' && (
             <Button
               variant="ghost"
               size="sm"
+              className="h-7 px-1 text-primary hover:text-primary"
               onClick={() => openPreparation(p)}
             >
+              <FlaskConical aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
               {preparationLabel}
+            </Button>
+          )}
+          {canRetire && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-1 text-muted-foreground"
+              disabled={updatePenMutation.isPending}
+              onClick={() => retirePen(p)}
+            >
+              <Archive aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
+              {t('medications.stockLayout.retire', 'Retire')}
             </Button>
           )}
           <Button
             variant="ghost"
             size="sm"
+            className="h-7 px-1 text-destructive hover:text-destructive"
             disabled={deletePenMutation.isPending}
             onClick={() => deletePenMutation.mutate(p.id)}
           >
+            <Trash2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
             {t('common.delete', 'Delete')}
           </Button>
         </div>
@@ -460,6 +504,14 @@ function InventorySession({
                   {preparationLabel}
                 </DropdownMenuItem>
               )}
+              {canRetire && (
+                <DropdownMenuItem
+                  disabled={updatePenMutation.isPending}
+                  onSelect={() => retirePen(p)}
+                >
+                  {t('medications.stockLayout.retire', 'Retire')}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 disabled={deletePenMutation.isPending}
                 onSelect={() => deletePenMutation.mutate(p.id)}
@@ -473,8 +525,13 @@ function InventorySession({
     );
   };
   const stockFooter = (p: MedicationPen) => (
-    <div className="flex items-center justify-between gap-3 border-t px-4 py-2">
-      <div className="min-w-0">
+    <div className="flex items-center justify-between gap-3 border-t px-4 py-2 text-xs">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        <StockPrescriptionLine
+          pen={p}
+          canWrite={stockCanWrite}
+          onChange={() => openEditDialog(p)}
+        />
         {p.kind === 'vial' && <MedicationVialCostLink penId={p.id} />}
       </div>
       {stockActions(p)}
@@ -710,22 +767,28 @@ function InventorySession({
             <h3 className="break-words font-medium">
               {med.display_name || med.name}
             </h3>
-            {p.label &&
-              p.label !== med.name &&
-              p.label !== med.display_name && (
-                <p className="break-words text-sm text-muted-foreground">
-                  {p.label}
-                </p>
-              )}
-            <p className="break-words text-xs text-muted-foreground">
-              {p.label_mass_mg ? `${p.label_mass_mg} mg · ` : ''}
-              {t(`medications.stockLayout.kind.${p.kind}`, p.kind)}
-              {p.expiry_date
-                ? ` · ${t('medications.stockDashboard.expiry', 'Expiry')} ${formatDate(p.expiry_date)}`
-                : ''}
+            <p className="break-words text-sm text-muted-foreground">
+              {[
+                p.label && p.label !== med.name && p.label !== med.display_name
+                  ? p.label
+                  : null,
+                `${p.label_mass_mg ? `${p.label_mass_mg} mg ` : ''}${t(`medications.stockLayout.kind.${p.kind}`, p.kind).toLowerCase()}`,
+                p.expiry_date
+                  ? `${t('medications.stockLayout.expShort', 'exp')} ${formatDate(p.expiry_date)}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           </div>
-          <Badge variant="secondary" className="shrink-0">
+          <Badge
+            variant="secondary"
+            className={
+              p.status === 'in_use'
+                ? 'shrink-0 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300'
+                : 'shrink-0'
+            }
+          >
             {t(
               `medications.stock.status.${p.status}`,
               {
@@ -796,39 +859,6 @@ function InventorySession({
     <>
       {stockView ? (
         <>
-          {stockView === 'controls' && stockCanWrite && (
-            <div className="flex shrink-0 items-center gap-2">
-              <Button onClick={openAddDialog}>
-                <Plus className="mr-2 h-4 w-4" />
-                {t('medications.glp1.addInventory', 'Add Inventory')}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    ref={moreRef}
-                    variant="outline"
-                    size="icon"
-                    aria-label={t(
-                      'medications.stockLayout.more',
-                      'More stock tools'
-                    )}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => openPreparation()}>
-                    {t('medications.stock.prepare', 'Prepare a vial')}
-                  </DropdownMenuItem>
-                  {stockOnAddMedication && (
-                    <DropdownMenuItem onSelect={stockOnAddMedication}>
-                      {t('medications.stock.add', 'Add peptide / injectable')}
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
           {(stockView === 'active' || stockView === 'closed') &&
             pensQ.isError && (
               <p
@@ -1379,5 +1409,46 @@ function InventorySession({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** "Rx: source · Change" line from Pitstop; shown only when a prescription is linked. */
+function StockPrescriptionLine({
+  pen,
+  canWrite,
+  onChange,
+}: {
+  pen: MedicationPen;
+  canWrite: boolean;
+  onChange: () => void;
+}) {
+  const { t } = useTranslation();
+  const { data } = useMedicationPrescriptions(!!pen.prescription_id);
+  if (!pen.prescription_id) return null;
+  const row = data?.prescriptions.find(
+    (item) => item.id === pen.prescription_id
+  );
+  if (!row) return null;
+  const name =
+    row.source ??
+    row.prescriber ??
+    row.pharmacy ??
+    t('medications.prescriptions.singular', 'Prescription');
+  return (
+    <span className="flex items-center gap-1.5 text-muted-foreground">
+      <span>
+        {t('medications.stockLayout.rx', 'Rx')}:{' '}
+        <span className="text-foreground">{name}</span>
+      </span>
+      {canWrite && (
+        <button
+          type="button"
+          className="text-primary hover:underline"
+          onClick={onChange}
+        >
+          {t('medications.stockLayout.change', 'Change')}
+        </button>
+      )}
+    </span>
   );
 }

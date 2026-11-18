@@ -724,12 +724,19 @@ it('stock-only cards retain Details and exact edit target while Cabinet keeps it
     screen.getByRole('button', { name: 'Edit pen/vial' })
   ).toBeInTheDocument();
 });
-it('preserves the stock-only read view but closes a write draft when permission is revoked', () => {
+it('opens a requested add dialog once and closes a write draft when permission is revoked', () => {
+  const handled = jest.fn();
   const view = render(
-    <Glp1InventoryManager med={med} stockView="controls" stockCanWrite />
+    <Glp1InventoryManager
+      med={med}
+      stockView="controls"
+      stockCanWrite
+      stockRequest="add"
+      onStockRequestHandled={handled}
+    />
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(handled).toHaveBeenCalledTimes(1);
   view.rerender(
     <Glp1InventoryManager
       med={med}
@@ -738,9 +745,6 @@ it('preserves the stock-only read view but closes a write draft when permission 
     />
   );
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole('button', { name: 'Add Inventory' })
-  ).not.toBeInTheDocument();
   expect(mockSave).not.toHaveBeenCalled();
 });
 

@@ -128,15 +128,16 @@ export function MedicationPreparationQueueEntry({
     <span className="block min-w-0 flex-1 space-y-1">
       <span className="block break-words font-medium">
         {row.medication_name}
-        {customLabel ? ` · ${row.label}` : ''}
+        {customLabel && !compact ? ` · ${row.label}` : ''}
       </span>
       {compact ? (
-        <span className="block text-xs text-muted-foreground">
-          {row.label_mass_mg ? `${row.label_mass_mg} mg · ` : ''}
+        <span className="block text-sm text-muted-foreground">
+          {customLabel ? `${row.label} · ` : ''}
+          {row.label_mass_mg ? `${row.label_mass_mg} mg vial · ` : ''}
           {t(
             'medications.stockDashboard.needsPreparation',
             'Needs preparation'
-          )}
+          ).toLowerCase()}
         </span>
       ) : (
         <>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -341,11 +341,9 @@ it('keeps syringe controls within a selected non-GLP1 injectable Cabinet detail'
 });
 it('keeps Preparation & stock inventory-only through the full Medications route', async () => {
   open('/medications?tab=stock');
-  await waitFor(() =>
-    expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
-      'Synthetic injectable'
-    )
-  );
+  expect(
+    await screen.findByRole('button', { name: 'Add stock' })
+  ).toBeInTheDocument();
   expect(
     await screen.findByText('4.000 mg / 2.000 mL remaining')
   ).toBeInTheDocument();

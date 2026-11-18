@@ -16,6 +16,7 @@ import {
 import type { Medication, MedicationPen } from '@/types/medications';
 import type { MedicationPackView } from '@workspace/shared';
 const mockSave = jest.fn();
+const mockUpdatePen = jest.fn();
 const mockPens = jest.fn(
   (_id: string): { data: MedicationPen[]; isError?: boolean } => ({ data: [] })
 );
@@ -75,7 +76,7 @@ jest.mock('@/pages/Medications/MedicationVialCostLink', () => ({
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: (id: string) => mockPens(id),
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),
-  useUpdatePenMutation: () => ({ mutate: jest.fn(), isPending: false }),
+  useUpdatePenMutation: () => ({ mutate: mockUpdatePen, isPending: false }),
   useDeletePenMutation: () => ({ mutate: jest.fn(), isPending: false }),
   usePreparationReview: () => ({
     data: undefined,
@@ -149,6 +150,7 @@ const peptide = {
 } as Medication;
 beforeEach(() => {
   mockSave.mockClear();
+  mockUpdatePen.mockClear();
   mockPens.mockReset();
   mockPens.mockReturnValue({ data: [] });
   mockDashboard = dashboardFixture({ preparation_queue: [] });
@@ -166,15 +168,12 @@ it('shows preparation tools without injection logging or history for a non-GLP-1
       <PeptideStock meds={[peptide]} />
     </MemoryRouter>
   );
-  expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
-    'Example peptide'
-  );
   expect(screen.queryByText('Log injection: peptide')).not.toBeInTheDocument();
   expect(screen.queryByText('Injection history')).not.toBeInTheDocument();
-  fireEvent.pointerDown(
-    screen.getByRole('button', { name: 'More stock tools' }),
-    { button: 0, ctrlKey: false }
-  );
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
   fireEvent.click(screen.getByRole('menuitem', { name: 'Prepare a vial' }));
   fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
   fireEvent.change(screen.getByLabelText('Prepared date'), {
@@ -208,10 +207,10 @@ it('shows a clear add-injectable entry point without existing peptides', () => {
       <PeptideStock meds={[]} />
     </MemoryRouter>
   );
-  fireEvent.pointerDown(
-    screen.getByRole('button', { name: 'More stock tools' }),
-    { button: 0, ctrlKey: false }
-  );
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
   fireEvent.click(
     screen.getByRole('menuitem', { name: 'Add peptide / injectable' })
   );
@@ -232,9 +231,6 @@ it('honours a direct link to a different injectable and keeps its stock queries 
     <MemoryRouter initialEntries={['/medications?tab=stock&medication=second']}>
       <PeptideStock meds={[peptide, other]} />
     </MemoryRouter>
-  );
-  expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
-    'Second peptide'
   );
   expect(mockPens).toHaveBeenCalledWith('second');
 });
@@ -294,9 +290,6 @@ it('lists all medications without turning the new-stock picker into an overview 
       <PeptideStock meds={[peptide, other]} />
     </MemoryRouter>
   );
-  expect(screen.getByLabelText('Medication for new stock')).toHaveTextContent(
-    'Inactive blend'
-  );
   const tracked = screen.getByRole('region', { name: 'Tracked stock' });
   expect(tracked).toHaveTextContent('Used custom label');
   expect(tracked).toHaveTextContent('Legacy physical stock');
@@ -305,13 +298,18 @@ it('lists all medications without turning the new-stock picker into an overview 
   expect(queue.querySelectorAll('details')).toHaveLength(2);
   expect(queue).toHaveTextContent('Inactive blend');
   expect(container.querySelectorAll('details[open]')).toHaveLength(0);
-  expect(screen.getByText('Archived vial')).toBeInTheDocument();
+  expect(screen.getByText(/Archived vial/)).toBeInTheDocument();
   const disclosures = Array.from(container.querySelectorAll('summary')).map(
     (node) => node.textContent
   );
   expect(disclosures.at(-1)).toBe('Stock forecasts');
-  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
-  expect(screen.getByRole('dialog')).toHaveTextContent('Add Inventory');
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Add a vial or pen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Add Pen / Vial');
   expect(mockSave).not.toHaveBeenCalled();
 });
 it('does not construct stock cards or actions from stale/failed dashboard classification', () => {
@@ -343,7 +341,7 @@ it('drops overview and stock actions when authoritative profile readiness is los
     </MemoryRouter>
   );
   expect(
-    screen.queryByRole('button', { name: 'Add Inventory' })
+    screen.queryByRole('button', { name: 'Add stock' })
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole('region', { name: 'Tracked stock' })
@@ -357,7 +355,7 @@ it('closes the preparation dialog back to More and drops its draft across medica
       <PeptideStock meds={[peptide]} />
     </MemoryRouter>
   );
-  const more = screen.getByRole('button', { name: 'More stock tools' });
+  const more = screen.getByRole('button', { name: 'Add stock' });
   fireEvent.pointerDown(more, { button: 0, ctrlKey: false });
   fireEvent.click(screen.getByRole('menuitem', { name: 'Prepare a vial' }));
   expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -371,10 +369,10 @@ it('closes the preparation dialog back to More and drops its draft across medica
     </MemoryRouter>
   );
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  fireEvent.pointerDown(
-    screen.getByRole('button', { name: 'More stock tools' }),
-    { button: 0, ctrlKey: false }
-  );
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
   fireEvent.click(
     screen.getByRole('menuitem', { name: 'Add peptide / injectable' })
   );
@@ -583,9 +581,36 @@ it('offers Add pack for non-injectable medications and supplements only when all
       <PeptideStock meds={[peptide, tabletMed]} />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Add pack' }));
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Add pack' }));
   expect(
     screen.getByRole('dialog', { name: 'Add a pack' })
   ).toBeInTheDocument();
   expect(screen.getByText(/Your dose is 2 tablet/)).toBeInTheDocument();
+});
+
+it('retires an in-use vial from its card with explicit lifecycle intent', () => {
+  mockPens.mockReturnValue({
+    data: [
+      dashboardPen({
+        id: 'live',
+        medication_id: peptide.id,
+        status: 'in_use',
+        doses_used: 1,
+      }),
+    ],
+  });
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Retire' }));
+  expect(mockUpdatePen).toHaveBeenCalledWith({
+    id: 'live',
+    body: { status: 'finished', lifecycle_intent: true },
+  });
 });
