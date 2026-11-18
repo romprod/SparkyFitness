@@ -194,6 +194,19 @@ describe.runIf(process.env.MEDICATION_PACKS_INTEGRATION === '1')(
       await packs.deletePack(owner, open);
     });
 
+    it('keeps the combined entries and injections listing working with pack columns', async () => {
+      const open = (await newPack({ status: 'in_use' }))!;
+      const entry = await log();
+      const listed = await entries.listEntriesWithInjections(owner, {});
+      const found = listed.find((row) => row.id === entry.id);
+      expect(found).toMatchObject({
+        pack_id: open,
+        pack_units_deducted: '2.000',
+      });
+      await entries.deleteEntry(owner, entry.id);
+      await packs.deletePack(owner, open);
+    });
+
     it('requires an explicit lifecycle action for status changes', async () => {
       const id = (await newPack())!;
       await expect(

@@ -225,6 +225,7 @@ async function listEntriesWithInjections(
               i.dose_mg AS dose_amount_snapshot, 'mg'::text AS dose_unit_snapshot,
               i.notes, i.source, i.custom_fields, i.created_at, i.updated_at,
               NULL::jsonb AS nutrients_snapshot, i.course_revision_id, i.course_rule_id, i.course_step_id, i.scheduled_day, i.course_slot_key, i.course_origin,
+              NULL::uuid AS pack_id, NULL::text AS pack_units_deducted,
               i.site, 'injection'::text AS entry_type,i.pen_id,i.syringe_id,i.volume_ml::text,i.syringe_units::text,i.dose_input_unit,i.dose_mg::text AS dose_mg_exact,i.preparation_id,i.administration_route
          FROM injection_entries i
          LEFT JOIN medications m ON m.id = i.medication_id
