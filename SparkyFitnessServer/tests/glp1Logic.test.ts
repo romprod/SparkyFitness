@@ -66,6 +66,19 @@ describe('GLP-1 PK helpers', () => {
     }
   });
 
+  it('ships Cagrilintide as its own weekly compound, separate from semaglutide', () => {
+    const cagri = resolveGlp1Profile('Cagrilintide');
+    expect(cagri).toMatchObject({
+      id: 'cagrilintide',
+      displayName: 'Cagrilintide',
+      halfLifeDays: 7.4,
+      tMaxDays: 2,
+      cadence: 'weekly',
+    });
+    expect(cagri).not.toBe(resolveGlp1Profile('semaglutide'));
+    expect(resolveGlp1Profile('semaglutide')?.id).toBe('semaglutide');
+  });
+
   it('falls back to the fastest supported absorption when tMax is below any finite rate', () => {
     const ka = absorptionRate(7, 1e-100);
     expect(Number.isFinite(ka)).toBe(true);

@@ -74,6 +74,15 @@ export const GLP1_DRUG_PROFILES: Record<string, Glp1DrugProfile> = {
     tMaxDays: 1.5,
     cadence: 'weekly',
   },
+  cagrilintide: {
+    id: 'cagrilintide',
+    displayName: 'Cagrilintide',
+    brands: [],
+    // Phase 1b (Enebo et al., Lancet 2021): half-life 159-195 h, median tmax 24-72 h; midpoints used.
+    halfLifeDays: 7.4,
+    tMaxDays: 2,
+    cadence: 'weekly',
+  },
 };
 
 /** Resolve a drug profile by id or (case-insensitive) brand name. */
