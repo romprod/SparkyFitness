@@ -45,6 +45,9 @@ export const medicationPackViewSchema = z.object({
   doses_left: z.string().nullable(),
   /** Average of the last 14 days of taken doses; null with fewer than 3 doses. Not a plan. */
   observed_days_left: z.number().int().nonnegative().nullable(),
+  /** Days until this pack runs out if every scheduled dose is taken; null without a usable schedule. */
+  planned_days_left: z.number().int().nonnegative().nullable(),
+  planned_empty_date: z.string().nullable(),
   low: z.boolean(),
   opened_at: z.string().nullable(),
   expiry_date: z.string().nullable(),

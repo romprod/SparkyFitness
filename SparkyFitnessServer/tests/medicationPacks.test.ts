@@ -4,6 +4,7 @@ import {
   packDeduction,
   packDosesLeft,
   packUnitCost,
+  planPackStock,
   packUnitFamily,
   packUnitsRemaining,
 } from '@workspace/shared';
@@ -125,5 +126,100 @@ describe('pack unit cost', () => {
     expect(
       packUnitCost({ landedPack: 'x', unitsTotal: '60', unitsUsed: '1' })
     ).toBeNull();
+  });
+});
+
+describe('schedule-based pack run-out', () => {
+  const daily = { schedule_type_id: 'daily', dose_amount: 2 } as const;
+  it('draws packs in order and reports the day each runs out', () => {
+    const plan = planPackStock({
+      today: '2026-11-18',
+      schedules: [daily],
+      defaultDoseAmount: '2',
+      takenToday: 0,
+      packs: [
+        { id: 'a', remaining: '8' },
+        { id: 'b', remaining: '10' },
+      ],
+    });
+    // 2 a day: pack a covers the 18th to the 21st, pack b the 22nd to the 26th.
+    expect(plan.byPack.get('a')).toEqual({
+      emptyDate: '2026-11-21',
+      daysLeft: 3,
+    });
+    expect(plan.byPack.get('b')).toEqual({
+      emptyDate: '2026-11-26',
+      daysLeft: 8,
+    });
+    expect(plan.noDemand).toBe(false);
+  });
+  it('does not count a dose already taken today twice', () => {
+    const plan = planPackStock({
+      today: '2026-11-18',
+      schedules: [daily, daily],
+      defaultDoseAmount: null,
+      takenToday: 1,
+      packs: [{ id: 'a', remaining: '6' }],
+    });
+    // Today only one slot (2 units) is left, then 4 a day: 2 + 4 = 6 on the 19th.
+    expect(plan.byPack.get('a')).toEqual({
+      emptyDate: '2026-11-19',
+      daysLeft: 1,
+    });
+  });
+  it('follows the rule days and uses the medication dose when a rule has none', () => {
+    const plan = planPackStock({
+      today: '2026-11-18', // a Wednesday
+      schedules: [{ schedule_type_id: 'specific_days', days_of_week: [1] }],
+      defaultDoseAmount: '1',
+      takenToday: 0,
+      packs: [{ id: 'a', remaining: '2' }],
+    });
+    // Mondays only: 23 Nov and 30 Nov.
+    expect(plan.byPack.get('a')).toEqual({
+      emptyDate: '2026-11-30',
+      daysLeft: 12,
+    });
+  });
+  it('treats an empty or overdrawn pack as already out and skips PRN and unusable rules', () => {
+    const empty = planPackStock({
+      today: '2026-11-18',
+      schedules: [daily],
+      defaultDoseAmount: null,
+      takenToday: 0,
+      packs: [
+        { id: 'a', remaining: '-3' },
+        { id: 'b', remaining: '4' },
+      ],
+    });
+    expect(empty.byPack.get('a')).toEqual({
+      emptyDate: '2026-11-18',
+      daysLeft: 0,
+    });
+    expect(empty.byPack.get('b')?.daysLeft).toBe(1);
+    const none = planPackStock({
+      today: '2026-11-18',
+      schedules: [
+        { schedule_type_id: 'prn', dose_amount: 1 },
+        { schedule_type_id: 'daily' },
+      ],
+      defaultDoseAmount: null,
+      takenToday: 0,
+      packs: [{ id: 'a', remaining: '4' }],
+    });
+    expect(none.noDemand).toBe(true);
+    expect(none.byPack.get('a')).toEqual({ emptyDate: null, daysLeft: null });
+  });
+  it('leaves a pack beyond the horizon without a date', () => {
+    const plan = planPackStock({
+      today: '2026-11-18',
+      schedules: [
+        { schedule_type_id: 'monthly', day_of_month: 1, dose_amount: 1 },
+      ],
+      defaultDoseAmount: null,
+      takenToday: 0,
+      packs: [{ id: 'a', remaining: '500' }],
+    });
+    expect(plan.byPack.get('a')).toEqual({ emptyDate: null, daysLeft: null });
   });
 });

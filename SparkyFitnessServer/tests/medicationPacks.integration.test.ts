@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
+import { addDays } from '@workspace/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { endPool, getSystemClient } from '../db/poolManager.js';
 import entries from '../models/medicationEntryRepository.js';
@@ -218,6 +219,57 @@ describe.runIf(process.env.MEDICATION_PACKS_INTEGRATION === '1')(
       });
       expect((await used(id)).status).toBe('in_use');
       await packs.deletePack(owner, id);
+    });
+
+    it('forecasts run-out from the medication schedule, per pack in draw order, and flags only the last pack', async () => {
+      const planMed = randomUUID();
+      await admin(async (c) => {
+        await c.query(
+          "INSERT INTO medications(id,user_id,name,type_id,dose_amount,dose_unit,is_supplement) VALUES($1,$2,'Synthetic scheduled tablet','tablet',2,'tablet',false)",
+          [planMed, owner]
+        );
+        await c.query(
+          "INSERT INTO medication_schedules(medication_id,user_id,schedule_type_id,start_date) VALUES($1,$2,'daily','2020-01-01')",
+          [planMed, owner]
+        );
+      });
+      const open = (await packs.createPack(owner, planMed, {
+        unit_label: 'tablets',
+        units_total: 20,
+        status: 'in_use',
+      }))!;
+      let list = (await packs.listPacks(owner)).packs.find(
+        (p) => p.id === open
+      )!;
+      // 2 tablets a day from today: 20 tablets last ten days, empty on the tenth dose day.
+      expect(list.planned_days_left).toBe(9);
+      expect(list.planned_empty_date).toBe(
+        addDays((await packs.listPacks(owner)).today, 9)
+      );
+      expect(list.low).toBe(true);
+      const spare = (await packs.createPack(owner, planMed, {
+        unit_label: 'tablets',
+        units_total: 60,
+        status: 'sealed',
+      }))!;
+      const both = (await packs.listPacks(owner)).packs;
+      list = both.find((p) => p.id === open)!;
+      expect(list.planned_days_left).toBe(9);
+      expect(list.low).toBe(false);
+      expect(both.find((p) => p.id === spare)!.planned_days_left).toBe(39);
+      // A pack in another unit family is never planned.
+      const mg = (await packs.createPack(owner, planMed, {
+        unit_label: 'mg',
+        units_total: 500,
+        status: 'sealed',
+      }))!;
+      expect(
+        (await packs.listPacks(owner)).packs.find((p) => p.id === mg)!
+          .planned_days_left
+      ).toBeNull();
+      await admin((c) =>
+        c.query('DELETE FROM medications WHERE id=$1', [planMed])
+      );
     });
 
     it('keeps one account from seeing or using another account pack', async () => {

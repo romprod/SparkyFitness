@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import { getSystemClient, endPool } from '../db/poolManager.js';
 import * as purchases from '../models/medicationPurchaseRepository.js';
@@ -17,9 +18,7 @@ describe.runIf(process.env.PURCHASE_PACKS_INTEGRATION === '1')(
     let packA: string, packB: string, packC: string, foreignPack: string;
     let otherMedPack: string;
 
-    const admin = async <T>(
-      work: (c: Awaited<ReturnType<typeof getSystemClient>>) => Promise<T>
-    ) => {
+    const admin = async <T>(work: (c: PoolClient) => Promise<T>) => {
       const c = await getSystemClient();
       try {
         return await work(c);

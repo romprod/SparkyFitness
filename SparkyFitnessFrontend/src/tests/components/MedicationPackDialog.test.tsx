@@ -87,6 +87,8 @@ it('edits an existing pack in place without letting its medication change', () =
     overdrawn: false,
     doses_left: '24',
     observed_days_left: null,
+    planned_days_left: null,
+    planned_empty_date: null,
     low: false,
     opened_at: '2026-11-01',
     expiry_date: null,

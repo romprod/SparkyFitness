@@ -497,6 +497,8 @@ const pack = (over: Partial<MedicationPackView> = {}): MedicationPackView => ({
   overdrawn: false,
   doses_left: '24',
   observed_days_left: 20,
+  planned_days_left: null,
+  planned_empty_date: null,
   low: false,
   opened_at: '2026-11-01',
   expiry_date: null,
@@ -533,6 +535,27 @@ it('shows pack stock in the same in-use grid as vials, with remaining units, dos
   expect(card).toHaveTextContent('~20 days at your recent pace');
   expect(screen.getByRole('heading', { name: 'In use' })).toBeInTheDocument();
   expect(screen.queryByText(/No vials yet/)).not.toBeInTheDocument();
+});
+
+it('shows the schedule-based run-out on a pack, or today when it is already due', () => {
+  mockPackList = [
+    pack({ planned_days_left: 24, planned_empty_date: '2026-12-12' }),
+    pack({
+      id: 'pack-2',
+      label: 'Second',
+      planned_days_left: 0,
+      planned_empty_date: '2026-11-18',
+    }),
+    pack({ id: 'pack-3', label: 'Third' }),
+  ];
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, tabletMed]} />
+    </MemoryRouter>
+  );
+  expect(screen.getAllByText(/On your plan:/)).toHaveLength(2);
+  expect(screen.getByText(/runs out .*~24 days/)).toBeInTheDocument();
+  expect(screen.getByText('On your plan: runs out today')).toBeInTheDocument();
 });
 
 it('lists unopened packs apart, never under Needs preparation, with an Open action', () => {

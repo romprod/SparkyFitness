@@ -6,6 +6,8 @@ import {
   packDeduction,
   packDosesLeft,
   packUnitFamily,
+  planPackStock,
+  type SharedScheduleRule,
   packUnitsRemaining,
   type MedicationPackCreate,
   type MedicationPackList,
@@ -65,7 +67,8 @@ export function packView(
   row: PackRow,
   today: string,
   pace: { units: string; doses: number } | undefined,
-  leadPlusBuffer: number
+  leadPlusBuffer: number,
+  plan?: { emptyDate: string | null; daysLeft: number | null; last: boolean }
 ): MedicationPackView {
   const remaining = packUnitsRemaining(row.units_total, row.units_used);
   const dose = packDeduction({
@@ -89,6 +92,12 @@ export function packView(
     (row.status === 'sealed' || open) &&
     Number(remaining) <= Number(threshold);
   const lowByPace = open && days !== null && days <= leadPlusBuffer;
+  // Only the last stocked pack triggers a plan warning; a spare pack means no reorder yet.
+  const lowByPlan =
+    (open || row.status === 'sealed') &&
+    !!plan?.last &&
+    plan.daysLeft !== null &&
+    plan.daysLeft <= leadPlusBuffer;
   return {
     id: row.id,
     medication_id: row.medication_id,
@@ -102,7 +111,9 @@ export function packView(
     overdrawn: Number(remaining) < 0,
     doses_left: dose.deducted ? packDosesLeft(remaining, dose.units) : null,
     observed_days_left: days,
-    low: lowByThreshold || lowByPace,
+    planned_days_left: plan?.daysLeft ?? null,
+    planned_empty_date: plan?.emptyDate ?? null,
+    low: lowByThreshold || lowByPace || lowByPlan,
     opened_at: row.opened_at,
     expiry_date: row.expiry_date,
     expired: row.expiry_date !== null && row.expiry_date < today,
@@ -111,6 +122,133 @@ export function packView(
     reorder_threshold_units: threshold,
     notes: row.notes,
   };
+}
+
+interface ScheduleRow {
+  medication_id: string;
+  schedule_type_id: string;
+  time_of_day: string | null;
+  dose_amount: string | null;
+  days_of_week: number[] | null;
+  interval_days: number | null;
+  day_of_month: number | null;
+  cycle_on_days: number | null;
+  cycle_off_days: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  active: boolean;
+  created_at: string | null;
+}
+
+/**
+ * Schedule-based run-out for each pack, per medication, in the order logging would draw them.
+ * Skipped for a medication with an active managed course (its plan is authoritative and is not
+ * modelled here), when no schedule gives a dose, or when the dose unit differs from the pack unit.
+ */
+async function planFor(
+  client: PoolClient,
+  userId: string,
+  rows: PackRow[],
+  today: string
+) {
+  const result = new Map<
+    string,
+    { emptyDate: string | null; daysLeft: number | null; last: boolean }
+  >();
+  const stocked = rows.filter(
+    (p) =>
+      (p.status === 'in_use' || p.status === 'sealed') &&
+      !(p.expiry_date !== null && p.expiry_date < today)
+  );
+  const medicationIds = [...new Set(stocked.map((p) => p.medication_id))];
+  if (medicationIds.length === 0) return result;
+  const zoneRow = await client.query<{ timezone: string | null }>(
+    'SELECT timezone FROM user_preferences WHERE user_id = $1',
+    [userId]
+  );
+  const zone =
+    zoneRow.rows[0]?.timezone && isValidTimeZone(zoneRow.rows[0].timezone)
+      ? zoneRow.rows[0].timezone
+      : 'UTC';
+  const managed = new Set(
+    (
+      await client.query<{ medication_id: string }>(
+        `SELECT DISTINCT c.medication_id FROM medication_courses c
+           JOIN medication_course_revisions r ON r.id = c.current_revision_id AND r.user_id = c.user_id
+          WHERE c.user_id = $1 AND c.deleted_at IS NULL AND r.status = 'active'
+            AND c.medication_id = ANY($2::uuid[])`,
+        [userId, medicationIds]
+      )
+    ).rows.map((r) => r.medication_id)
+  );
+  const schedules = await client.query<ScheduleRow>(
+    `SELECT medication_id, schedule_type_id, time_of_day::text, dose_amount::text, days_of_week,
+            interval_days, day_of_month, cycle_on_days, cycle_off_days,
+            start_date::text, end_date::text, active, created_at::text
+       FROM medication_schedules WHERE user_id = $1 AND medication_id = ANY($2::uuid[])`,
+    [userId, medicationIds]
+  );
+  const takenToday = await client.query<{
+    medication_id: string;
+    taken: string;
+  }>(
+    `SELECT medication_id, count(*)::text AS taken FROM medication_entries
+      WHERE user_id = $1 AND medication_id = ANY($2::uuid[]) AND status = ANY($3)
+        AND entry_date = $4::date GROUP BY medication_id`,
+    [userId, medicationIds, TAKEN, today]
+  );
+  for (const medicationId of medicationIds) {
+    if (managed.has(medicationId)) continue;
+    const packs = stocked.filter(
+      (p) =>
+        p.medication_id === medicationId &&
+        packDeduction({
+          doseAmount: p.med_dose_amount,
+          doseUnit: p.med_dose_unit,
+          packUnitLabel: p.unit_label,
+        }).deducted
+    );
+    if (packs.length === 0) continue;
+    const rules: SharedScheduleRule[] = schedules.rows
+      .filter((r) => r.medication_id === medicationId)
+      .map((r) => ({
+        schedule_type_id: r.schedule_type_id,
+        time_of_day: r.time_of_day,
+        days_of_week: r.days_of_week,
+        interval_days: r.interval_days,
+        day_of_month: r.day_of_month,
+        cycle_on_days: r.cycle_on_days,
+        cycle_off_days: r.cycle_off_days,
+        // Same fallback the checklist uses when a rule has no start date.
+        start_date:
+          r.start_date ??
+          (r.created_at ? instantToDay(r.created_at, zone) : null),
+        end_date: r.end_date,
+        active: r.active,
+        dose_amount: r.dose_amount === null ? null : Number(r.dose_amount),
+      }));
+    const planned = planPackStock({
+      today,
+      schedules: rules,
+      defaultDoseAmount: packs[0]!.med_dose_amount,
+      takenToday: Number(
+        takenToday.rows.find((r) => r.medication_id === medicationId)?.taken ??
+          0
+      ),
+      packs: packs.map((p) => ({
+        id: p.id,
+        remaining: packUnitsRemaining(p.units_total, p.units_used),
+      })),
+    });
+    if (planned.noDemand) continue;
+    packs.forEach((p, i) =>
+      result.set(p.id, {
+        ...planned.byPack.get(p.id)!,
+        last: i === packs.length - 1,
+      })
+    );
+  }
+  return result;
 }
 
 /** Every pack the owner can see, with derived remaining, doses left and observed pace. */
@@ -173,10 +311,17 @@ export async function listPacks(
         pace.set(pack.id, { units: String(units), doses });
       }
     }
+    const plans = await planFor(client, userId, packs.rows, today);
     const result = {
       today,
       packs: packs.rows.map((row) =>
-        packView(row, today, pace.get(row.id), leadPlusBuffer)
+        packView(
+          row,
+          today,
+          pace.get(row.id),
+          leadPlusBuffer,
+          plans.get(row.id)
+        )
       ),
     };
     await client.query('COMMIT');

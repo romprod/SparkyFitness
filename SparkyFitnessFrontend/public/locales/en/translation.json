@@ -1825,7 +1825,9 @@
       "loadError": "Could not load pack stock. Vial stock above is unaffected.",
       "deleteTitle": "Delete this pack?",
       "deleteHint": "Logged doses are kept. They stay recorded, but no longer link to this pack.",
-      "costLine": "{{each}} each · {{used}} used · Invoice"
+      "costLine": "{{each}} each · {{used}} used · Invoice",
+      "planRunsOut": "On your plan: runs out {{date}} (~{{amount}} days)",
+      "planRunsOutToday": "On your plan: runs out today"
     }
   },
   "nav": {

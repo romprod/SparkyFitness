@@ -129,6 +129,25 @@ export default function MedicationPackCard({
                   }
                 )}
           </p>
+          {pack.planned_empty_date !== null &&
+            pack.planned_days_left !== null &&
+            !pack.overdrawn && (
+              <p className="text-xs text-muted-foreground">
+                {pack.planned_days_left === 0
+                  ? t(
+                      'medications.packs.planRunsOutToday',
+                      'On your plan: runs out today'
+                    )
+                  : t(
+                      'medications.packs.planRunsOut',
+                      'On your plan: runs out {{date}} (~{{amount}} days)',
+                      {
+                        date: formatDate(pack.planned_empty_date),
+                        amount: pack.planned_days_left,
+                      }
+                    )}
+              </p>
+            )}
           {pack.doses_left !== null && !pack.overdrawn && (
             <p className="text-xs text-muted-foreground">
               {t('medications.packs.dosesLeft', '{{amount}} doses left', {
