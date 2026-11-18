@@ -1,7 +1,10 @@
-import { resolvePreparedMedicationRoute } from '@workspace/shared';
+import {
+  resolvePreparedMedicationRoute,
+  type MedicationPackView,
+} from '@workspace/shared';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import {
   DropdownMenu,
@@ -20,6 +23,14 @@ import {
 } from '@/components/ui/select';
 import type { Medication } from '@/types/medications';
 import AddMedicationDialog from './AddMedicationDialog';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
+import MedicationPackCard from './MedicationPackCard';
+import MedicationPackDialog from './MedicationPackDialog';
+import {
+  useDeletePackMutation,
+  useMedicationPacks,
+  useUpdatePackMutation,
+} from '@/hooks/Medications/useMedicationPacks';
 import Glp1InventoryManager from './Glp1InventoryManager';
 import MedicationInventoryForecast from './MedicationInventoryForecast';
 import { MedicationPreparationQueueEntry } from './MedicationPreparationQueue';
@@ -40,6 +51,50 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
     injectables.find((m) => m.is_active) ??
     injectables[0];
   const scope = dashboard.scope;
+  const packsQuery = useMedicationPacks();
+  const updatePack = useUpdatePackMutation();
+  const deletePack = useDeletePackMutation();
+  const [packDialog, setPackDialog] = useState<{
+    pack?: MedicationPackView;
+  } | null>(null);
+  const [packToDelete, setPackToDelete] = useState<MedicationPackView | null>(
+    null
+  );
+  const allPacks =
+    scope.ready && scope.isCurrent() && !packsQuery.query.isError
+      ? (packsQuery.data?.packs ?? [])
+      : [];
+  const openPacks = allPacks.filter((pack) => pack.status === 'in_use');
+  const sealedPacks = allPacks.filter((pack) => pack.status === 'sealed');
+  const closedPacks = allPacks.filter(
+    (pack) => pack.status === 'finished' || pack.status === 'discarded'
+  );
+  const packMedications = meds
+    .filter((m) => resolvePreparedMedicationRoute(m) === null)
+    .sort((a, b) => Number(b.is_active) - Number(a.is_active));
+  const packActions = {
+    onOpen: (pack: MedicationPackView) =>
+      updatePack.mutate({
+        id: pack.id,
+        body: { status: 'in_use', lifecycle_intent: true },
+      }),
+    onFinish: (pack: MedicationPackView) =>
+      updatePack.mutate({
+        id: pack.id,
+        body: { status: 'finished', lifecycle_intent: true },
+      }),
+    onEdit: (pack: MedicationPackView) => setPackDialog({ pack }),
+    onDelete: (pack: MedicationPackView) => setPackToDelete(pack),
+  };
+  const packCards = (list: MedicationPackView[]) =>
+    list.map((pack) => (
+      <MedicationPackCard
+        key={pack.id}
+        pack={pack}
+        canWrite={scope.canWrite}
+        actions={packActions}
+      />
+    ));
   const moreRef = useRef<HTMLButtonElement>(null);
   const [addMedication, setAddMedication] = useState<string | null>(null);
   const [counts, setCounts] = useState<
@@ -152,6 +207,19 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
               stockOnAddMedication={() => setAddMedication(scope.key)}
             />
           )}
+          {scope.ready &&
+            scope.isCurrent() &&
+            scope.canWrite &&
+            packMedications.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setPackDialog({})}
+                className="shrink-0"
+              >
+                <Plus aria-hidden="true" className="mr-1 h-4 w-4" />
+                {t('medications.packs.add', 'Add pack')}
+              </Button>
+            )}
           {!selected && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -231,7 +299,8 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
               ) &&
               activeCount === 0 &&
               closedCount === 0 &&
-              queue.length === 0 && (
+              queue.length === 0 &&
+              allPacks.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   {t(
                     'medications.stockLayout.emptyAll',
@@ -239,7 +308,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                   )}
                 </p>
               )}
-            {activeCount > 0 && (
+            {(activeCount > 0 || openPacks.length > 0) && (
               <h3 className="text-sm font-semibold">
                 {t('medications.stockLayout.inUse', 'In use')}
               </h3>
@@ -249,6 +318,7 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
               className="grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3"
             >
               {injectables.map((med) => manager(med, 'active'))}
+              {packCards(openPacks)}
             </section>
             {(queue.length > 0 || dashboard.query.isError) && (
               <section
@@ -294,7 +364,17 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                 )}
               </section>
             )}
-            {closedCount > 0 && (
+            {sealedPacks.length > 0 && (
+              <section className="space-y-3">
+                <h3 className="text-sm font-semibold">
+                  {t('medications.packs.unopened', 'Unopened')}
+                </h3>
+                <div className="grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3">
+                  {packCards(sealedPacks)}
+                </div>
+              </section>
+            )}
+            {(closedCount > 0 || closedPacks.length > 0) && (
               <details className="rounded-lg border bg-card p-4">
                 <summary className="cursor-pointer text-sm font-medium">
                   {t(
@@ -304,11 +384,41 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                 </summary>
                 <div className="mt-3 grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3">
                   {injectables.map((med) => manager(med, 'closed'))}
+                  {packCards(closedPacks)}
                 </div>
               </details>
             )}
           </div>
         )}
+      {packsQuery.query.isError && scope.ready && scope.isCurrent() && (
+        <p role="alert" className="text-sm text-muted-foreground">
+          {t(
+            'medications.packs.loadError',
+            'Could not load pack stock. Vial stock above is unaffected.'
+          )}
+        </p>
+      )}
+      <MedicationPackDialog
+        open={packDialog !== null}
+        onOpenChange={(open) => !open && setPackDialog(null)}
+        medications={packMedications}
+        pack={packDialog?.pack}
+      />
+      <ConfirmationDialog
+        open={packToDelete !== null}
+        onOpenChange={(open) => !open && setPackToDelete(null)}
+        title={t('medications.packs.deleteTitle', 'Delete this pack?')}
+        description={t(
+          'medications.packs.deleteHint',
+          'Logged doses are kept. They stay recorded, but no longer link to this pack.'
+        )}
+        variant="destructive"
+        confirmLabel={t('common.delete', 'Delete')}
+        onConfirm={() => {
+          if (packToDelete) deletePack.mutate(packToDelete.id);
+          setPackToDelete(null);
+        }}
+      />
       <details className="rounded-lg border bg-card p-4">
         <summary className="cursor-pointer text-sm font-medium">
           {t('medications.forecasts.title', 'Stock forecasts')}

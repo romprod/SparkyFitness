@@ -383,6 +383,8 @@ export const CreateMedicationEntryBodySchema = z
     notes: optionalNullableString,
     source: z.string().optional(),
     custom_fields: customFields,
+    pack_id: z.string().uuid().optional(),
+    deduct_pack: z.boolean().optional(),
   })
   .loose()
   .superRefine((data, context) => {

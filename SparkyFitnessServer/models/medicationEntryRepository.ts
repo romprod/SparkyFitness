@@ -7,6 +7,12 @@ import {
   type StoredCourseLog,
 } from '../services/medicationCourseLogService.js';
 import { getClient } from '../db/poolManager.js';
+import {
+  deductForEntry,
+  restoreForEntry,
+  type PackDeductionOutcome,
+  type PackEntryFacts,
+} from './medicationPackDeduction.js';
 import type {
   CreateMedicationEntryBody,
   UpdateMedicationEntryBody,
@@ -14,7 +20,8 @@ import type {
 
 const ENTRY_COLS = `id, medication_id, schedule_id, user_id, status, taken_at, scheduled_for, entry_date,
   med_name_snapshot, dose_amount_snapshot, dose_unit_snapshot, notes, source, custom_fields, created_at, updated_at,
-  nutrients_snapshot, course_revision_id, course_rule_id, course_step_id, scheduled_day, course_slot_key, course_origin`;
+  nutrients_snapshot, course_revision_id, course_rule_id, course_step_id, scheduled_day, course_slot_key, course_origin,
+  pack_id, pack_units_deducted::text AS pack_units_deducted`;
 
 async function createEntry(userId: string, data: CreateMedicationEntryBody) {
   const client: PoolClient = await getClient(userId);
@@ -109,8 +116,28 @@ async function createEntry(userId: string, data: CreateMedicationEntryBody) {
         data.course_revision_id ? true : null,
       ]
     );
+    let entry = result.rows[0];
+    let packDeduction: PackDeductionOutcome = {
+      deducted: false,
+      reason: 'opted_out',
+    };
+    if (data.deduct_pack !== false) {
+      packDeduction = await deductForEntry(
+        client,
+        userId,
+        entry,
+        data.pack_id ?? null
+      );
+      if (packDeduction.deducted) {
+        const reread = await client.query(
+          `SELECT ${ENTRY_COLS} FROM medication_entries WHERE id = $1 AND user_id = $2`,
+          [entry.id, userId]
+        );
+        entry = reread.rows[0];
+      }
+    }
     await client.query('COMMIT');
-    return result.rows[0];
+    return { ...entry, pack_deduction: packDeduction };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -233,6 +260,8 @@ async function updateEntry(
       [id, userId]
     );
     const stored = existing.rows[0];
+    const storedPack = existing.rows[0] as unknown as
+      (PackEntryFacts & { status: string }) | undefined;
     if (data.course_revision_id === null && stored?.course_revision_id) {
       // Detaching a plan relationship must not erase the actual's captured timing facts.
       data = { ...data, scheduled_for: undefined, scheduled_day: undefined };
@@ -308,8 +337,24 @@ async function updateEntry(
        RETURNING ${ENTRY_COLS}`,
       values
     );
+    let updated = result.rows[0] ?? null;
+    if (updated && storedPack) {
+      const wasTaken = ['taken', 'prn_taken'].includes(storedPack.status);
+      const isTaken = ['taken', 'prn_taken'].includes(updated.status);
+      if (storedPack.pack_id && wasTaken && !isTaken)
+        await restoreForEntry(client, userId, storedPack, true);
+      else if (!storedPack.pack_id && !wasTaken && isTaken)
+        await deductForEntry(client, userId, updated, null);
+      if (storedPack.pack_id !== undefined) {
+        const reread = await client.query(
+          `SELECT ${ENTRY_COLS} FROM medication_entries WHERE id = $1 AND user_id = $2`,
+          [id, userId]
+        );
+        updated = reread.rows[0] ?? updated;
+      }
+    }
     await client.query('COMMIT');
-    return result.rows[0] ?? null;
+    return updated;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -338,6 +383,13 @@ async function deleteEntry(userId: string, id: string): Promise<boolean> {
     if (existing.rows[0])
       await lockStoredCourseLog(client, userId, existing.rows[0]);
 
+    if (existing.rows[0])
+      await restoreForEntry(
+        client,
+        userId,
+        existing.rows[0] as unknown as PackEntryFacts,
+        false
+      );
     const result = await client.query(
       'DELETE FROM medication_entries WHERE id = $1 AND user_id = $2 RETURNING id',
       [id, userId]

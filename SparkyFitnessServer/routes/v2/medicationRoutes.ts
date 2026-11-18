@@ -44,6 +44,11 @@ import { getClient } from '../../db/poolManager.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import medicationRepository from '../../models/medicationRepository.js';
 import medicationPenRepository from '../../models/medicationPenRepository.js';
+import {
+  medicationPackCreateSchema,
+  medicationPackUpdateSchema,
+} from '@workspace/shared';
+import * as medicationPackRepository from '../../models/medicationPackRepository.js';
 import injectionRepository from '../../models/injectionRepository.js';
 import titrationRepository from '../../models/titrationRepository.js';
 import glp1Service from '../../services/glp1Service.js';
@@ -1079,6 +1084,79 @@ router.post('/pens/:id/preparation-corrections', async (req, res, next) => {
 });
 
 // Static calendar path must precede the medication-id route.
+// --- Packs (tablets, capsules, softgels, scoops) ---------------------------
+
+/**
+ * @openapi
+ * /v2/medications/packs:
+ *   get:
+ *     summary: List pack stock across medications with derived remaining units
+ */
+router.get('/packs', async (req, res, next) => {
+  try {
+    res.json(await medicationPackRepository.listPacks(req.userId));
+  } catch (error) {
+    next(error);
+  }
+});
+router.post('/:medicationId/packs', async (req, res, next) => {
+  try {
+    const params = MedicationIdParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = medicationPackCreateSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    const id = await medicationPackRepository.createPack(
+      req.userId,
+      params.data.medicationId,
+      body.data
+    );
+    if (!id) {
+      res.status(404).json({ error: 'Medication not found' });
+      return;
+    }
+    res.status(201).json({ id });
+  } catch (error) {
+    next(error);
+  }
+});
+router.put('/packs/:id', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = medicationPackUpdateSchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    const ok = await medicationPackRepository.updatePack(
+      req.userId,
+      params.data.id,
+      body.data
+    );
+    if (!ok) {
+      res.status(404).json({ error: 'Pack not found' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+router.delete('/packs/:id', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const ok = await medicationPackRepository.deletePack(
+      req.userId,
+      params.data.id
+    );
+    if (!ok) {
+      res.status(404).json({ error: 'Pack not found' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/calendar/week', async (req, res, next) => {
   try {
     const query = medicationLogWeekQuerySchema.safeParse(req.query);

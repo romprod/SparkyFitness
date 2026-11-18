@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import PeptideStock from '@/pages/Medications/PeptideStock';
@@ -8,11 +14,24 @@ import {
   queueItem,
 } from '@/tests/fixtures/medicationInventoryDashboard';
 import type { Medication, MedicationPen } from '@/types/medications';
+import type { MedicationPackView } from '@workspace/shared';
 const mockSave = jest.fn();
 const mockPens = jest.fn(
   (_id: string): { data: MedicationPen[]; isError?: boolean } => ({ data: [] })
 );
 let mockDashboard = dashboardFixture({ preparation_queue: [] });
+let mockPackList: MedicationPackView[] = [];
+const mockPackMutate = jest.fn();
+jest.mock('@/hooks/Medications/useMedicationPacks', () => ({
+  useMedicationPacks: () => ({
+    scope: { ready: mockReady, isCurrent: () => mockReady },
+    query: { isError: false },
+    data: { today: '2026-11-18', packs: mockPackList },
+  }),
+  useCreatePackMutation: () => ({ mutate: mockPackMutate, isPending: false }),
+  useUpdatePackMutation: () => ({ mutate: mockPackMutate, isPending: false }),
+  useDeletePackMutation: () => ({ mutate: mockPackMutate, isPending: false }),
+}));
 let mockReady = true;
 let mockScopeKey = 'owner:1';
 let mockError = false;
@@ -136,6 +155,8 @@ beforeEach(() => {
   mockReady = true;
   mockScopeKey = 'owner:1';
   mockError = false;
+  mockPackList = [];
+  mockPackMutate.mockClear();
 });
 it('shows preparation tools without injection logging or history for a non-GLP-1 peptide', () => {
   render(
@@ -459,4 +480,112 @@ it('shows Prepare as a pill and a retired medication with a queued vial as a nor
   ).not.toBeInTheDocument();
   const pill = screen.getByText('Prepare ›');
   expect(pill).toHaveClass('rounded-full');
+});
+
+const pack = (over: Partial<MedicationPackView> = {}): MedicationPackView => ({
+  id: 'pack-1',
+  medication_id: 'tablet-med',
+  medication_name: 'Synthetic tablets',
+  label: null,
+  unit_label: 'tablets',
+  status: 'in_use',
+  units_total: '60.000',
+  units_used: '12.000',
+  units_remaining: '48.000',
+  overdrawn: false,
+  doses_left: '24',
+  observed_days_left: 20,
+  low: false,
+  opened_at: '2026-11-01',
+  expiry_date: null,
+  expired: false,
+  lot_number: null,
+  storage_location: null,
+  reorder_threshold_units: null,
+  notes: null,
+  ...over,
+});
+const tabletMed = {
+  id: 'tablet-med',
+  name: 'Synthetic tablets',
+  type_id: 'tablet',
+  is_glp1: false,
+  dose_amount: 2,
+  dose_unit: 'tablet',
+  is_active: true,
+} as Medication;
+
+it('shows pack stock in the same in-use grid as vials, with remaining units, doses left and pace', () => {
+  mockPackList = [pack()];
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, tabletMed]} />
+    </MemoryRouter>
+  );
+  const tracked = screen.getByRole('region', { name: 'Tracked stock' });
+  const card = within(tracked).getByRole('article', {
+    name: 'Pack of Synthetic tablets',
+  });
+  expect(card).toHaveTextContent('48 of 60 tablets left');
+  expect(card).toHaveTextContent('24 doses left');
+  expect(card).toHaveTextContent('~20 days at your recent pace');
+  expect(screen.getByRole('heading', { name: 'In use' })).toBeInTheDocument();
+  expect(screen.queryByText(/No vials yet/)).not.toBeInTheDocument();
+});
+
+it('lists unopened packs apart, never under Needs preparation, with an Open action', () => {
+  mockPackList = [
+    pack({ status: 'sealed', units_used: '0.000', units_remaining: '60.000' }),
+  ];
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, tabletMed]} />
+    </MemoryRouter>
+  );
+  expect(screen.getByRole('heading', { name: 'Unopened' })).toBeInTheDocument();
+  expect(
+    screen.queryByRole('heading', { name: 'Needs preparation' })
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+  expect(mockPackMutate).toHaveBeenCalledWith({
+    id: 'pack-1',
+    body: { status: 'in_use', lifecycle_intent: true },
+  });
+});
+
+it('flags low, expired and overdrawn packs and keeps finished packs in the archive', () => {
+  mockPackList = [
+    pack({ low: true, expired: true }),
+    pack({
+      id: 'pack-2',
+      status: 'in_use',
+      units_remaining: '-2.000',
+      overdrawn: true,
+      doses_left: '0',
+    }),
+    pack({ id: 'pack-3', status: 'finished', medication_name: 'Old tablets' }),
+  ];
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, tabletMed]} />
+    </MemoryRouter>
+  );
+  expect(screen.getByText('Low')).toBeInTheDocument();
+  expect(screen.getByText('Expired')).toBeInTheDocument();
+  expect(screen.getByText('Overdrawn by 2 tablets')).toBeInTheDocument();
+  expect(screen.getByText('Finished / discarded')).toBeInTheDocument();
+  expect(screen.getByText('Old tablets')).toBeInTheDocument();
+});
+
+it('offers Add pack for non-injectable medications and supplements only when allowed', () => {
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, tabletMed]} />
+    </MemoryRouter>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(
+    screen.getByRole('dialog', { name: 'Add a pack' })
+  ).toBeInTheDocument();
+  expect(screen.getByText(/Your dose is 2 tablet/)).toBeInTheDocument();
 });
