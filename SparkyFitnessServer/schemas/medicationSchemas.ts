@@ -348,10 +348,22 @@ export const MedicationIdParamSchema = z
   .loose();
 export type MedicationIdParam = z.infer<typeof MedicationIdParamSchema>;
 
+/**
+ * A boolean query flag. `z.coerce.boolean()` treats every non-empty string, including "false",
+ * as true, so a caller asking for activeOnly=false silently got true. Words are read as words.
+ */
+const queryFlag = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const word = value.trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(word)) return true;
+  if (['false', '0', 'no', 'off', ''].includes(word)) return false;
+  return value;
+}, z.boolean().optional());
+
 export const ListMedicationsQuerySchema = z
   .object({
-    glp1Only: z.coerce.boolean().optional(),
-    activeOnly: z.coerce.boolean().optional(),
+    glp1Only: queryFlag,
+    activeOnly: queryFlag,
   })
   .loose();
 export type ListMedicationsQuery = z.infer<typeof ListMedicationsQuerySchema>;

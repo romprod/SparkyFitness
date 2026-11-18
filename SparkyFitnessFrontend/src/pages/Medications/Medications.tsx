@@ -145,15 +145,14 @@ export default function Medications() {
 
   // Queries
   const { data: meds = [], isLoading: loadingMeds } = useMedications({
-    activeOnly: false,
+    activeOnly: true,
   });
 
-  // The stock tab needs retired medications too (their vials can still await
-  // preparation), and the list endpoint treats `activeOnly=false` as true, so ask
-  // without a filter for this tab only.
-  const { data: stockMeds = [] } = useMedications(undefined, {
-    enabled: activeTab === 'stock',
-  });
+  // The stock tab needs retired medications too (their vials can still await preparation).
+  const { data: stockMeds = [] } = useMedications(
+    { activeOnly: false },
+    { enabled: activeTab === 'stock' }
+  );
 
   // Also check if any symptom entries exist — either meds or symptoms means
   // the user has already accepted the disclaimer.
