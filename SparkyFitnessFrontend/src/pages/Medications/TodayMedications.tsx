@@ -1,3 +1,4 @@
+import MedicationPackPicker from './MedicationPackPicker';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -146,6 +147,15 @@ export default function TodayMedications({
 
   // Notes state for logging
   const [logNotes, setLogNotes] = useState<Record<string, string>>({});
+  // Which pack a dose should come from, keyed like the notes; absent means automatic.
+  const [packChoice, setPackChoice] = useState<Record<string, string>>({});
+  const choosePack = (key: string, id: string | undefined) =>
+    setPackChoice((previous) => {
+      const next = { ...previous };
+      if (id) next[key] = id;
+      else delete next[key];
+      return next;
+    });
 
   // Edit-time dialog state (correct the "when" of an already-logged dose)
   const [editingEntry, setEditingEntry] = useState<MedicationEntry | null>(
@@ -424,6 +434,15 @@ export default function TodayMedications({
                             : t('medications.schedule.anyTime', 'Any time')}
                         </span>
                       </div>
+                      {!isLogged &&
+                        !managed &&
+                        !isStockInjectable(due.medication) && (
+                          <MedicationPackPicker
+                            medicationId={due.medication.id}
+                            value={packChoice[noteKey]}
+                            onChange={(id) => choosePack(noteKey, id)}
+                          />
+                        )}
                       {!isLogged && (
                         <Input
                           placeholder={t(
@@ -566,6 +585,13 @@ export default function TodayMedications({
                       {t('medications.todayMedications.prn', 'PRN')}
                     </Badge>
                   </div>
+                  {!isStockInjectable(med) && (
+                    <MedicationPackPicker
+                      medicationId={med.id}
+                      value={packChoice[schedId]}
+                      onChange={(id) => choosePack(schedId, id)}
+                    />
+                  )}
                   <Input
                     placeholder={t('medications.today.addNote', 'Add note...')}
                     value={logNotes[schedId] || ''}
@@ -734,6 +760,9 @@ export default function TodayMedications({
         scheduled_for: scheduledFor,
         entry_date: selectedDate,
         notes: notesVal,
+        ...(status === 'taken' && packChoice[due.schedule.id]
+          ? { pack_id: packChoice[due.schedule.id] }
+          : {}),
       },
       { onSuccess: clearNote }
     );
@@ -776,6 +805,7 @@ export default function TodayMedications({
         taken_at: takenAt,
         entry_date: selectedDate,
         notes: notesVal,
+        ...(packChoice[schedId] ? { pack_id: packChoice[schedId] } : {}),
       },
       { onSuccess: clearNote }
     );

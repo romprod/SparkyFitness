@@ -141,6 +141,10 @@ export interface CreateMedicationEntryInput extends MedicationCourseAttributionI
   notes?: string | null;
   source?: string;
   custom_fields?: Record<string, unknown> | null;
+  /** Take this dose from a specific pack; omitted means the server picks. */
+  pack_id?: string;
+  /** false logs the dose without touching any pack. */
+  deduct_pack?: boolean;
 }
 
 export interface UpdateMedicationEntryInput extends MedicationCourseAttributionInput {

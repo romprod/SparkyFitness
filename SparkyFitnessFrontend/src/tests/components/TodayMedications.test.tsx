@@ -9,8 +9,16 @@ import type { MedicationEntry, MedicationDetail } from '@/types/medications';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, defaultValue?: string | Record<string, unknown>) =>
-      typeof defaultValue === 'string' ? defaultValue : _key,
+    t: (
+      _key: string,
+      defaultValue?: string | Record<string, unknown>,
+      options?: Record<string, unknown>
+    ) =>
+      typeof defaultValue === 'string'
+        ? defaultValue.replace(/{{(\w+)}}/g, (_m, name: string) =>
+            String(options?.[name] ?? '')
+          )
+        : _key,
   }),
   initReactI18next: { type: '3rdParty', init: jest.fn() },
 }));
@@ -50,6 +58,25 @@ jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
   }),
   useMedicationCourseScope: () => mockScope,
 }));
+let mockPacks: Array<Record<string, unknown>> = [];
+jest.mock('@/hooks/Medications/useMedicationPacks', () => ({
+  useMedicationPacks: () => ({
+    scope: mockScope,
+    query: { isError: false },
+    data: { today: '2026-11-18', packs: mockPacks },
+  }),
+}));
+const packFixture = (id: string, status: string, remaining: string) => ({
+  id,
+  medication_id: 'med-1',
+  medication_name: 'Test med',
+  label: id === 'p1' ? 'Bottle A' : 'Bottle B',
+  unit_label: 'tablets',
+  status,
+  units_total: '60',
+  units_used: '0',
+  units_remaining: remaining,
+});
 const mockPreparedForm = jest.fn();
 jest.mock('@/pages/Medications/Glp1LogInjection', () => (props: unknown) => {
   mockPreparedForm(props);
@@ -256,6 +283,60 @@ it('deducts a scheduled non-GLP-1 peptide dose with micrograms converted to mg',
     }),
     expect.anything()
   );
+});
+
+describe('pack choice when taking a dose', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPacks = [];
+  });
+  const renderToday = () =>
+    render(
+      <TodayMedications
+        selectedDate="2026-11-18"
+        today="2026-11-18"
+        meds={[medWithDose('08:00')]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+  it('sends no pack and shows no picker for a medication without packs', () => {
+    renderToday();
+    expect(screen.queryByLabelText('Take from')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry.mock.calls[0]![0]).not.toHaveProperty('pack_id');
+  });
+  it('shows what is left in a single pack and leaves the choice automatic', () => {
+    mockPacks = [packFixture('p1', 'in_use', '8')];
+    renderToday();
+    expect(screen.getByText('8 of 60 tablets left')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Take from')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry.mock.calls[0]![0]).not.toHaveProperty('pack_id');
+  });
+  it('lets the user pick between several packs and sends the chosen pack', () => {
+    mockPacks = [
+      packFixture('p1', 'in_use', '8'),
+      packFixture('p2', 'sealed', '60'),
+    ];
+    renderToday();
+    fireEvent.change(screen.getByLabelText('Take from'), {
+      target: { value: 'p2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'taken', pack_id: 'p2' }),
+      expect.anything()
+    );
+  });
+  it('does not offer finished packs', () => {
+    mockPacks = [packFixture('p1', 'finished', '0')];
+    renderToday();
+    expect(screen.queryByText(/tablets left/)).not.toBeInTheDocument();
+  });
 });
 
 describe('quick injection prompt time', () => {

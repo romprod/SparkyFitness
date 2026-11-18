@@ -623,6 +623,10 @@ export const useCreateMedicationEntryMutation = () => {
         refetchType: 'all',
       });
       queryClient.invalidateQueries({ queryKey: ['medications'] });
+      // Doses move pack stock, so the stock screen must not show old balances.
+      void queryClient.invalidateQueries({
+        queryKey: medicationInventoryKeys.all,
+      });
       invalidateReports(queryClient);
       invalidateDiaryTotals(queryClient);
     },
@@ -652,6 +656,10 @@ export const useUpdateMedicationEntryMutation = () => {
         refetchType: 'all',
       });
       queryClient.invalidateQueries({ queryKey: ['medications'] });
+      // Doses move pack stock, so the stock screen must not show old balances.
+      void queryClient.invalidateQueries({
+        queryKey: medicationInventoryKeys.all,
+      });
       invalidateReports(queryClient);
       invalidateDiaryTotals(queryClient);
     },
@@ -678,6 +686,10 @@ export const useDeleteMedicationEntryMutation = () => {
         refetchType: 'all',
       });
       queryClient.invalidateQueries({ queryKey: ['medications'] });
+      // Doses move pack stock, so the stock screen must not show old balances.
+      void queryClient.invalidateQueries({
+        queryKey: medicationInventoryKeys.all,
+      });
       invalidateReports(queryClient);
       invalidateDiaryTotals(queryClient);
     },
