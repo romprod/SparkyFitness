@@ -43,6 +43,7 @@ import { FastingSettings } from './FastingSettings';
 import { GuidedWorkoutSettings } from './GuidedWorkoutSettings';
 import CycleSettings from './CycleSettings';
 import MedicationReorderDefaults from './MedicationReorderDefaults';
+import DoseReminderSettings from './DoseReminderSettings';
 import { PreferenceSettings } from './PreferenceSettings';
 import { HeartRateZoneSettings } from './HeartRateZoneSettings';
 import { ProfileInformation } from './ProfileInformation';
@@ -379,6 +380,7 @@ const Settings = () => {
               <CycleSettings />
             </AccordionItem>
             <MedicationReorderDefaults />
+            <DoseReminderSettings />
             <AccordionItem
               value="guided-workouts"
               className="border rounded-lg mb-4"

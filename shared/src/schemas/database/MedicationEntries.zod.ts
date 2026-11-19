@@ -26,6 +26,9 @@ const medicationEntriesFieldsSchema = z.object({
   course_step_id: z.string().uuid().nullable().optional(),
   scheduled_day: z.string().nullable().optional(),
   course_slot_key: z.string().nullable().optional(),
+  // Pack the dose was taken from, and how many units it deducted.
+  pack_id: z.string().uuid().nullable().optional(),
+  pack_units_deducted: z.union([z.string(), z.number()]).nullable().optional(),
 
   user_id: userIdSchema,
   status: z.string(),

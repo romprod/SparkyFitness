@@ -103,6 +103,8 @@ export default defineConfig(({ mode }) => {
             maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
             navigateFallback: '/index.html',
             navigateFallbackDenylist: [/^\/api/, /^\/uploads/], // Don't serve index.html for API or Uploads
+            // Dose reminder notifications (push and tap handlers).
+            importScripts: ['push-sw.js'],
           },
         }),
     ].filter(Boolean),

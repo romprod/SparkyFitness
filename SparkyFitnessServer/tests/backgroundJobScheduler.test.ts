@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   cleanupSessions: vi.fn(),
   deleteExpiredTickets: vi.fn(),
   demoReset: vi.fn(),
+  doseReminders: vi.fn(),
   log: vi.fn(),
 }));
 
@@ -29,6 +30,9 @@ vi.mock('../services/providerSyncScheduler.js', () => ({
 vi.mock('../services/demoSeedService.js', () => ({
   scheduleDemoMidnightReset: mocks.demoReset,
 }));
+vi.mock('../services/doseReminderService.js', () => ({
+  scheduleDoseReminders: mocks.doseReminders,
+}));
 
 import { scheduleBackgroundJobs } from '../services/backgroundJobScheduler.js';
 
@@ -48,6 +52,7 @@ describe('scheduleBackgroundJobs', () => {
     expect(mocks.openFoodFacts).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.providerSyncs).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.demoReset).toHaveBeenCalledExactlyOnceWith();
+    expect(mocks.doseReminders).toHaveBeenCalledExactlyOnceWith();
     expect(mocks.schedule).toHaveBeenCalledExactlyOnceWith(
       '0 3 * * *',
       expect.any(Function),
@@ -78,6 +83,7 @@ describe('scheduleBackgroundJobs', () => {
     expect(mocks.openFoodFacts).not.toHaveBeenCalled();
     expect(mocks.providerSyncs).not.toHaveBeenCalled();
     expect(mocks.demoReset).not.toHaveBeenCalled();
+    expect(mocks.doseReminders).not.toHaveBeenCalled();
     expect(mocks.log).toHaveBeenCalledWith(
       'info',
       expect.stringContaining('SPARKY_FITNESS_DISABLE_SCHEDULED_JOBS=true')

@@ -5,6 +5,7 @@ import { startProviderSyncSchedulers } from './providerSyncScheduler.js';
 import { cleanupSessions } from '../auth.js';
 import { deleteExpiredTickets } from './passkeyTicketService.js';
 import { scheduleDemoMidnightReset } from './demoSeedService.js';
+import { scheduleDoseReminders } from './doseReminderService.js';
 import { log } from '../config/logging.js';
 import { scheduledJobsDisabled } from '../utils/scheduledJobs.js';
 
@@ -46,4 +47,5 @@ export async function scheduleBackgroundJobs(): Promise<void> {
   scheduleSessionCleanup();
   startProviderSyncSchedulers();
   scheduleDemoMidnightReset();
+  scheduleDoseReminders();
 }

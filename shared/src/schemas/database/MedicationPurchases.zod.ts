@@ -36,6 +36,11 @@ export const medicationPurchaseVialsSchema = z.object({
   user_id: owner,
   purchase_item_id: owner,
 });
+export const medicationPurchasePacksSchema = z.object({
+  pack_id: owner,
+  user_id: owner,
+  purchase_item_id: owner,
+});
 export const medicationPurchaseOperationsSchema = z.object({
   user_id: owner,
   operation_id: owner,

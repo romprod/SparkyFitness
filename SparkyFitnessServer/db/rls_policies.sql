@@ -128,6 +128,9 @@ BEGIN
     'medication_purchase_items',
     'medication_purchase_vials',
     'medication_purchase_packs',
+    'medication_reminder_settings',
+    'medication_reminder_sends',
+    'web_push_subscriptions',
     'medication_purchase_operations',
     'medication_stock_status_audit',
     'medication_preparations',
@@ -821,6 +824,9 @@ SELECT create_owner_policy('medication_purchases');
 SELECT create_owner_policy('medication_purchase_items');
 SELECT create_owner_policy('medication_purchase_vials');
 SELECT create_owner_policy('medication_purchase_packs');
+SELECT create_owner_policy('medication_reminder_settings');
+SELECT create_owner_policy('medication_reminder_sends');
+SELECT create_owner_policy('web_push_subscriptions');
 -- Creation receipts are append-only tombstones; invoice deletion must not allow reuse.
 DROP POLICY IF EXISTS owner_policy ON public.medication_purchase_operations;
 DROP POLICY IF EXISTS owner_select_policy ON public.medication_purchase_operations;
