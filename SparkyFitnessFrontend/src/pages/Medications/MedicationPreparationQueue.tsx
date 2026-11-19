@@ -250,6 +250,15 @@ export default function MedicationPreparationQueue({
             'medications.stockDashboard.needsPreparation',
             'Needs preparation'
           )}
+          {!query.isError && data && (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {t('medications.stockDashboard.needsPreparationCount', {
+                count: data.preparation_queue.length,
+                defaultValue_one: '{{count}} vial',
+                defaultValue_other: '{{count}} vials',
+              })}
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">

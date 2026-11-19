@@ -1733,6 +1733,8 @@
       "readOnly": "Preparing stock requires medication edit access.",
       "prepare": "Prepare",
       "needsPreparation": "Needs preparation",
+      "needsPreparationCount_one": "{{count}} vial",
+      "needsPreparationCount_other": "{{count}} vials",
       "queueError": "Could not load the preparation queue. No preparation eligibility is assumed.",
       "stalePreparation": "This stock record changed. Close this preparation and reopen it from the refreshed queue before saving."
     },

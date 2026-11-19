@@ -300,6 +300,7 @@ it('lists all medications without turning the new-stock picker into an overview 
   expect(tracked.querySelectorAll('article')).toHaveLength(2);
   const queue = screen.getByRole('region', { name: 'Needs preparation' });
   expect(queue.querySelectorAll('details')).toHaveLength(2);
+  expect(queue).toHaveTextContent(/\d+ vials?/);
   expect(queue).toHaveTextContent('Inactive blend');
   expect(container.querySelectorAll('details[open]')).toHaveLength(0);
   expect(screen.getByText(/Archived vial/)).toBeInTheDocument();

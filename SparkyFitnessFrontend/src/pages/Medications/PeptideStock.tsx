@@ -363,15 +363,26 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
                 className="space-y-3"
                 aria-labelledby="needs-preparation-heading"
               >
-                <h3
-                  id="needs-preparation-heading"
-                  className="text-sm font-semibold"
-                >
-                  {t(
-                    'medications.stockDashboard.needsPreparation',
-                    'Needs preparation'
+                <div className="flex items-baseline gap-2">
+                  <h3
+                    id="needs-preparation-heading"
+                    className="text-sm font-semibold"
+                  >
+                    {t(
+                      'medications.stockDashboard.needsPreparation',
+                      'Needs preparation'
+                    )}
+                  </h3>
+                  {!dashboard.query.isError && (
+                    <span className="text-sm text-muted-foreground">
+                      {t('medications.stockDashboard.needsPreparationCount', {
+                        count: queue.length,
+                        defaultValue_one: '{{count}} vial',
+                        defaultValue_other: '{{count}} vials',
+                      })}
+                    </span>
                   )}
-                </h3>
+                </div>
                 {dashboard.query.isError ? (
                   <p role="alert" className="text-sm text-muted-foreground">
                     {t(
