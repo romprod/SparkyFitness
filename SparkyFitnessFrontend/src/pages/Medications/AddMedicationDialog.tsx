@@ -7,6 +7,9 @@ import {
   GLP1_DRUG_PROFILES,
   normalizeNutrientName,
   resolveMacroFieldKey,
+  MAX_MIN_INTERVAL_HOURS,
+  readDosePolicy,
+  type MissedDosePolicy,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -234,11 +237,22 @@ export default function AddMedicationDialog({
   const [rxNumber, setRxNumber] = useState(editMed?.rx_number ?? '');
   const [reason, setReason] = useState(editMed?.reason_text ?? '');
   const [notes, setNotes] = useState(editMed?.notes ?? '');
+  const savedPolicy = readDosePolicy(editMed?.custom_fields);
+  const [minIntervalHours, setMinIntervalHours] = useState(
+    savedPolicy.min_interval_hours ? String(savedPolicy.min_interval_hours) : ''
+  );
+  const [missedPolicy, setMissedPolicy] = useState<MissedDosePolicy>(
+    savedPolicy.missed_policy
+  );
   const [effectiveness, setEffectiveness] = useState<number>(
     editMed?.effectiveness_rating ?? 0
   );
   const [photoPath, setPhotoPath] = useState(editMed?.photo_path ?? '');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // Open when guardrails are already set, so an edit shows what is in force.
+  const [showAdvanced, setShowAdvanced] = useState(
+    savedPolicy.min_interval_hours !== null ||
+      savedPolicy.missed_policy !== 'prompt'
+  );
 
   const createMutation = useCreateMedicationMutation();
   const updateMutation = useUpdateMedicationMutation();
@@ -497,6 +511,21 @@ export default function AddMedicationDialog({
       ? doseUnit
       : strengthUnit;
 
+  // The dosing guardrails live beside the medication's other custom fields; an empty interval
+  // and the default policy store nothing.
+  const withDosePolicy = (fields: Record<string, unknown>) => {
+    const hours = Number(minIntervalHours);
+    return {
+      ...fields,
+      ...(!isSupplement && hours > 0
+        ? { min_interval_hours: Math.min(hours, MAX_MIN_INTERVAL_HOURS) }
+        : {}),
+      ...(!isSupplement && missedPolicy !== 'prompt'
+        ? { missed_policy: missedPolicy }
+        : {}),
+    };
+  };
+
   const handleDoseAmountChange = (value: string) => {
     if (!doseTouched) {
       setDoseTouched(true);
@@ -574,20 +603,22 @@ export default function AddMedicationDialog({
       notes: notes.trim() || null,
       effectiveness_rating: effectiveness > 0 ? effectiveness : null,
       photo_path: photoPath || null,
-      custom_fields: isGlp1
-        ? glp1Drug === 'custom'
-          ? {
-              glp1_drug: 'custom',
-              custom_glp1_name: customName.trim() || null,
-              custom_half_life_days: customHalfLife
-                ? Number(customHalfLife)
-                : 7.0,
-              custom_t_max_days: customTMax ? Number(customTMax) : 1.5,
-              custom_cadence: customCadence,
-              custom_is_oral: customIsOral,
-            }
-          : { glp1_drug: glp1Drug }
-        : {},
+      custom_fields: withDosePolicy(
+        isGlp1
+          ? glp1Drug === 'custom'
+            ? {
+                glp1_drug: 'custom',
+                custom_glp1_name: customName.trim() || null,
+                custom_half_life_days: customHalfLife
+                  ? Number(customHalfLife)
+                  : 7.0,
+                custom_t_max_days: customTMax ? Number(customTMax) : 1.5,
+                custom_cadence: customCadence,
+                custom_is_oral: customIsOral,
+              }
+            : { glp1_drug: glp1Drug }
+          : {}
+      ),
     };
     // Supplements never carry GLP-1 metadata, so the branch above leaves them an empty
     // object to extend.
@@ -620,6 +651,8 @@ export default function AddMedicationDialog({
         setRxNumber('');
         setReason('');
         setNotes('');
+        setMinIntervalHours('');
+        setMissedPolicy('prompt');
         setEffectiveness(0);
         setPhotoPath('');
         setIsSupplement(defaultIsSupplement);
@@ -1281,6 +1314,74 @@ export default function AddMedicationDialog({
                     placeholder="https://example.com/pill.png"
                   />
                 </div>
+
+                {/* Dosing guardrails */}
+                {!isSupplement && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="med-min-interval">
+                        {t(
+                          'medications.cabinet.minInterval',
+                          'Minimum hours between doses (optional)'
+                        )}
+                      </Label>
+                      <Input
+                        id="med-min-interval"
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        max={MAX_MIN_INTERVAL_HOURS}
+                        value={minIntervalHours}
+                        onChange={(e) => setMinIntervalHours(e.target.value)}
+                        placeholder="24"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          'medications.cabinet.minIntervalHint',
+                          'You are asked to confirm a dose logged sooner than this after the last one.'
+                        )}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="med-missed-policy">
+                        {t(
+                          'medications.cabinet.missedPolicy',
+                          'If a dose is missed'
+                        )}
+                      </Label>
+                      <Select
+                        value={missedPolicy}
+                        onValueChange={(value) =>
+                          setMissedPolicy(value as MissedDosePolicy)
+                        }
+                      >
+                        <SelectTrigger id="med-missed-policy">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="prompt">
+                            {t('medications.cabinet.missedPrompt', 'Ask me')}
+                          </SelectItem>
+                          <SelectItem value="skip">
+                            {t('medications.cabinet.missedSkip', 'Skip it')}
+                          </SelectItem>
+                          <SelectItem value="take_now">
+                            {t(
+                              'medications.cabinet.missedTakeNow',
+                              'Take it when I notice'
+                            )}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          'medications.cabinet.missedPolicyHint',
+                          'Shown as a reminder on an overdue dose. Nothing is logged for you.'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Notes */}
                 <div className="space-y-2">

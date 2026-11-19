@@ -40,6 +40,11 @@ import {
   type SharedScheduleRule,
   type MedicationCourseExpectedSlot,
   type MedicationCourseAttributionInput,
+  addDays,
+  intervalWarning,
+  overdueHours,
+  readDosePolicy,
+  type IntervalWarning,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,8 +75,10 @@ import { Badge } from '@/components/ui/badge';
 import { formatTimeOfDayString } from '@/utils/timeFormatters';
 import { useActiveUser } from '@/contexts/ActiveUserContext';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import {
   useCreateMedicationEntryMutation,
+  useMedicationEntries,
   useUpdateMedicationEntryMutation,
   useDeleteMedicationEntryMutation,
   useLogGlpInjectionEntryMutation,
@@ -178,6 +185,40 @@ export default function TodayMedications({
     noteKey: string;
     notes: string | null;
   } | null>(null);
+
+  // Doses taken recently, to warn about a dose logged inside a medication's minimum interval.
+  const intervalEntries = useMedicationEntries({
+    fromDate: addDays(today, -8),
+    toDate: today,
+  });
+  const [intervalGuard, setIntervalGuard] = useState<{
+    name: string;
+    warning: IntervalWarning;
+    proceed: () => void;
+  } | null>(null);
+  const guardInterval = (med: MedicationDetail, proceed: () => void) => {
+    const { min_interval_hours } = readDosePolicy(med.custom_fields);
+    const warning =
+      selectedDate === today
+        ? intervalWarning({
+            takenAt: (intervalEntries.data ?? [])
+              .filter(
+                (e) =>
+                  e.medication_id === med.id &&
+                  (e.status === 'taken' || e.status === 'prn_taken')
+              )
+              .map((e) => e.taken_at),
+            minHours: min_interval_hours,
+            now: new Date(),
+          })
+        : null;
+    if (!warning) return proceed();
+    setIntervalGuard({
+      name: med.display_name || med.name,
+      warning,
+      proceed,
+    });
+  };
 
   // Mutations
   const createEntryMutation = useCreateMedicationEntryMutation();
@@ -437,6 +478,15 @@ export default function TodayMedications({
                             : t('medications.schedule.anyTime', 'Any time')}
                         </span>
                       </div>
+                      {!isLogged && selectedDate === today && (
+                        <MissedDoseHint
+                          policy={
+                            readDosePolicy(due.medication.custom_fields)
+                              .missed_policy
+                          }
+                          hours={overdueHours(scheduledForDue(due), new Date())}
+                        />
+                      )}
                       {!isLogged &&
                         !managed &&
                         !isStockInjectable(due.medication) && (
@@ -620,6 +670,32 @@ export default function TodayMedications({
           </div>
         </div>
       </CardContent>
+      <ConfirmationDialog
+        open={intervalGuard !== null}
+        onOpenChange={(open) => {
+          if (!open) setIntervalGuard(null);
+        }}
+        title={t(
+          'medications.minInterval.title',
+          'Log {{name}} sooner than planned?',
+          { name: intervalGuard?.name ?? '' }
+        )}
+        description={t(
+          'medications.minInterval.body',
+          'The last dose was {{hours}} h ago and the minimum interval is {{min}} h. It is up at {{time}}.',
+          {
+            hours: intervalGuard?.warning.hours_since ?? 0,
+            min: intervalGuard?.warning.min_hours ?? 0,
+            time: intervalGuard ? formatTime(intervalGuard.warning.ok_at) : '',
+          }
+        )}
+        confirmLabel={t('medications.minInterval.confirm', 'Log anyway')}
+        onConfirm={() => {
+          const proceed = intervalGuard?.proceed;
+          setIntervalGuard(null);
+          proceed?.();
+        }}
+      />
     </Card>
   );
 
@@ -710,6 +786,18 @@ export default function TodayMedications({
   };
 
   const handleLogScheduled = (
+    due: DueDose,
+    status: 'taken' | 'skipped' | 'snoozed'
+  ) => {
+    if (status === 'taken')
+      guardInterval(due.medication, () => logScheduled(due, status));
+    else logScheduled(due, status);
+  };
+
+  const handleLogPrn = (med: MedicationDetail) =>
+    guardInterval(med, () => logPrn(med));
+
+  const logScheduled = (
     due: DueDose,
     status: 'taken' | 'skipped' | 'snoozed'
   ) => {
@@ -811,7 +899,7 @@ export default function TodayMedications({
     );
   };
 
-  const handleLogPrn = (med: MedicationDetail) => {
+  const logPrn = (med: MedicationDetail) => {
     const prnSched = med.schedules?.find((s) => s.schedule_type_id === 'prn');
     const schedId = prnSched?.id || med.id;
     const notesVal = logNotes[schedId]?.trim() || null;
@@ -1671,5 +1759,31 @@ export default function TodayMedications({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function MissedDoseHint({
+  policy,
+  hours,
+}: {
+  policy: 'prompt' | 'skip' | 'take_now';
+  hours: number | null;
+}) {
+  const { t } = useTranslation();
+  if (policy === 'prompt' || hours === null || hours < 1) return null;
+  return (
+    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+      {policy === 'skip'
+        ? t(
+            'medications.missedPolicy.skip',
+            'Overdue by {{hours}} h. You set this medication to skip a missed dose.',
+            { hours }
+          )
+        : t(
+            'medications.missedPolicy.takeNow',
+            'Overdue by {{hours}} h. You set this medication to take a missed dose when you notice.',
+            { hours }
+          )}
+    </p>
   );
 }

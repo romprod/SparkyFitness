@@ -113,6 +113,53 @@ function lastUpdateArgs(): { id: string; body: Partial<Medication> } {
   return call[0] as { id: string; body: Partial<Medication> };
 }
 
+describe('AddMedicationDialog dosing guardrails', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('saves a minimum interval with the medication (add)', () => {
+    render(<AddMedicationDialog />);
+    openDialog();
+    fireEvent.click(screen.getByText('Show Advanced Options'));
+    setField('Name', 'Retatrutide');
+    setField('Minimum hours between doses (optional)', '72');
+    save();
+
+    expect(lastCreateBody().custom_fields).toEqual({ min_interval_hours: 72 });
+  });
+
+  it('keeps the guardrails when other fields are edited, and drops a cleared interval', () => {
+    const med = {
+      ...mobileDoseMed,
+      custom_fields: { min_interval_hours: 48, missed_policy: 'skip' },
+    };
+    render(<AddMedicationDialog editMed={med} />);
+    openDialog();
+    expect(
+      screen.getByLabelText('Minimum hours between doses (optional)')
+    ).toHaveValue(48);
+    setField('Name', 'Renamed');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      min_interval_hours: 48,
+      missed_policy: 'skip',
+    });
+  });
+
+  it('drops a cleared interval but keeps the missed-dose policy (edit)', () => {
+    const med = {
+      ...mobileDoseMed,
+      custom_fields: { min_interval_hours: 48, missed_policy: 'skip' },
+    };
+    render(<AddMedicationDialog editMed={med} />);
+    openDialog();
+    setField('Minimum hours between doses (optional)', '');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      missed_policy: 'skip',
+    });
+  });
+});
+
 describe('AddMedicationDialog dose fields', () => {
   beforeEach(() => jest.clearAllMocks());
 

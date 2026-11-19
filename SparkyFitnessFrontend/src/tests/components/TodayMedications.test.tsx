@@ -112,7 +112,9 @@ beforeEach(() => {
 });
 const mockCreateEntry = jest.fn();
 const mockLogInjection = jest.fn();
+let mockIntervalEntries: unknown[] = [];
 jest.mock('@/hooks/useMedications', () => ({
+  useMedicationEntries: () => ({ data: mockIntervalEntries }),
   useCreateMedicationEntryMutation: () => ({
     mutate: mockCreateEntry,
     isPending: false,
@@ -686,4 +688,84 @@ it('keeps history association draft after a stale response and prevents repeated
   expect(mockUpdateEntry).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('dialog')).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent('course changed');
+});
+
+describe('minimum interval and missed-dose policy', () => {
+  const NOW = new Date('2026-12-31T15:00:00Z');
+  const renderToday = (fields: Record<string, unknown>) => {
+    const med = medWithDose('09:00');
+    med.custom_fields = fields;
+    return render(
+      <TodayMedications
+        selectedDate="2026-12-31"
+        today="2026-12-31"
+        meds={[med]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+  };
+  const takenAt = (iso: string) => [
+    { medication_id: 'med-1', status: 'taken', taken_at: iso },
+  ];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockTimezone = 'Europe/Berlin';
+    mockIntervalEntries = [];
+    jest.useFakeTimers({ now: NOW });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('asks before logging a dose inside the minimum interval, then logs on confirm', () => {
+    mockIntervalEntries = takenAt('2026-12-31T12:00:00Z');
+    renderToday({ min_interval_hours: 24 });
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Log Vitamin D sooner than planned?')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/The last dose was 3 h ago/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Log anyway' }));
+    expect(mockCreateEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'taken', schedule_id: 'sched-1' }),
+      expect.anything()
+    );
+  });
+
+  it('logs straight away once the interval has passed or none is set', () => {
+    mockIntervalEntries = takenAt('2026-12-30T10:00:00Z');
+    renderToday({ min_interval_hours: 24 });
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it('never blocks skipping a dose', () => {
+    mockIntervalEntries = takenAt('2026-12-31T12:00:00Z');
+    renderToday({ min_interval_hours: 24 });
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    expect(mockCreateEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it('reminds about the missed-dose policy on an overdue dose, and only for skip or take now', () => {
+    const { unmount } = renderToday({ missed_policy: 'skip' });
+    expect(
+      screen.getByText(
+        'Overdue by 7 h. You set this medication to skip a missed dose.'
+      )
+    ).toBeInTheDocument();
+    unmount();
+    renderToday({ missed_policy: 'take_now' });
+    expect(
+      screen.getByText(/take a missed dose when you notice/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows no reminder with the default ask policy', () => {
+    renderToday({});
+    expect(screen.queryByText(/Overdue by/)).not.toBeInTheDocument();
+  });
 });

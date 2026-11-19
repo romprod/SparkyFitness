@@ -737,7 +737,14 @@
       "todayTab": "Today",
       "adherenceDescriptionAfter": "tab.",
       "drPrescriber": "Dr. {{prescriber}}",
-      "schedulesAndDailyChecklistsFor": "Schedules and daily checklists for non-GLP-1 medications are fully active. Manage schedule rules below, and log daily intake from the <strong>Today</strong> tab."
+      "schedulesAndDailyChecklistsFor": "Schedules and daily checklists for non-GLP-1 medications are fully active. Manage schedule rules below, and log daily intake from the <strong>Today</strong> tab.",
+      "minInterval": "Minimum hours between doses (optional)",
+      "minIntervalHint": "You are asked to confirm a dose logged sooner than this after the last one.",
+      "missedPolicy": "If a dose is missed",
+      "missedPrompt": "Ask me",
+      "missedSkip": "Skip it",
+      "missedTakeNow": "Take it when I notice",
+      "missedPolicyHint": "Shown as a reminder on an overdue dose. Nothing is logged for you."
     },
     "subtype": {
       "all": "All",
@@ -2002,6 +2009,15 @@
       "invalid": "Check the stack and try again.",
       "duplicate": "You already have a stack with that name.",
       "saveFailed": "Could not save the stack. Please try again."
+    },
+    "minInterval": {
+      "title": "Log {{name}} sooner than planned?",
+      "body": "The last dose was {{hours}} h ago and the minimum interval is {{min}} h. It is up at {{time}}.",
+      "confirm": "Log anyway"
+    },
+    "missedPolicy": {
+      "skip": "Overdue by {{hours}} h. You set this medication to skip a missed dose.",
+      "takeNow": "Overdue by {{hours}} h. You set this medication to take a missed dose when you notice."
     }
   },
   "nav": {
