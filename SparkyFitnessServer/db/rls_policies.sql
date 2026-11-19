@@ -128,6 +128,8 @@ BEGIN
     'medication_purchase_items',
     'medication_purchase_vials',
     'medication_purchase_packs',
+    'medication_stacks',
+    'medication_stack_members',
     'medication_reminder_settings',
     'medication_reminder_sends',
     'web_push_subscriptions',
@@ -1126,6 +1128,8 @@ SELECT create_medication_policy('medication_course_operations');
 SELECT create_medication_policy('medication_entries');
 SELECT create_medication_policy('medication_pens');
 SELECT create_medication_policy('medication_packs');
+SELECT create_medication_policy('medication_stacks');
+SELECT create_medication_policy('medication_stack_members');
 CREATE POLICY select_policy ON public.medication_syringes FOR SELECT TO PUBLIC
 USING (user_id IS NULL OR has_medication_read_access(user_id));
 CREATE POLICY modify_policy ON public.medication_syringes FOR ALL TO PUBLIC

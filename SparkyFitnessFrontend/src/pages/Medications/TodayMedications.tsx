@@ -1,4 +1,7 @@
 import MedicationPackPicker from './MedicationPackPicker';
+import MedicationStacksCard, {
+  type StackLogResult,
+} from './MedicationStacksCard';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -653,6 +656,59 @@ export default function TodayMedications({
     );
   }, [dueDoses, checklistEntries]);
 
+  // Wall-clock time on the selected day, so a dose on a clock-change day is not
+  // stored an hour off.
+  const scheduledForDue = (due: DueDose): string | null => {
+    if (!due.schedule.time_of_day) return null;
+    try {
+      const [h = '0', m = '0'] = due.schedule.time_of_day.split(':');
+      return localDateTimeToUtc(
+        `${selectedDate}T${h.padStart(2, '0')}:${m.padStart(2, '0')}`,
+        timezone
+      ).toISOString();
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  };
+
+  const isDueLogged = (due: DueDose) =>
+    checklistEntries.some(
+      (e) =>
+        entryMatchesDue(e, due) &&
+        (e.status === 'taken' || e.status === 'skipped')
+    );
+
+  // A stack logs a dose only when nothing more has to be asked: no managed course
+  // confirmation and no injectable that needs a site and vial.
+  const isStackLoggable = (due: DueDose) =>
+    !due.schedule.course_revision_id && !isStockInjectable(due.medication);
+
+  const logStackDues = async (list: DueDose[]): Promise<StackLogResult> => {
+    const result: StackLogResult = { logged: 0, failed: [] };
+    const takenAt =
+      selectedDate === today
+        ? new Date().toISOString()
+        : `${selectedDate}T12:00:00.000Z`;
+    for (const due of list) {
+      try {
+        await createEntryMutation.mutateAsync({
+          medication_id: due.medication.id,
+          schedule_id: due.schedule.id,
+          status: 'taken',
+          taken_at: takenAt,
+          scheduled_for: scheduledForDue(due),
+          entry_date: selectedDate,
+          notes: null,
+        });
+        result.logged++;
+      } catch {
+        result.failed.push(due.medication.display_name || due.medication.name);
+      }
+    }
+    return result;
+  };
+
   const handleLogScheduled = (
     due: DueDose,
     status: 'taken' | 'skipped' | 'snoozed'
@@ -704,20 +760,7 @@ export default function TodayMedications({
       }
       return;
     }
-    let scheduledFor = null;
-    if (due.schedule.time_of_day) {
-      try {
-        // Wall-clock time on the selected day, so a dose on a clock-change day
-        // is not stored an hour off.
-        const [h = '0', m = '0'] = due.schedule.time_of_day.split(':');
-        scheduledFor = localDateTimeToUtc(
-          `${selectedDate}T${h.padStart(2, '0')}:${m.padStart(2, '0')}`,
-          timezone
-        ).toISOString();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    const scheduledFor = scheduledForDue(due);
 
     const notesVal = logNotes[due.schedule.id]?.trim() || null;
     const takenAt =
@@ -1281,6 +1324,13 @@ export default function TodayMedications({
                 </CardContent>
               </Card>
             ))}
+          <MedicationStacksCard
+            dues={dueDoses}
+            isLogged={isDueLogged}
+            isSimple={isStackLoggable}
+            canWrite={courseDue.scope.canWrite}
+            logDues={logStackDues}
+          />
           {/* Today's Medications */}
           {showMedicationCard &&
             renderDoseCard({

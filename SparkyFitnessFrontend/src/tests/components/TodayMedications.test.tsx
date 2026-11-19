@@ -149,6 +149,7 @@ jest.mock(
     )
 );
 jest.mock('@/pages/Medications/MedicationLogCalendar', () => () => null);
+jest.mock('@/pages/Medications/MedicationStacksCard', () => () => null);
 
 const medWithDose = (timeOfDay: string): MedicationDetail => ({
   id: 'med-1',
