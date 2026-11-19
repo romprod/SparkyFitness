@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import {
   computeDraw,
@@ -39,6 +39,7 @@ jest.mock('@/pages/Medications/MedicationCourseAttributionPicker', () => ({
   ),
 }));
 const mockUpdate = jest.fn();
+const mockDelete = jest.fn();
 const mockPreview = jest.fn();
 let mockEntries: InjectionEntry[] = [];
 let mockTimezone = 'Europe/London';
@@ -48,7 +49,7 @@ let mockState = 'synthetic-state';
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationInjections: () => ({ data: mockEntries }),
   useUpdateInjectionMutation: () => ({ mutate: mockUpdate, isPending: false }),
-  useDeleteInjectionMutation: () => ({ mutate: jest.fn(), isPending: false }),
+  useDeleteInjectionMutation: () => ({ mutate: mockDelete, isPending: false }),
 }));
 jest.mock('@/hooks/useMedicationSyringes', () => ({
   useMedicationSyringes: () => ({
@@ -77,6 +78,7 @@ const syringe = {
 };
 beforeEach(() => {
   mockUpdate.mockClear();
+  mockDelete.mockClear();
   mockCourseCurrent = true;
   mockTimezone = 'Europe/London';
   mockTimeFormat = 'HH:mm';
@@ -488,4 +490,28 @@ it('reuses the full dialog directly from the calendar and preserves unchanged ex
   expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('dose_mg');
   expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('injected_at');
   expect(mockUpdate.mock.calls[0][0].body).not.toHaveProperty('entry_date');
+});
+it('asks before deleting a recorded dose and only deletes once confirmed', () => {
+  render(<Glp1RecentInjections med={medication} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Delete injection entry' })
+  );
+  expect(mockDelete).not.toHaveBeenCalled();
+  const dialog = screen.getByRole('dialog', {
+    name: 'Delete this recorded dose?',
+  });
+  expect(dialog).toHaveTextContent('2026-11-15T12:00:00Z');
+  expect(dialog).toHaveTextContent('Any stock it used is restored.');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  expect(mockDelete).toHaveBeenCalledTimes(1);
+  expect(mockDelete).toHaveBeenCalledWith('entry');
+});
+it('keeps the recorded dose when the delete confirmation is cancelled', () => {
+  render(<Glp1RecentInjections med={medication} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Delete injection entry' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(mockDelete).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

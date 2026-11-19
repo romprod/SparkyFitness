@@ -20,6 +20,7 @@ import {
   medicationVialLabelMassSchema,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -134,6 +135,11 @@ function InventorySession({
     setPreparationOpen(true);
   };
   const [editingPen, setEditingPen] = useState<MedicationPen | null>(null);
+  // Retire and delete only run after an explicit confirmation.
+  const [confirmPen, setConfirmPen] = useState<{
+    action: 'retire' | 'delete';
+    pen: MedicationPen;
+  } | null>(null);
   useEffect(() => {
     if (stockView && !stockCanWrite) {
       setInventoryOpen(false);
@@ -428,10 +434,22 @@ function InventorySession({
     }
   }, [stockView, pensQ.data, pensQ.isError, queueItems, onStockCounts, medId]);
   const retirePen = (p: MedicationPen) =>
-    updatePenMutation.mutate({
-      id: p.id,
-      body: { status: 'finished', lifecycle_intent: true },
-    });
+    setConfirmPen({ action: 'retire', pen: p });
+  const removePen = (p: MedicationPen) =>
+    setConfirmPen({ action: 'delete', pen: p });
+  const confirmPenAction = () => {
+    if (!confirmPen) return;
+    const { action, pen } = confirmPen;
+    setConfirmPen(null);
+    if (action === 'retire') {
+      updatePenMutation.mutate({
+        id: pen.id,
+        body: { status: 'finished', lifecycle_intent: true },
+      });
+    } else {
+      deletePenMutation.mutate(pen.id);
+    }
+  };
   const stockActions = (p: MedicationPen) => {
     if (!stockCanWrite) return null;
     const canPrepare =
@@ -480,7 +498,7 @@ function InventorySession({
             size="sm"
             className="h-7 px-1 text-destructive hover:text-destructive"
             disabled={deletePenMutation.isPending}
-            onClick={() => deletePenMutation.mutate(p.id)}
+            onClick={() => removePen(p)}
           >
             <Trash2 aria-hidden="true" className="mr-1 h-3.5 w-3.5" />
             {t('common.delete', 'Delete')}
@@ -520,7 +538,7 @@ function InventorySession({
               )}
               <DropdownMenuItem
                 disabled={deletePenMutation.isPending}
-                onSelect={() => deletePenMutation.mutate(p.id)}
+                onSelect={() => removePen(p)}
               >
                 {t('common.delete', 'Delete')}
               </DropdownMenuItem>
@@ -645,7 +663,7 @@ function InventorySession({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={() => deletePenMutation.mutate(p.id)}
+                onClick={() => removePen(p)}
                 disabled={deletePenMutation.isPending}
                 aria-label={t(
                   'medications.glp1InventoryManager.removePenVial',
@@ -1487,6 +1505,47 @@ function InventorySession({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmationDialog
+        open={confirmPen !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmPen(null);
+        }}
+        onConfirm={confirmPenAction}
+        variant="destructive"
+        title={
+          confirmPen?.action === 'delete'
+            ? t(
+                'medications.stockLayout.deleteConfirmTitle',
+                'Delete {{name}}?',
+                {
+                  name: confirmPen.pen.label || med.display_name || med.name,
+                }
+              )
+            : t(
+                'medications.stockLayout.retireConfirmTitle',
+                'Retire {{name}}?',
+                {
+                  name: confirmPen?.pen.label || med.display_name || med.name,
+                }
+              )
+        }
+        description={
+          confirmPen?.action === 'delete'
+            ? t(
+                'medications.stockLayout.deleteConfirmBody',
+                'This permanently removes it from your stock and cannot be undone. Stock with recorded doses cannot be deleted; retire it instead.'
+              )
+            : t(
+                'medications.stockLayout.retireConfirmBody',
+                'It is marked finished and leaves your active stock. Doses already logged are kept.'
+              )
+        }
+        confirmLabel={
+          confirmPen?.action === 'delete'
+            ? t('common.delete', 'Delete')
+            : t('medications.stockLayout.retire', 'Retire')
+        }
+      />
     </>
   );
 }

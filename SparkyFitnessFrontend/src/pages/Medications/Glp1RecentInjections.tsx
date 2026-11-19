@@ -14,6 +14,7 @@ import {
   type MedicationCourseAttributionInput,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -77,6 +78,8 @@ export default function Glp1RecentInjections({
   const injQ = useMedicationInjections(medId, !editorOnly);
   const updateInjMutation = useUpdateInjectionMutation(medId);
   const deleteInjMutation = useDeleteInjectionMutation(medId);
+  // A recorded dose is only deleted after an explicit confirmation.
+  const [deletingInj, setDeletingInj] = useState<InjectionEntry | null>(null);
 
   const [editingInj, setEditingInj] = useState<InjectionEntry | null>(
     initialInjection ?? null
@@ -385,7 +388,7 @@ export default function Glp1RecentInjections({
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteInjMutation.mutate(inj.id)}
+                    onClick={() => setDeletingInj(inj)}
                     disabled={deleteInjMutation.isPending}
                     aria-label={t(
                       'medications.glp1RecentInjections.deleteInjectionEntry',
@@ -680,6 +683,29 @@ export default function Glp1RecentInjections({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmationDialog
+        open={deletingInj !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingInj(null);
+        }}
+        onConfirm={() => {
+          if (!deletingInj) return;
+          const { id } = deletingInj;
+          setDeletingInj(null);
+          deleteInjMutation.mutate(id);
+        }}
+        variant="destructive"
+        title={t(
+          'medications.glp1RecentInjections.deleteConfirmTitle',
+          'Delete this recorded dose?'
+        )}
+        description={t(
+          'medications.glp1RecentInjections.deleteConfirmBody',
+          'This deletes the dose recorded on {{date}}. Any stock it used is restored.',
+          { date: deletingInj ? formatDate(deletingInj.injected_at) : '' }
+        )}
+        confirmLabel={t('common.delete', 'Delete')}
+      />
     </>
   );
 }

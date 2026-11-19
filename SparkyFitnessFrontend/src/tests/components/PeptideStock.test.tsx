@@ -17,6 +17,7 @@ import type { Medication, MedicationPen } from '@/types/medications';
 import type { MedicationPackView } from '@workspace/shared';
 const mockSave = jest.fn();
 const mockUpdatePen = jest.fn();
+const mockDeletePen = jest.fn();
 const mockPens = jest.fn(
   (_id: string): { data: MedicationPen[]; isError?: boolean } => ({ data: [] })
 );
@@ -81,7 +82,7 @@ jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: (id: string) => mockPens(id),
   useCreatePenMutation: () => ({ mutate: mockSave, isPending: false }),
   useUpdatePenMutation: () => ({ mutate: mockUpdatePen, isPending: false }),
-  useDeletePenMutation: () => ({ mutate: jest.fn(), isPending: false }),
+  useDeletePenMutation: () => ({ mutate: mockDeletePen, isPending: false }),
   usePreparationReview: () => ({
     data: undefined,
     isFetching: false,
@@ -155,6 +156,7 @@ const peptide = {
 beforeEach(() => {
   mockSave.mockClear();
   mockUpdatePen.mockClear();
+  mockDeletePen.mockClear();
   mockPens.mockReset();
   mockPens.mockReturnValue({ data: [] });
   mockDashboard = dashboardFixture({ preparation_queue: [] });
@@ -620,7 +622,7 @@ it('offers Add pack for non-injectable medications and supplements only when all
   expect(screen.getByText(/Your dose is 2 tablet/)).toBeInTheDocument();
 });
 
-it('retires an in-use vial from its card with explicit lifecycle intent', () => {
+it('retires an in-use vial only after confirming, with explicit lifecycle intent', () => {
   mockPens.mockReturnValue({
     data: [
       dashboardPen({
@@ -637,8 +639,66 @@ it('retires an in-use vial from its card with explicit lifecycle intent', () => 
     </MemoryRouter>
   );
   fireEvent.click(screen.getByRole('button', { name: 'Retire' }));
+  // Nothing happens until the confirmation is accepted.
+  expect(mockUpdatePen).not.toHaveBeenCalled();
+  const dialog = screen.getByRole('dialog', {
+    name: 'Retire Example vial?',
+  });
+  expect(dialog).toHaveTextContent('Doses already logged are kept.');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Retire' }));
   expect(mockUpdatePen).toHaveBeenCalledWith({
     id: 'live',
     body: { status: 'finished', lifecycle_intent: true },
   });
+});
+
+it('keeps the vial when the retire confirmation is cancelled', () => {
+  mockPens.mockReturnValue({
+    data: [
+      dashboardPen({
+        id: 'live',
+        medication_id: peptide.id,
+        status: 'in_use',
+        doses_used: 1,
+      }),
+    ],
+  });
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Retire' }));
+  const dialog = screen.getByRole('dialog', {
+    name: 'Retire Example vial?',
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(mockUpdatePen).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('deletes a vial only after confirming that it cannot be undone', () => {
+  mockPens.mockReturnValue({
+    data: [
+      dashboardPen({
+        id: 'unused',
+        medication_id: peptide.id,
+        status: 'sealed',
+        doses_used: 0,
+      }),
+    ],
+  });
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(mockDeletePen).not.toHaveBeenCalled();
+  const dialog = screen.getByRole('dialog', {
+    name: 'Delete Example vial?',
+  });
+  expect(dialog).toHaveTextContent('cannot be undone');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+  expect(mockDeletePen).toHaveBeenCalledWith('unused');
 });

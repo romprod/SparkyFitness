@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -36,6 +37,8 @@ export default function Glp1TitrationManager({
   const addStepMutation = useAddTitrationStepMutation(medId);
   const updateStepMutation = useUpdateTitrationStepMutation(medId);
   const deleteStepMutation = useDeleteTitrationStepMutation(medId);
+  // A titration step is only deleted after an explicit confirmation.
+  const [deletingStep, setDeletingStep] = useState<TitrationStep | null>(null);
 
   const [showAddStep, setShowAddStep] = useState(false);
   const [editingStep, setEditingStep] = useState<TitrationStep | null>(null);
@@ -293,7 +296,7 @@ export default function Glp1TitrationManager({
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteStepMutation.mutate(step.id)}
+                        onClick={() => setDeletingStep(step)}
                         aria-label={t(
                           'medications.glp1TitrationManager.deleteTitrationStep',
                           'Delete titration step'
@@ -309,6 +312,28 @@ export default function Glp1TitrationManager({
           </ol>
         )}
       </CardContent>
+      <ConfirmationDialog
+        open={deletingStep !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingStep(null);
+        }}
+        onConfirm={() => {
+          if (!deletingStep) return;
+          const { id } = deletingStep;
+          setDeletingStep(null);
+          deleteStepMutation.mutate(id);
+        }}
+        variant="destructive"
+        title={t(
+          'medications.glp1TitrationManager.deleteConfirmTitle',
+          'Delete this titration step?'
+        )}
+        description={t(
+          'medications.glp1TitrationManager.deleteConfirmBody',
+          'It is removed from your dose plan. Doses already logged are not affected.'
+        )}
+        confirmLabel={t('common.delete', 'Delete')}
+      />
     </Card>
   );
 }

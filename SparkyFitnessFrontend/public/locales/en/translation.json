@@ -909,7 +909,9 @@
       "mg": "{{dose_mg}} mg · ",
       "note": "Note: {{notes}}",
       "editInjectionEntry": "Edit injection entry",
-      "deleteInjectionEntry": "Delete injection entry"
+      "deleteInjectionEntry": "Delete injection entry",
+      "deleteConfirmTitle": "Delete this recorded dose?",
+      "deleteConfirmBody": "This deletes the dose recorded on {{date}}. Any stock it used is restored."
     },
     "glp1TitrationManager": {
       "yourPlannedGLP1Dose": "Your planned GLP-1 dose escalation (e.g. 0.25 → 0.5 → 1.0 mg). Add each step with its start date; mark one “active” as your current dose.",
@@ -921,7 +923,9 @@
       "wks": "· {{planned_weeks}} wks",
       "taper": "taper",
       "editTitrationStep": "Edit titration step",
-      "deleteTitrationStep": "Delete titration step"
+      "deleteTitrationStep": "Delete titration step",
+      "deleteConfirmTitle": "Delete this titration step?",
+      "deleteConfirmBody": "It is removed from your dose plan. Doses already logged are not affected."
     },
     "injectionSiteSettings": {
       "moveUp": "Move {{label}} up",
@@ -931,7 +935,9 @@
     "scheduleManager": {
       "eGForPainFor": "e.g. For pain, For headache",
       "noScheduleRulesConfiguredYet": "No schedule rules configured yet.",
-      "deleteScheduleRule": "Delete schedule rule"
+      "deleteScheduleRule": "Delete schedule rule",
+      "deleteConfirmTitle": "Delete this schedule rule?",
+      "deleteConfirmBody": "This removes “{{rule}}”. Doses already logged are not affected."
     },
     "todayMedications": {
       "prn": "PRN"
@@ -979,6 +985,10 @@
       "chooseMedication": "Which medication is this for?",
       "medication": "Medication",
       "retire": "Retire",
+      "retireConfirmTitle": "Retire {{name}}?",
+      "retireConfirmBody": "It is marked finished and leaves your active stock. Doses already logged are kept.",
+      "deleteConfirmTitle": "Delete {{name}}?",
+      "deleteConfirmBody": "This permanently removes it from your stock and cannot be undone. Stock with recorded doses cannot be deleted; retire it instead.",
       "expShort": "exp",
       "rx": "Rx",
       "change": "Change",

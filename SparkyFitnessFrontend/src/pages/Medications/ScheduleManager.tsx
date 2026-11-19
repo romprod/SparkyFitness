@@ -3,6 +3,7 @@ import MedicationCourseManager from './MedicationCourseManager';
 import { useTranslation } from 'react-i18next';
 import { Settings, Clock, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import {
   todayInZone,
@@ -79,6 +80,10 @@ export default function ScheduleManager({
 
   const addMutation = useAddScheduleMutation(med.id);
   const deleteMutation = useDeleteScheduleMutation();
+  // A schedule rule is only deleted after an explicit confirmation.
+  const [deletingRule, setDeletingRule] = useState<MedicationSchedule | null>(
+    null
+  );
 
   const handleSave = () => {
     const body: Partial<MedicationSchedule> & { schedule_type_id: string } = {
@@ -537,7 +542,7 @@ export default function ScheduleManager({
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => deleteMutation.mutate(sched.id)}
+                    onClick={() => setDeletingRule(sched)}
                     disabled={deleteMutation.isPending}
                     aria-label={t(
                       'medications.scheduleManager.deleteScheduleRule',
@@ -557,6 +562,33 @@ export default function ScheduleManager({
         med={med}
         onTimeline={onTimeline}
         focusRevisionId={focusRevisionId}
+      />
+      <ConfirmationDialog
+        open={deletingRule !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingRule(null);
+        }}
+        onConfirm={() => {
+          if (!deletingRule) return;
+          const { id } = deletingRule;
+          setDeletingRule(null);
+          deleteMutation.mutate(id);
+        }}
+        variant="destructive"
+        title={t(
+          'medications.scheduleManager.deleteConfirmTitle',
+          'Delete this schedule rule?'
+        )}
+        description={t(
+          'medications.scheduleManager.deleteConfirmBody',
+          'This removes “{{rule}}”. Doses already logged are not affected.',
+          {
+            rule: deletingRule
+              ? formatScheduleDescription(deletingRule, timeFormat)
+              : '',
+          }
+        )}
+        confirmLabel={t('common.delete', 'Delete')}
       />
     </>
   );
