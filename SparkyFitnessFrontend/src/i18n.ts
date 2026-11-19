@@ -4,6 +4,10 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import HttpApi from 'i18next-http-backend';
 import { getSupportedLanguages } from './utils/languageUtils';
 
+// Set by the Vite build to a hash of the locale files; absent in tests.
+const localesVersion =
+  typeof __LOCALES_VERSION__ === 'string' ? __LOCALES_VERSION__ : '';
+
 i18n
   .use(HttpApi)
   .use(LanguageDetector)
@@ -23,7 +27,9 @@ i18n
       caches: ['localStorage', 'cookie'],
     },
     backend: {
-      loadPath: '/locales/{{lng}}/{{ns}}.json',
+      loadPath: `/locales/{{lng}}/{{ns}}.json${
+        localesVersion ? `?v=${localesVersion}` : ''
+      }`,
     },
     interpolation: {
       escapeValue: false,

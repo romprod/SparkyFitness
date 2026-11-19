@@ -2,8 +2,26 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { VitePWA } from 'vite-plugin-pwa';
 import { reactClickToComponent } from 'vite-plugin-react-click-to-component';
+
+// Locale files are served with a long cache lifetime but have no hashed name, so
+// a release that only changes wording would stay hidden behind a cached copy.
+// Ask for them with a content hash instead: the URL changes when the text does.
+function localesVersion(dir: string): string {
+  const hash = createHash('sha256');
+  const walk = (current: string) => {
+    for (const name of readdirSync(current).sort()) {
+      const full = path.join(current, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else hash.update(path.relative(dir, full)).update(readFileSync(full));
+    }
+  };
+  walk(dir);
+  return hash.digest('hex').slice(0, 12);
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -16,6 +34,9 @@ export default defineConfig(({ mode }) => {
     // code here uses import.meta.env, so nothing else is affected.
     define: {
       'process.env': JSON.stringify({ NODE_ENV: mode }),
+      __LOCALES_VERSION__: JSON.stringify(
+        localesVersion(path.resolve(__dirname, 'public/locales'))
+      ),
     },
     server: {
       host: '::',
