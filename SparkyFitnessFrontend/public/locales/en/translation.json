@@ -981,7 +981,7 @@
       "inUse": "In use",
       "recordedDose": "Recorded dose",
       "balance": "Stock balance",
-      "subtitle": "Vials, preparation and remaining stock across your medications.",
+      "subtitle": "Vials, concentration, and how long each lasts.",
       "newStockMedication": "Medication for new stock",
       "loading": "Loading current stock…",
       "tracked": "Tracked stock",
@@ -996,7 +996,7 @@
       "emptyAll": "No vials yet. Add your first vial to start tracking stock."
     },
     "stock": {
-      "title": "Preparation & stock",
+      "title": "Inventory",
       "description": "Prepare vials, calculate draw volumes and track stock for any injectable peptide or medication. No GLP-1 setting is needed.",
       "select": "Peptide / medication",
       "add": "Add peptide / injectable",
@@ -1201,7 +1201,7 @@
       "lineSubtotal": "Line",
       "landedEach": "Landed each",
       "chooseFirst": "Choose a medication to see its vials.",
-      "noVials": "No unmatched vials for this medication. Add them in Preparation & stock, then link them here.",
+      "noVials": "No unmatched vials for this medication. Add them in Inventory, then link them here.",
       "lot": "Lot",
       "total": "Invoice total",
       "notes": "Notes",

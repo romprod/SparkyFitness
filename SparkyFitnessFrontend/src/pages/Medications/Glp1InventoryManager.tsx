@@ -436,7 +436,7 @@ function InventorySession({
     const canRetire = p.status === 'in_use' || p.status === 'sealed';
     return (
       <>
-        <div className="hidden sm:flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+        <div className="hidden sm:flex flex-wrap items-center justify-start gap-x-3 gap-y-1 text-sm">
           <Button
             variant="ghost"
             size="sm"
@@ -525,8 +525,8 @@ function InventorySession({
     );
   };
   const stockFooter = (p: MedicationPen) => (
-    <div className="flex items-center justify-between gap-3 border-t px-4 py-2 text-xs">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="space-y-2 border-t px-4 py-3 text-xs">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 empty:hidden">
         <StockPrescriptionLine
           pen={p}
           canWrite={stockCanWrite}
@@ -914,7 +914,7 @@ function InventorySession({
         <Card>
           <CardHeader>
             <CardTitle className="flex flex-col items-start gap-3 text-base sm:flex-row sm:items-center sm:justify-between">
-              <span>{t('medications.stock.title', 'Preparation & stock')}</span>
+              <span>{t('medications.stock.title', 'Inventory')}</span>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => openPreparation()}>
                   {t('medications.stock.prepare', 'Prepare a vial')}

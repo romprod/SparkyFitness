@@ -167,7 +167,7 @@ export default function MedicationPackCard({
         />
       </div>
       {canWrite && (
-        <div className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 border-t px-4 py-2 text-xs">
+        <div className="mt-auto flex flex-wrap items-center justify-start gap-x-3 gap-y-1 border-t px-4 py-3 text-sm">
           {pack.status === 'sealed' && (
             <Button
               size="sm"

@@ -553,7 +553,7 @@ export default function MedicationPurchaseForm({
                     <p className="text-sm text-muted-foreground">
                       {t(
                         'medications.costs.noVials',
-                        'No unmatched vials for this medication. Add them in Preparation & stock, then link them here.'
+                        'No unmatched vials for this medication. Add them in Inventory, then link them here.'
                       )}
                     </p>
                   ) : candidates.length === 0 ? null : (

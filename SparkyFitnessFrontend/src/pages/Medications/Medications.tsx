@@ -307,7 +307,7 @@ export default function Medications() {
           >
             <FlaskConical className="w-4 h-4" />
             <span className="text-xs font-semibold">
-              {t('medications.stock.title', 'Preparation & stock')}
+              {t('medications.stock.title', 'Inventory')}
             </span>
           </Button>
           {purchaseScope.ready && (

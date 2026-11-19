@@ -339,7 +339,7 @@ it('keeps syringe controls within a selected non-GLP1 injectable Cabinet detail'
     await screen.findByRole('button', { name: 'Manage devices' })
   ).toBeInTheDocument();
 });
-it('keeps Preparation & stock inventory-only through the full Medications route', async () => {
+it('keeps Inventory inventory-only through the full Medications route', async () => {
   open('/medications?tab=stock');
   expect(
     await screen.findByRole('button', { name: 'Add stock' })
@@ -377,7 +377,7 @@ it('keeps an owner Costs entry beside the empty medication disclaimer', async ()
 it('hides Costs and makes no financial requests in a delegated profile', async () => {
   mockInvoiceUser.activeUserId = 'another-profile';
   open('/medications?tab=costs');
-  await screen.findByRole('button', { name: 'Preparation & stock' });
+  await screen.findByRole('button', { name: 'Inventory' });
   expect(
     screen.queryByRole('button', { name: 'Costs' })
   ).not.toBeInTheDocument();
@@ -438,7 +438,7 @@ it('offers the owner prescription register without medication records or medical
 it('hides the owner-only Prescriptions destination in a delegated profile', async () => {
   mockInvoiceUser.activeUserId = 'another-profile';
   open('/medications?tab=prescriptions');
-  await screen.findByRole('button', { name: 'Preparation & stock' });
+  await screen.findByRole('button', { name: 'Inventory' });
   expect(
     screen.queryByRole('button', { name: 'Prescriptions' })
   ).not.toBeInTheDocument();

@@ -171,12 +171,12 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold">
-            {t('medications.stock.title', 'Preparation & stock')}
+            {t('medications.stock.title', 'Inventory')}
           </h2>
           <p className="text-sm text-muted-foreground">
             {t(
               'medications.stockLayout.subtitle',
-              'Vials, preparation and remaining stock across your medications.'
+              'Vials, concentration, and how long each lasts.'
             )}
           </p>
         </div>

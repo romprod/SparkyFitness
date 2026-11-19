@@ -93,7 +93,7 @@ it('offers stock directly from the main medication tabs', () => {
       <Medications />
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Preparation & stock' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Inventory' }));
   expect(screen.getByText('Peptide stock tools')).toBeInTheDocument();
 });
 it('opens the stock tab from a bookmarked URL', () => {
