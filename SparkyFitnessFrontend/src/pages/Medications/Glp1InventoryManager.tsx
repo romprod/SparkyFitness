@@ -249,6 +249,12 @@ function InventorySession({
 
   const openAddDialog = () => {
     resetForm();
+    // Most stock added here is a vial. Offer a pen first only when pens are
+    // already tracked for this medication.
+    if (!(pensQ.data ?? []).some((pen) => pen.kind === 'pen')) {
+      setKind('vial');
+      setDosesTotal('10');
+    }
     setPrescriptionId(undefined);
     setPrescriptionTouched(false);
     setInventoryOpen(true);
@@ -551,6 +557,14 @@ function InventorySession({
     const low =
       ((p.stock !== null && p.stock !== undefined) || total > 0) && pct <= 25;
     const expStatus = getExpiryStatus(p.expiry_date, today);
+    // A sealed vial nobody has prepared yet has no stock figure to show.
+    const awaitingPreparation =
+      p.kind === 'vial' &&
+      !p.preparation &&
+      !p.stock &&
+      p.doses_used === 0 &&
+      p.status !== 'finished' &&
+      p.status !== 'discarded';
 
     const content = (
       <div
@@ -596,16 +610,25 @@ function InventorySession({
                     {t('medications.glp1InventoryManager.reorder', 'Reorder')}
                   </Badge>
                 )}
-              <span className="font-medium tabular-nums">
-                {p.stock
-                  ? p.stock.remainingMg.toFixed(3)
-                  : `${left}/${total || '?'}`}{' '}
-                <span className="font-normal text-muted-foreground">
+              {awaitingPreparation ? (
+                <Badge variant="outline" className="text-[10px]">
+                  {t(
+                    'medications.stockDashboard.needsPreparation',
+                    'Needs preparation'
+                  )}
+                </Badge>
+              ) : (
+                <span className="font-medium tabular-nums">
                   {p.stock
-                    ? 'mg'
-                    : t('medications.glp1InventoryManager.doses', 'doses')}
+                    ? p.stock.remainingMg.toFixed(3)
+                    : `${left}/${total || '?'}`}{' '}
+                  <span className="font-normal text-muted-foreground">
+                    {p.stock
+                      ? 'mg'
+                      : t('medications.glp1InventoryManager.doses', 'doses')}
+                  </span>
                 </span>
-              </span>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -645,10 +668,15 @@ function InventorySession({
                     volume: p.stock.remainingMl.toFixed(3),
                   }
                 )
-              : t(
-                  'medications.preparation.unknown',
-                  'Mass stock unavailable: check preparation details and linked dose history.'
-                )}
+              : awaitingPreparation
+                ? t(
+                    'medications.preparation.notPrepared',
+                    'Not prepared yet. Prepare this vial to track what is left.'
+                  )
+                : t(
+                    'medications.preparation.unknown',
+                    'Mass stock unavailable: check preparation details and linked dose history.'
+                  )}
             {p.stock && p.stock.overdrawnMg > 0 && (
               <span className="text-destructive">
                 {' '}
@@ -660,12 +688,14 @@ function InventorySession({
             )}
           </p>
         )}
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className={`h-full rounded-full transition-all ${low ? 'bg-amber-500' : 'bg-blue-500'}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        {!awaitingPreparation && (
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full transition-all ${low ? 'bg-amber-500' : 'bg-blue-500'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
         {(p.expiry_date || p.bud_date) && (
           <div className="mt-1.5 flex gap-3 text-xs text-muted-foreground flex-wrap items-center">
             {p.expiry_date && (
@@ -1086,44 +1116,93 @@ function InventorySession({
                 conflictsWithPen={kind === 'pen'}
               />
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="inv-dose">
-                  {t(
-                    'medications.glp1InventoryManager.doseStrengthMg',
-                    'Dose Strength (mg)'
-                  )}
-                </Label>
-                <Input
-                  id="inv-dose"
-                  type="number"
-                  step="0.05"
-                  value={inventoryDoseMg}
-                  onChange={(e) => setInventoryDoseMg(e.target.value)}
-                  placeholder={
-                    medicationDoseInMg(med) != null
-                      ? String(medicationDoseInMg(med))
-                      : '0'
-                  }
-                />
-              </div>
+            {kind === 'pen' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="inv-dose">
+                    {t(
+                      'medications.glp1InventoryManager.doseStrengthMg',
+                      'Dose Strength (mg)'
+                    )}
+                  </Label>
+                  <Input
+                    id="inv-dose"
+                    type="number"
+                    step="0.05"
+                    value={inventoryDoseMg}
+                    onChange={(e) => setInventoryDoseMg(e.target.value)}
+                    placeholder={
+                      medicationDoseInMg(med) != null
+                        ? String(medicationDoseInMg(med))
+                        : '0'
+                    }
+                  />
+                </div>
 
-              <div className="space-y-1">
-                <Label htmlFor="inv-doses-total">
-                  {t(
-                    'medications.glp1InventoryManager.totalDoses',
-                    'Total Doses'
-                  )}
-                </Label>
-                <Input
-                  id="inv-doses-total"
-                  type="number"
-                  value={dosesTotal}
-                  onChange={(e) => setDosesTotal(e.target.value)}
-                />
+                <div className="space-y-1">
+                  <Label htmlFor="inv-doses-total">
+                    {t(
+                      'medications.glp1InventoryManager.totalDoses',
+                      'Total Doses'
+                    )}
+                  </Label>
+                  <Input
+                    id="inv-doses-total"
+                    type="number"
+                    value={dosesTotal}
+                    onChange={(e) => setDosesTotal(e.target.value)}
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <details className="rounded-md border p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {t(
+                    'medications.glp1InventoryManager.doseCountDetails',
+                    'Dose size and count (optional)'
+                  )}
+                </summary>
+                <div className="mt-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="inv-dose">
+                        {t(
+                          'medications.glp1InventoryManager.doseStrengthMg',
+                          'Dose Strength (mg)'
+                        )}
+                      </Label>
+                      <Input
+                        id="inv-dose"
+                        type="number"
+                        step="0.05"
+                        value={inventoryDoseMg}
+                        onChange={(e) => setInventoryDoseMg(e.target.value)}
+                        placeholder={
+                          medicationDoseInMg(med) != null
+                            ? String(medicationDoseInMg(med))
+                            : '0'
+                        }
+                      />
+                    </div>
 
+                    <div className="space-y-1">
+                      <Label htmlFor="inv-doses-total">
+                        {t(
+                          'medications.glp1InventoryManager.totalDoses',
+                          'Total Doses'
+                        )}
+                      </Label>
+                      <Input
+                        id="inv-doses-total"
+                        type="number"
+                        value={dosesTotal}
+                        onChange={(e) => setDosesTotal(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </details>
+            )}
             {editingPen?.preparation && (
               <SavedPreparation preparation={editingPen.preparation} expanded />
             )}

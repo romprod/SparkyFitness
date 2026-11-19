@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  addDays,
   buildMonthGrid,
   dayDoseTotal,
   dayLogStatus,
+  getDueDosesForDate,
   isEntryVisibleForSubtype,
   monthDoseTotal,
   tallyEntriesByDay,
   tallySymptomsByDay,
+  todayInZone,
   type DayLogStatus,
   type MedSubtype,
 } from '@workspace/shared';
@@ -23,7 +26,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import MonthCalendar, { type DayCellRender } from '@/components/MonthCalendar';
-import type { Medication, MedicationEntry } from '@/types/medications';
+import type {
+  Medication,
+  MedicationDetail,
+  MedicationEntry,
+} from '@/types/medications';
 
 // Ratio-based coloring: a day's fill reflects how complete that day's doses
 // were (taken+PRN vs. skipped), not just "was anything taken" — so a day with
@@ -34,6 +41,7 @@ const COLOR_MOSTLY_SKIPPED = '#f97316'; // orange-500 — mostly skipped
 const COLOR_ALL_SKIPPED = '#ef4444'; // red-500 — none taken, all skipped
 const COLOR_SNOOZED_ONLY = '#94a3b8'; // slate-400 — only snoozed doses logged
 
+const COLOR_PLANNED = '#0ea5e9'; // sky-500 — scheduled, not yet due
 const SIDE_EFFECT_COLOR = '#f43f5e'; // rose-500
 const GENERAL_SYMPTOM_COLOR = '#8b5cf6'; // violet-500
 
@@ -71,7 +79,7 @@ export default function MedicationMonthCalendar({
 }: MedicationLogCalendarProps) {
   const { t } = useTranslation();
   const invokingButton = useRef<HTMLButtonElement | null>(null);
-  const { firstDayOfWeek } = usePreferences();
+  const { firstDayOfWeek, timezone } = usePreferences();
 
   // The calendar already receives the subtype-filtered list, so only its wording
   // needs to follow the filter. In the mixed All view the picker's catch-all is just
@@ -200,6 +208,24 @@ export default function MedicationMonthCalendar({
     [symptomEntries, activeMedId, entryIsVisible]
   );
 
+  // Doses still to come, from each item's own schedule. Plans saved as versioned
+  // courses are shown in the week view; only schedule rules appear here, and only
+  // for days after today, because a schedule's past is not a record of what was due.
+  const plannedByDay = useMemo(() => {
+    const result: Record<string, number> = {};
+    const today = todayInZone(timezone);
+    const scheduled = loggableMeds.filter(
+      (med) => !activeMedId || med.id === activeMedId
+    ) as MedicationDetail[];
+    if (scheduled.length === 0) return result;
+    for (let day = addDays(today, 1); day <= fetchTo; day = addDays(day, 1)) {
+      if (day < fetchFrom) continue;
+      const due = getDueDosesForDate(scheduled, day, timezone).length;
+      if (due > 0) result[day] = due;
+    }
+    return result;
+  }, [loggableMeds, activeMedId, timezone, fetchFrom, fetchTo]);
+
   const monthTotal = useMemo(
     () => monthDoseTotal(entriesByDay, month),
     [entriesByDay, month]
@@ -275,6 +301,11 @@ export default function MedicationMonthCalendar({
       color: COLOR_SNOOZED_ONLY,
     },
     {
+      label: t('medications.calendar.planned', 'Planned'),
+      color: COLOR_PLANNED,
+      dashed: true,
+    },
+    {
       label: t('medications.calendar.sideEffect', 'Side-effect symptom'),
       color: SIDE_EFFECT_COLOR,
     },
@@ -341,6 +372,17 @@ export default function MedicationMonthCalendar({
           if (status) {
             cell.fill = DAY_STATUS_COLOR[status];
             cell.textColor = '#fff';
+          }
+          const planned = counts ? 0 : (plannedByDay[day] ?? 0);
+          if (planned > 0) {
+            cell.borderStyle = 'dashed';
+            cell.borderWidth = '2px';
+            cell.borderColor = COLOR_PLANNED;
+            cell.title = t(
+              'medications.calendar.tooltipPlanned',
+              '{{count}} planned',
+              { count: planned }
+            );
           }
 
           // Hover tooltip: exact breakdown, since the fill color alone can't

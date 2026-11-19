@@ -21,7 +21,7 @@ const row = {
   medication_active: true,
   version: 1,
   start_date: '2026-11-01',
-  end_date: null,
+  end_date: null as string | null,
   closed_date: null,
   open_end: true,
   overlap_eligible: true,
@@ -227,4 +227,34 @@ it('keeps separate named medication rows across the selected medication scope', 
   expect(screen.getAllByRole('button', { name: 'Manage plan' })).toHaveLength(
     1
   );
+});
+it('shows how far through each plan it is, from its own dates', () => {
+  mockRows = [
+    { ...row, revision_id: 'r-open', name: 'Open plan' },
+    {
+      ...row,
+      revision_id: 'r-ends',
+      name: 'Ending plan',
+      start_date: '2026-11-10',
+      end_date: '2027-02-08',
+    },
+    {
+      ...row,
+      revision_id: 'r-later',
+      name: 'Later plan',
+      start_date: '2026-11-20',
+    },
+    {
+      ...row,
+      revision_id: 'r-done',
+      name: 'Past plan',
+      start_date: '2026-10-01',
+      end_date: '2026-10-31',
+    },
+  ];
+  render(<MedicationCourseTimeline {...props()} />);
+  expect(screen.getByText('Day 16 · no end date')).toBeInTheDocument();
+  expect(screen.getByText('Day 7 of 91 · ends 2027-02-08')).toBeInTheDocument();
+  expect(screen.getByText('Starts in 4 days · 2026-11-20')).toBeInTheDocument();
+  expect(screen.getByText('Ended 2026-10-31')).toBeInTheDocument();
 });

@@ -9,6 +9,7 @@ import {
   resolvePreparedMedicationRoute,
   isDeviceEligibleForRoute,
   addDays,
+  perAdministrationEstimate,
   type MedicationCourse,
   type MedicationCourseRevision,
   type MedicationCoursePlanInput,
@@ -655,6 +656,31 @@ export default function MedicationCourseEditor({
                 </SelectItem>
               </SelectContent>
             </Select>
+            {draft.dose_basis === 'per_week' &&
+              (() => {
+                const estimate = perAdministrationEstimate(
+                  draft.target_dose,
+                  draft.rules
+                );
+                return estimate ? (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {t('medications.courses.perWeekEstimate', {
+                      defaultValue:
+                        '≈ {{amount}} {{unit}} per administration at {{count}}×/week',
+                      amount: estimate.per_administration,
+                      unit: draft.dose_unit,
+                      count: estimate.per_week,
+                    })}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'medications.courses.perWeekNeedsRhythm',
+                      'Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration.'
+                    )}
+                  </p>
+                );
+              })()}
             <MedicationPrescriptionLink
               medication={med}
               value={prescriptionSelection}

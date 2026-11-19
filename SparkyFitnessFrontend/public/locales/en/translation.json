@@ -270,7 +270,10 @@
       "loggedCount_other": "{{count}} logged symptoms",
       "maxSeverity": "Max severity: {{n}}",
       "skipped": "Skipped",
-      "loggedCount": "{{count}} logged symptom"
+      "loggedCount": "{{count}} logged symptom",
+      "planned": "Planned",
+      "tooltipPlanned_one": "{{count}} planned",
+      "tooltipPlanned_other": "{{count}} planned"
     },
     "common": {
       "logging": "Logging…",
@@ -899,7 +902,8 @@
       "reorderThresholdDosesLeft": "Reorder Threshold (doses left)",
       "notes2": "Notes",
       "batchNumberBrandPharmacyInfo": "Batch number, brand, pharmacy info...",
-      "addInventory": "Add Inventory"
+      "addInventory": "Add Inventory",
+      "doseCountDetails": "Dose size and count (optional)"
     },
     "glp1RecentInjections": {
       "mg": "{{dose_mg}} mg · ",
@@ -965,7 +969,8 @@
       "budHelp": "Enter the date or interval from your product or clinician guidance. No stability interval is assumed.",
       "correctError": "Could not update preparation.",
       "bud": "Beyond-use date (BUD)",
-      "concentration": "Concentration"
+      "concentration": "Concentration",
+      "notPrepared": "Not prepared yet. Prepare this vial to track what is left."
     },
     "stockLayout": {
       "more": "More stock tools",
@@ -1465,7 +1470,12 @@
           "cycle_before_anchor": "Cycle classification unavailable before its anchor",
           "unknown_cycle_anchor": "Cycle anchor unknown",
           "date_out_of_range": "Date outside the supported range"
-        }
+        },
+        "dayOf": "Day {{day}} of {{total}} · ends {{date}}",
+        "dayOpen": "Day {{day}} · no end date",
+        "starts_one": "Starts in {{count}} day · {{date}}",
+        "starts_other": "Starts in {{count}} days · {{date}}",
+        "finished": "Ended {{date}}"
       },
       "slotUnavailable": "This planned slot is no longer available or is already recorded. Refresh the checklist; your actual draft is retained.",
       "actualRefreshed": "Course data refreshed. Review the retained actual amount and current calculation before logging.",
@@ -1638,7 +1648,9 @@
         "tooMany": "That would need more than 100 phases. Check the increase and its unit.",
         "made_one": "Created {{count}} phase below. Review it, then save the course.",
         "made_other": "Created {{count}} phases below. Review them, then save the course."
-      }
+      },
+      "perWeekEstimate": "≈ {{amount}} {{unit}} per administration at {{count}}×/week",
+      "perWeekNeedsRhythm": "Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration."
     },
     "forecasts": {
       "limitations": {

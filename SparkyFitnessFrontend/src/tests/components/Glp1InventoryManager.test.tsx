@@ -144,6 +144,56 @@ it('displays actual mass remaining instead of nominal dose counts', () => {
   expect(screen.getByText('9.900 mg / 2.475 mL remaining')).toBeInTheDocument();
 });
 
+it('starts a new stock entry as a vial, with the pen-only dose fields folded away', () => {
+  mockPens = [];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  expect(screen.getByLabelText('Kind')).toHaveTextContent('Vial');
+  const details = document.querySelector('details');
+  expect(details).not.toBeNull();
+  expect(details).not.toHaveAttribute('open');
+  expect(details).toHaveTextContent('Dose size and count (optional)');
+  expect(details).toContainElement(screen.getByLabelText('Total Doses'));
+});
+it('starts as a pen when this medication already has pens, with the dose fields in plain view', () => {
+  mockPens = [
+    { id: 'pen', kind: 'pen', doses_total: 4, doses_used: 1, status: 'in_use' },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Inventory' }));
+  expect(screen.getByLabelText('Kind')).toHaveTextContent('Pen');
+  const details = document.querySelector('details');
+  expect(
+    details === null || !details.contains(screen.getByLabelText('Total Doses'))
+  ).toBe(true);
+});
+it('says an unprepared sealed vial needs preparation instead of showing 0/? doses', () => {
+  mockPens = [
+    {
+      id: 'sealed',
+      kind: 'vial',
+      doses_total: null,
+      doses_used: 0,
+      status: 'sealed',
+    },
+    {
+      id: 'finished',
+      kind: 'vial',
+      doses_total: null,
+      doses_used: 0,
+      status: 'finished',
+    },
+  ];
+  render(<Glp1InventoryManager med={med} />);
+  expect(screen.getByText('Needs preparation')).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      'Not prepared yet. Prepare this vial to track what is left.'
+    )
+  ).toBeInTheDocument();
+  // Only the sealed vial is relabelled: a finished one keeps its figures.
+  expect(screen.getAllByText('0/?')).toHaveLength(1);
+});
 it('preserves a legacy BUD while editing unrelated metadata', () => {
   mockPens = [
     {

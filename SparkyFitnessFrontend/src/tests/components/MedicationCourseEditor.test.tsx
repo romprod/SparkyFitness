@@ -656,3 +656,48 @@ it('sends an explicitly selected same-medication prescription into reviewed plan
     { schedule_type_id: 'daily', time_of_day: null },
   ]);
 });
+it('works out the amount per administration for a per-week plan', () => {
+  const base = courseFixture();
+  setup(
+    'edit',
+    courseFixture({
+      revisions: [
+        {
+          ...base.revisions[0]!,
+          dose_basis: 'per_week',
+          target_dose: '1',
+          rules: [
+            {
+              ...base.revisions[0]!.rules[0]!,
+              schedule_type_id: 'specific_days',
+              days_of_week: [1, 4],
+            },
+          ],
+        },
+      ],
+    })
+  );
+  expect(screen.getByRole('status')).toHaveTextContent(
+    '≈ 0.5 mg per administration at 2×/week'
+  );
+});
+it('explains why a per-week plan with an irregular schedule has no estimate', () => {
+  const base = courseFixture();
+  setup(
+    'edit',
+    courseFixture({
+      revisions: [
+        {
+          ...base.revisions[0]!,
+          dose_basis: 'per_week',
+          rules: [{ ...base.revisions[0]!.rules[0]!, schedule_type_id: 'prn' }],
+        },
+      ],
+    })
+  );
+  expect(screen.getByText(/need a steady weekly schedule/)).toBeInTheDocument();
+});
+it('shows no per-administration line for a per-administration plan', () => {
+  setup('edit');
+  expect(screen.queryByText(/per administration at/)).not.toBeInTheDocument();
+});

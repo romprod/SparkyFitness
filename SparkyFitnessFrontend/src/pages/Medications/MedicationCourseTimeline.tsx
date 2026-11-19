@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { MedicationCourseTimelineRow } from '@workspace/shared';
+import {
+  coursePlanProgress,
+  type MedicationCourseTimelineRow,
+} from '@workspace/shared';
 import {
   useMedicationCourseTimeline,
   useMedicationCourseHistory,
@@ -249,6 +252,45 @@ export default function MedicationCourseTimeline({
                             )}
                             : {formatDate(row.local_today)}
                           </p>
+                          {(() => {
+                            const progress = coursePlanProgress(row);
+                            const text =
+                              progress.kind === 'running'
+                                ? progress.of !== null && progress.end_date
+                                  ? t(
+                                      'medications.courses.timeline.dayOf',
+                                      'Day {{day}} of {{total}} · ends {{date}}',
+                                      {
+                                        day: progress.day,
+                                        total: progress.of,
+                                        date: formatDate(progress.end_date),
+                                      }
+                                    )
+                                  : t(
+                                      'medications.courses.timeline.dayOpen',
+                                      'Day {{day}} · no end date',
+                                      { day: progress.day }
+                                    )
+                                : progress.kind === 'not_started'
+                                  ? t('medications.courses.timeline.starts', {
+                                      defaultValue_one:
+                                        'Starts in {{count}} day · {{date}}',
+                                      defaultValue_other:
+                                        'Starts in {{count}} days · {{date}}',
+                                      count: progress.starts_in_days,
+                                      date: formatDate(progress.start_date),
+                                    })
+                                  : progress.kind === 'finished'
+                                    ? t(
+                                        'medications.courses.timeline.finished',
+                                        'Ended {{date}}',
+                                        { date: formatDate(progress.end_date) }
+                                      )
+                                    : null;
+                            return text ? (
+                              <p className="font-medium">{text}</p>
+                            ) : null;
+                          })()}
                           {row.open_end && (
                             <p>
                               {t(
