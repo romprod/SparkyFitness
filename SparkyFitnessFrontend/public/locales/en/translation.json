@@ -1640,6 +1640,14 @@
         "Site": "Site",
         "Notes": "Notes"
       },
+      "advance": {
+        "banner": "Your latest dose ({{dose}} {{unit}} on {{date}}) matches phase {{to}} of {{count}}, but the plan is on phase {{from}}. Review moving the plan to phase {{to}}?",
+        "review": "Review phase change",
+        "keep": "Keep current plan",
+        "note": "Phase {{to}} of {{count}} is loaded because your latest dose matched it.",
+        "noteShortened": "The dose you took counts as the first dose of that phase, so it is one dose shorter.",
+        "noteCheck": "Check the phases and the start date, then review."
+      },
       "ramp": {
         "title": "Generate phases from a ramp",
         "help": "Builds one phase per step from the start dose to the target dose. The last phase has no end date. You can edit every phase afterwards, and nothing is saved until you review and save the course.",

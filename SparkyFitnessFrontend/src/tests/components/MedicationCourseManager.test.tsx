@@ -15,7 +15,9 @@ import {
   courseMedication,
   courseIds,
 } from '@/tests/fixtures/medicationCourses';
+import type { InjectionEntry } from '@workspace/shared';
 let mockCourses = [courseFixture()];
+let mockInjections: InjectionEntry[] = [];
 let mockCycleState = cycleStateFixture();
 let mockWrite = true;
 let mockReady = true;
@@ -49,6 +51,9 @@ jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
   }),
   invalidateMedicationCourses: jest.fn(),
 }));
+jest.mock('@/hooks/useMedications', () => ({
+  useMedicationInjections: () => ({ data: mockInjections }),
+}));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({ formatDate: (day: string) => day }),
 }));
@@ -56,9 +61,24 @@ jest.mock('@/pages/Medications/MedicationCourseCycleAction', () => ({
   __esModule: true,
   default: ({ action }: { action: string }) => <p>Cycle action {action}</p>,
 }));
-jest.mock('@/pages/Medications/MedicationCourseEditor', () => () => (
-  <p>Course editor</p>
-));
+jest.mock(
+  '@/pages/Medications/MedicationCourseEditor',
+  () =>
+    ({
+      mode,
+      advance,
+    }: {
+      mode: string;
+      advance?: { to_phase: number; steps: { dose: string }[] };
+    }) => (
+      <p>
+        Course editor {mode}
+        {advance
+          ? ` advance to phase ${advance.to_phase} starting at ${advance.steps[0]?.dose}`
+          : ''}
+      </p>
+    )
+);
 jest.mock('@/pages/Medications/MedicationCourseHistory', () => () => (
   <p>Revision history</p>
 ));
@@ -70,6 +90,8 @@ function setup() {
   );
 }
 beforeEach(() => {
+  mockInjections = [];
+  localStorage.clear();
   mockCourses = [courseFixture()];
   mockCycleState = cycleStateFixture();
   mockWrite = true;
@@ -283,4 +305,114 @@ it('focuses the exact requested revision without opening an edit dialog', async 
     )
   );
   expect(screen.queryByText('Course editor')).not.toBeInTheDocument();
+});
+
+describe('titration advance suggestion', () => {
+  const step = (
+    id: string,
+    index: number,
+    dose: string,
+    days: number | null
+  ) => ({
+    id,
+    user_id: courseIds.owner,
+    revision_id: courseIds.revision,
+    step_index: index,
+    dose,
+    dose_unit: 'mg',
+    duration_days: days,
+    notes: null,
+  });
+  const ladderCourse = () =>
+    courseFixture({
+      revisions: [
+        courseRevision({
+          rules: [
+            {
+              id: courseIds.rule,
+              user_id: courseIds.owner,
+              revision_id: courseIds.revision,
+              rule_index: 0,
+              schedule_type_id: 'weekly',
+              days_of_week: [1],
+              time_of_day: '09:00',
+            },
+          ],
+          steps: [
+            step('step-a', 0, '0.25', 28),
+            step('step-b', 1, '0.5', 28),
+            step('step-c', 2, '1', null),
+          ],
+        }),
+      ],
+    });
+  const injection = (patch: Partial<InjectionEntry> = {}) =>
+    ({
+      id: 'dose-1',
+      medication_id: courseIds.med,
+      injected_at: '2026-11-15T09:00:00Z',
+      entry_date: '2026-11-15',
+      dose_mg: 0.5,
+      course_revision_id: courseIds.revision,
+      course_step_id: 'step-a',
+      ...patch,
+    }) as InjectionEntry;
+
+  it('offers a reviewed phase change when the latest dose matches the next phase', () => {
+    mockCourses = [ladderCourse()];
+    mockInjections = [injection()];
+    setup();
+    const banner = screen.getByTestId('advance-banner');
+    expect(banner).toHaveTextContent(
+      'Your latest dose (0.5 mg on 2026-11-15) matches phase 2 of 3, but the plan is on phase 1.'
+    );
+    fireEvent.click(
+      within(banner).getByRole('button', { name: 'Review phase change' })
+    );
+    // The draft opens in the reviewed revise flow, seeded from phase 2.
+    expect(
+      screen.getByText(
+        'Course editor revise advance to phase 2 starting at 0.5'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the plan and remembers the choice', () => {
+    mockCourses = [ladderCourse()];
+    mockInjections = [injection()];
+    const { unmount } = setup();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep current plan' }));
+    expect(screen.queryByTestId('advance-banner')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Course editor/)).not.toBeInTheDocument();
+    unmount();
+    setup();
+    expect(screen.queryByTestId('advance-banner')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['the dose is the current phase', { dose_mg: 0.25 }],
+    ['the dose matches no later phase', { dose_mg: 0.4 }],
+    ['the dose has no recorded step', { course_step_id: null }],
+    ['the dose belongs to another revision', { course_revision_id: 'other' }],
+    ['the dose is older than two weeks', { entry_date: '2026-10-01' }],
+  ])('stays quiet when %s', (_name, patch) => {
+    mockCourses = [ladderCourse()];
+    mockInjections = [injection(patch as Partial<InjectionEntry>)];
+    setup();
+    expect(screen.queryByTestId('advance-banner')).not.toBeInTheDocument();
+  });
+
+  it('only looks at the latest dose and never offers it to a read-only viewer', () => {
+    mockCourses = [ladderCourse()];
+    mockInjections = [
+      injection({ id: 'older', injected_at: '2026-11-08T09:00:00Z' }),
+      injection({ id: 'newer', dose_mg: 0.25 }),
+    ];
+    setup();
+    expect(screen.queryByTestId('advance-banner')).not.toBeInTheDocument();
+    mockInjections = [injection()];
+    mockWrite = false;
+    setup();
+    expect(screen.queryByTestId('advance-banner')).not.toBeInTheDocument();
+  });
 });

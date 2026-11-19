@@ -10,6 +10,7 @@ import {
   isDeviceEligibleForRoute,
   addDays,
   perAdministrationEstimate,
+  type CourseAdvanceProposal,
   type MedicationCourse,
   type MedicationCourseRevision,
   type MedicationCoursePlanInput,
@@ -120,6 +121,7 @@ export default function MedicationCourseEditor({
   mode: initialMode,
   course,
   revision,
+  advance,
   onClose,
   onRefresh,
 }: {
@@ -130,6 +132,11 @@ export default function MedicationCourseEditor({
   mode: Mode;
   course?: MedicationCourse;
   revision?: MedicationCourseRevision;
+  /**
+   * A suggested move to the next titration phase. Seeds the revise draft with
+   * the phases from that one on; nothing is saved without the normal review.
+   */
+  advance?: CourseAdvanceProposal;
   onClose: () => void;
   onRefresh: () => Promise<MedicationCourse | undefined>;
 }) {
@@ -160,6 +167,7 @@ export default function MedicationCourseEditor({
   const [draft, setDraft] = useState(() => ({
     ...initialPlan(med, today, revision),
     ...(initialMode === 'revise' ? { start_date: today } : {}),
+    ...(initialMode === 'revise' && advance ? { steps: advance.steps } : {}),
   }));
   // Omission preserves an existing binding, including a deleted explicit device.
   const deviceSelection =
@@ -183,7 +191,11 @@ export default function MedicationCourseEditor({
   const titrationQ = useMedicationTitration(med.id);
   const [selectedSteps, setSelectedSteps] = useState<string[]>([]);
   const [review, setReview] = useState<MedicationCourseReview | null>(null);
-  const [carryAdopted, setCarryAdopted] = useState(false);
+  // A suggested advance already chose the phases to keep, so the automatic
+  // carry-forward (which would restore the current phase) is not applied.
+  const [carryAdopted, setCarryAdopted] = useState(
+    initialMode === 'revise' && !!advance
+  );
   const [ack, setAck] = useState(false);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
@@ -438,6 +450,27 @@ export default function MedicationCourseEditor({
         <DialogHeader>
           <DialogTitle>{heading}</DialogTitle>
         </DialogHeader>
+        {mode === 'revise' && advance && (
+          <p
+            data-testid="advance-note"
+            className="rounded-md border bg-muted/20 p-3 text-sm text-foreground"
+          >
+            {t(
+              'medications.courses.advance.note',
+              'Phase {{to}} of {{count}} is loaded because your latest dose matched it.',
+              { to: advance.to_phase, count: advance.phase_count }
+            )}
+            {advance.shortened &&
+              ` ${t(
+                'medications.courses.advance.noteShortened',
+                'The dose you took counts as the first dose of that phase, so it is one dose shorter.'
+              )}`}{' '}
+            {t(
+              'medications.courses.advance.noteCheck',
+              'Check the phases and the start date, then review.'
+            )}
+          </p>
+        )}
         {message && (
           <p
             role="status"

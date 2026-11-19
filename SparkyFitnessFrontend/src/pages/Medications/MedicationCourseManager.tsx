@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  addDays,
+  courseAdvanceProposal,
   courseBucket,
   isCurrentCourseTip,
+  type CourseAdvanceProposal,
   type MedicationCourse,
   type MedicationCourseRevision,
   type MedicationCourseBucket,
@@ -16,6 +19,8 @@ import {
   invalidateMedicationCourses,
   HttpApiError,
 } from '@/hooks/Medications/useMedicationCourses';
+import { useMedicationInjections } from '@/hooks/useMedications';
+import { usePreferences } from '@/contexts/PreferencesContext';
 import type { MedicationDetail } from '@/types/medications';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -287,10 +292,22 @@ function CourseManagerContent({
   const [editor, setEditor] = useState<
     | (
         | { mode: 'create' | 'handoff' }
-        | (Selection & { mode: 'edit' | 'revise' })
+        | (Selection & {
+            mode: 'edit' | 'revise';
+            advance?: CourseAdvanceProposal;
+          })
       )
     | null
   >(null);
+  const { formatDate } = usePreferences();
+  const injectionsQ = useMedicationInjections(med.id, scope.canWrite);
+  const [dismissed, setDismissed] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('course-advance-dismissed');
+    } catch {
+      return null;
+    }
+  });
   const [history, setHistory] = useState<Selection | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [cycleAction, setCycleAction] = useState<
@@ -311,6 +328,38 @@ function CourseManagerContent({
         .filter((revision) => !revision.deleted_at)
         .map((revision) => ({ course, revision }))
     ) ?? [];
+  // The latest recent injection, when it was attributed to a step of a live plan
+  // and its amount matches the next phase, suggests moving the plan on.
+  const latestInjection = [...(injectionsQ.data ?? [])].sort((a, b) =>
+    b.injected_at.localeCompare(a.injected_at)
+  )[0];
+  const advanceSuggestion = (() => {
+    if (!data || !scope.canWrite || !latestInjection) return null;
+    if (latestInjection.id === dismissed) return null;
+    if (
+      latestInjection.entry_date < addDays(data.today, -14) ||
+      latestInjection.dose_mg == null
+    )
+      return null;
+    const row = rows.find(
+      ({ revision }) => revision.id === latestInjection.course_revision_id
+    );
+    if (
+      !row ||
+      !isCurrentCourseTip(row.course, row.revision.id) ||
+      courseBucket(row.revision, data.today) !== 'active'
+    )
+      return null;
+    const proposal = courseAdvanceProposal({
+      revision: row.revision,
+      attributedStepId: latestInjection.course_step_id,
+      loggedDose: {
+        amount: latestInjection.dose_mg_exact ?? latestInjection.dose_mg,
+        unit: 'mg',
+      },
+    });
+    return proposal ? { ...row, proposal, entry: latestInjection } : null;
+  })();
   const buckets: MedicationCourseBucket[] = [
     'active',
     'scheduled',
@@ -377,6 +426,60 @@ function CourseManagerContent({
         )}
       </CardHeader>
       <CardContent className="space-y-5">
+        {advanceSuggestion && (
+          <div
+            role="status"
+            data-testid="advance-banner"
+            className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3 text-sm"
+          >
+            <p>
+              {t(
+                'medications.courses.advance.banner',
+                'Your latest dose ({{dose}} {{unit}} on {{date}}) matches phase {{to}} of {{count}}, but the plan is on phase {{from}}. Review moving the plan to phase {{to}}?',
+                {
+                  dose: advanceSuggestion.proposal.matched_dose,
+                  unit: advanceSuggestion.proposal.matched_dose_unit,
+                  date: formatDate(advanceSuggestion.entry.entry_date),
+                  to: advanceSuggestion.proposal.to_phase,
+                  from: advanceSuggestion.proposal.from_phase,
+                  count: advanceSuggestion.proposal.phase_count,
+                }
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() =>
+                  setEditor({
+                    mode: 'revise',
+                    course: advanceSuggestion.course,
+                    revision: advanceSuggestion.revision,
+                    advance: advanceSuggestion.proposal,
+                  })
+                }
+              >
+                {t('medications.courses.advance.review', 'Review phase change')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setDismissed(advanceSuggestion.entry.id);
+                  try {
+                    localStorage.setItem(
+                      'course-advance-dismissed',
+                      advanceSuggestion.entry.id
+                    );
+                  } catch {
+                    /* the choice still holds for this visit */
+                  }
+                }}
+              >
+                {t('medications.courses.advance.keep', 'Keep current plan')}
+              </Button>
+            </div>
+          </div>
+        )}
         {data?.courses
           .filter(
             (course) =>
@@ -637,6 +740,9 @@ function CourseManagerContent({
           mode={editor.mode}
           {...('course' in editor
             ? { course: editor.course, revision: editor.revision }
+            : {})}
+          {...('advance' in editor && editor.advance
+            ? { advance: editor.advance }
             : {})}
           onClose={() => setEditor(null)}
           onRefresh={() =>

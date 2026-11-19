@@ -16,6 +16,7 @@ import {
   courseReview,
 } from '@/tests/fixtures/medicationCourses';
 import type {
+  CourseAdvanceProposal,
   MedicationCourseReviewInput,
   MedicationCourseReview,
 } from '@workspace/shared';
@@ -113,7 +114,8 @@ const close = jest.fn(),
 function setup(
   mode: 'create' | 'handoff' | 'edit' | 'revise' = 'create',
   course = courseFixture(),
-  med = courseMedication
+  med = courseMedication,
+  advance?: CourseAdvanceProposal
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -129,6 +131,7 @@ function setup(
         {...(mode === 'edit' || mode === 'revise'
           ? { course, revision: course.revisions[0] }
           : {})}
+        {...(advance ? { advance } : {})}
         onClose={close}
         onRefresh={refresh}
       />
@@ -700,4 +703,73 @@ it('explains why a per-week plan with an irregular schedule has no estimate', ()
 it('shows no per-administration line for a per-administration plan', () => {
   setup('edit');
   expect(screen.queryByText(/per administration at/)).not.toBeInTheDocument();
+});
+it('seeds a suggested phase advance and keeps it through the review instead of restoring the current phase', async () => {
+  const c = courseFixture();
+  const step = (
+    id: string,
+    index: number,
+    dose: string,
+    days: number | null
+  ) => ({
+    id,
+    user_id: courseIds.owner,
+    revision_id: courseIds.revision,
+    step_index: index,
+    dose,
+    dose_unit: 'mg',
+    duration_days: days,
+    notes: null,
+  });
+  c.revisions[0]!.steps = [
+    step('00000000-0000-4000-8000-0000000000a1', 0, '0.25', 28),
+    step('00000000-0000-4000-8000-0000000000a2', 1, '0.5', 28),
+    step('00000000-0000-4000-8000-0000000000a3', 2, '1', null),
+  ];
+  const advance: CourseAdvanceProposal = {
+    from_phase: 1,
+    to_phase: 2,
+    phase_count: 3,
+    matched_dose: '0.5',
+    matched_dose_unit: 'mg',
+    shortened: true,
+    steps: [
+      { dose: '0.5', dose_unit: 'mg', duration_days: 21, notes: null },
+      { dose: '1', dose_unit: 'mg', duration_days: null, notes: null },
+    ],
+  };
+  // The server's own carry-forward would put the plan back on its current phase.
+  mockReview.mockImplementation(async (_m, _i, input) =>
+    courseReview(input, {
+      expected_version: 1,
+      review_fingerprint: 'review-advance',
+      carried_steps: [
+        { dose: '0.25', dose_unit: 'mg', duration_days: 14, notes: null },
+        { dose: '0.5', dose_unit: 'mg', duration_days: 28, notes: null },
+        { dose: '1', dose_unit: 'mg', duration_days: null, notes: null },
+      ],
+      phase_progress_known: true,
+    })
+  );
+  setup('revise', c, courseMedication, advance);
+  expect(screen.getByTestId('advance-note')).toHaveTextContent(
+    'Phase 2 of 3 is loaded because your latest dose matched it. The dose you took counts as the first dose of that phase, so it is one dose shorter. Check the phases and the start date, then review.'
+  );
+  expect(
+    screen.getByLabelText('Phase 1 duration in days (blank is open-ended)')
+  ).toHaveValue(21);
+  review();
+  await screen.findByRole('button', { name: 'Confirm course' });
+  expect(screen.queryByText(/Remaining phases copied/)).not.toBeInTheDocument();
+  expect(mockReview.mock.calls[0]![2].steps).toEqual(advance.steps);
+  acknowledge();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm course' }));
+  await waitFor(() => expect(mockRevise).toHaveBeenCalled());
+  expect(mockRevise.mock.calls[0]![1]).toMatchObject({
+    steps: advance.steps,
+  });
+});
+it('shows no advance note when the revise draft was opened normally', () => {
+  setup('revise');
+  expect(screen.queryByTestId('advance-note')).not.toBeInTheDocument();
 });
