@@ -22,6 +22,7 @@ import {
   UpdateMedicationBodySchema,
   CreateScheduleBodySchema,
   UpdateScheduleBodySchema,
+  MoveSchedulesBodySchema,
   CreatePenBodySchema,
   UpdatePenBodySchema,
   CreateInjectionBodySchema,
@@ -311,6 +312,18 @@ const requireDiaryForSupplementDose = (
  *     security: [{ cookieAuth: [] }]
  *     parameters: [{ in: path, name: medicationId, required: true, schema: { type: string, format: uuid } }]
  *     responses: { 201: { description: Created. }, 400: { description: Invalid request. }, 403: { description: Supplement doses require food diary access for this profile. } }
+ * /v2/medications/{medicationId}/schedules/move:
+ *   post:
+ *     summary: End plain schedule rules and start moved copies the day after
+ *     tags: [Medications & GLP-1]
+ *     security: [{ cookieAuth: [] }]
+ *     parameters: [{ in: path, name: medicationId, required: true, schema: { type: string, format: uuid } }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { type: object, required: [schedule_ids, end_date, new_start_date], properties: { schedule_ids: { type: array, items: { type: string, format: uuid } }, end_date: { type: string, format: date }, new_start_date: { type: string, format: date }, rotate_days: { type: integer, minimum: 1, maximum: 6 } } }
+ *     responses: { 200: { description: Moved. }, 400: { description: Invalid request. }, 404: { description: Not found. }, 409: { description: Retained for a course. }, 422: { description: The move does not fit the schedule. } }
  * /v2/medications/schedules/{id}:
  *   put:
  *     summary: Update a schedule rule (partial)
@@ -1209,6 +1222,24 @@ const addSchedule: RequestHandler = async (req, res, next) => {
   }
 };
 
+const moveSchedules: RequestHandler = async (req, res, next) => {
+  try {
+    const params = MedicationIdParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const body = MoveSchedulesBodySchema.safeParse(req.body);
+    if (!body.success) return badRequest(res, body.error);
+    res.json(
+      await medicationRepository.moveSchedules(
+        req.userId,
+        params.data.medicationId,
+        body.data
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateSchedule: RequestHandler = async (req, res, next) => {
   try {
     const params = UuidParamSchema.safeParse(req.params);
@@ -1254,6 +1285,13 @@ router.post(
     medicationId: asUuid(oneParam(req.params.medicationId)),
   })),
   addSchedule
+);
+router.post(
+  '/:medicationId/schedules/move',
+  requireDiaryForSupplementDose((req) => ({
+    medicationId: asUuid(oneParam(req.params.medicationId)),
+  })),
+  moveSchedules
 );
 router.put(
   '/schedules/:id',

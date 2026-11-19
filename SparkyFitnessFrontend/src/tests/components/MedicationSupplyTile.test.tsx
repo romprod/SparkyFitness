@@ -74,6 +74,10 @@ jest.mock('@/pages/Medications/MedicationSmoothWeek', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/pages/Medications/MedicationScheduleMove', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/pages/Medications/MedicationLogCalendar', () => ({
   __esModule: true,
   default: () => null,

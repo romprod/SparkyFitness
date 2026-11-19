@@ -1,11 +1,15 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type { MedicationDetail } from '@/types/medications';
 import MedicationSmoothWeek from '@/pages/Medications/MedicationSmoothWeek';
 
 let mockCourses: unknown[] = [];
+const mockMove = jest.fn();
 jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
   useMedicationCourses: () => ({ data: { courses: mockCourses } }),
+}));
+jest.mock('@/hooks/useMedications', () => ({
+  useMoveSchedulesMutation: () => ({ mutate: mockMove, isPending: false }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({ timezone: 'UTC', formatDate: (d: string) => d }),
@@ -56,6 +60,7 @@ const weekly = (...days: number[]) => ({
 
 beforeEach(() => {
   mockCourses = [];
+  mockMove.mockReset();
 });
 
 it('renders nothing without a scheduled injectable', () => {
@@ -89,7 +94,9 @@ it('shows the week and suggests moving one of two weekly injections that share a
   });
   expect(within(after).queryByText('2')).not.toBeInTheDocument();
   expect(screen.getAllByText(/→/)).toHaveLength(1);
-  expect(screen.getByText(/These are suggestions only/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Nothing changes until you apply a move/)
+  ).toBeInTheDocument();
 });
 
 it('says the week is flat, and notes medications it will not move', () => {
@@ -120,4 +127,76 @@ it('says the week is flat, and notes medications it will not move', () => {
     name: 'Doses per day this plan',
   });
   expect(within(current).getAllByText('1').length).toBeGreaterThanOrEqual(6);
+});
+
+it('applies a suggested move only after confirming it', () => {
+  render(
+    <MedicationSmoothWeek
+      medications={[
+        med('a', 'Alpha', [weekly(6)]),
+        med('b', 'Beta', [weekly(6)]),
+      ]}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(mockMove).not.toHaveBeenCalled();
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByText(/Move (Alpha|Beta)\?/)).toBeInTheDocument();
+  expect(within(dialog).getByText(/From 2026-11-23/)).toBeInTheDocument();
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Move schedule' })
+  );
+  expect(mockMove).toHaveBeenCalledTimes(1);
+  const [call] = mockMove.mock.calls[0]!;
+  expect(call).toMatchObject({
+    body: {
+      end_date: '2026-11-22',
+      new_start_date: '2026-11-23',
+      rotate_days: expect.any(Number),
+    },
+  });
+  expect(['a', 'b']).toContain(call.medicationId);
+  expect(call.body.schedule_ids).toEqual([`${call.medicationId}-0`]);
+});
+
+it('does not move anything when the confirmation is cancelled', () => {
+  render(
+    <MedicationSmoothWeek
+      medications={[
+        med('a', 'Alpha', [weekly(6)]),
+        med('b', 'Beta', [weekly(6)]),
+      ]}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(mockMove).not.toHaveBeenCalled();
+});
+
+it('ignores a rule that ended before the coming week, so a moved schedule is still offered', () => {
+  render(
+    <MedicationSmoothWeek
+      medications={[
+        med('a', 'Alpha', [
+          { ...weekly(6), end_date: '2026-11-22' },
+          { ...weekly(1), start_date: '2026-11-23' },
+        ]),
+        med('b', 'Beta', [weekly(1)]),
+      ]}
+    />
+  );
+  expect(screen.queryByText(/ends within a week/)).not.toBeInTheDocument();
+  expect(screen.getAllByText(/→/)).toHaveLength(1);
+});
+
+it('offers no Apply for a medication with a rule that starts later', () => {
+  render(
+    <MedicationSmoothWeek
+      medications={[
+        med('a', 'Alpha', [weekly(6)]),
+        med('b', 'Beta', [{ ...weekly(6), start_date: '2026-11-23' }]),
+      ]}
+    />
+  );
+  expect(screen.getAllByText(/→/)).toHaveLength(1);
 });

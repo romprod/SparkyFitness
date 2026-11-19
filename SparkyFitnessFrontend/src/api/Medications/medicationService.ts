@@ -77,6 +77,22 @@ export const addSchedule = (
     body,
   });
 
+export interface MoveSchedulesInput {
+  schedule_ids: string[];
+  end_date: string;
+  new_start_date: string;
+  rotate_days?: number;
+}
+
+export const moveSchedules = (
+  medicationId: string,
+  body: MoveSchedulesInput
+): Promise<{ ended_ids: string[]; created: MedicationSchedule[] }> =>
+  apiCall(`/v2/medications/${medicationId}/schedules/move`, {
+    method: 'POST',
+    body,
+  });
+
 export const deleteSchedule = (id: string): Promise<void> =>
   apiCall(`/v2/medications/schedules/${id}`, { method: 'DELETE' });
 

@@ -11,6 +11,7 @@ import type {
   UpdateMedicationBody,
   CreateScheduleBody,
   UpdateScheduleBody,
+  MoveSchedulesBody,
 } from '../schemas/medicationSchemas.js';
 
 // Column lists kept in one place so SELECTs stay consistent.
@@ -416,6 +417,148 @@ async function deleteSchedule(userId: string, scheduleId: string) {
   }
 }
 
+type MovableScheduleRow = ScheduleRow & {
+  source: string | null;
+  custom_fields: Record<string, unknown> | null;
+};
+
+const moveProblem = (message: string, statusCode = 409) =>
+  Object.assign(new Error(message), { statusCode, status: statusCode });
+
+const DAY_MS = 86_400_000;
+const dayNumber = (day: string) => Date.parse(day + 'T00:00:00Z') / DAY_MS;
+
+/**
+ * Ends the named plain schedules and starts copies the day after, in one transaction, so history
+ * keeps the rules that were in force and the medication is never left with none or with both.
+ * Weekly rules start on `end_date + 1` with their weekdays rotated; every-N-days rules start
+ * exactly N days after `end_date`, which is the roll from the dose taken on `end_date`.
+ */
+async function moveSchedules(
+  userId: string,
+  medicationId: string,
+  body: MoveSchedulesBody
+) {
+  const ids = [...new Set(body.schedule_ids)];
+  const gap = dayNumber(body.new_start_date) - dayNumber(body.end_date);
+  if (!(gap >= 1))
+    throw moveProblem(
+      'The moved schedule must start after the old one ends.',
+      422
+    );
+  const client: PoolClient = await getClient(userId);
+  try {
+    await client.query('BEGIN');
+    await lockLogMedication(client, userId, medicationId);
+    const found = await client.query<MovableScheduleRow>(
+      `SELECT id, medication_id, schedule_type_id, time_of_day, dose_amount, days_of_week,
+              interval_days, day_of_month, cycle_on_days, cycle_off_days, with_meal,
+              prn_reason, prn_max_per_day, start_date::text AS start_date,
+              end_date::text AS end_date, active, source, custom_fields
+         FROM medication_schedules
+        WHERE user_id = $1 AND medication_id = $2 AND id = ANY($3::uuid[])
+        ORDER BY id FOR UPDATE`,
+      [userId, medicationId, ids]
+    );
+    if (found.rows.length !== ids.length)
+      throw moveProblem('Schedule not found.', 404);
+    const handed = await client.query(
+      'SELECT 1 FROM medication_course_handoffs WHERE user_id = $1 AND schedule_id = ANY($2::uuid[])',
+      [userId, ids]
+    );
+    if ((handed.rowCount ?? 0) > 0)
+      throw moveProblem(
+        'This schedule is retained for a course. Edit the course instead.'
+      );
+
+    const created: ScheduleRow[] = [];
+    for (const row of found.rows) {
+      const type = row.schedule_type_id;
+      const weekly = type === 'weekly' || type === 'specific_days';
+      if (row.active === false)
+        throw moveProblem('Only an active schedule can be moved.', 422);
+      if (weekly) {
+        if (!row.days_of_week?.length || body.rotate_days === undefined)
+          throw moveProblem(
+            'A weekly schedule needs the days to rotate by.',
+            422
+          );
+        if (gap !== 1)
+          throw moveProblem(
+            'A weekly move starts the day after the old rule ends.',
+            422
+          );
+      } else if (type === 'every_n_days') {
+        if (body.rotate_days !== undefined)
+          throw moveProblem('An every-N-days schedule is not rotated.', 422);
+        if (!row.interval_days || gap !== row.interval_days || !row.start_date)
+          throw moveProblem(
+            'An every-N-days move starts one interval after the dose.',
+            422
+          );
+      } else {
+        throw moveProblem('This kind of schedule cannot be moved.', 422);
+      }
+      if (row.start_date && body.end_date < row.start_date)
+        throw moveProblem('The old schedule cannot end before it starts.', 422);
+      if (row.end_date && row.end_date < body.new_start_date)
+        throw moveProblem(
+          'This schedule ends before the move would start.',
+          422
+        );
+
+      const days = weekly
+        ? [
+            ...new Set(
+              (row.days_of_week ?? []).map(
+                (day) => (day + body.rotate_days!) % 7
+              )
+            ),
+          ].sort((a, b) => a - b)
+        : (row.days_of_week ?? null);
+      await client.query(
+        'UPDATE medication_schedules SET end_date = $3, updated_at = NOW() WHERE id = $1 AND user_id = $2',
+        [row.id, userId, body.end_date]
+      );
+      const copy = await client.query<ScheduleRow>(
+        `INSERT INTO medication_schedules (
+           medication_id, user_id, schedule_type_id, time_of_day, dose_amount, days_of_week,
+           interval_days, day_of_month, cycle_on_days, cycle_off_days, with_meal,
+           prn_reason, prn_max_per_day, start_date, end_date, active, source, custom_fields)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,TRUE,$16,$17)
+         RETURNING ${SCHEDULE_COLS}`,
+        [
+          medicationId,
+          userId,
+          row.schedule_type_id,
+          row.time_of_day,
+          row.dose_amount,
+          days,
+          row.interval_days,
+          row.day_of_month,
+          row.cycle_on_days,
+          row.cycle_off_days,
+          row.with_meal,
+          row.prn_reason,
+          row.prn_max_per_day,
+          body.new_start_date,
+          row.end_date,
+          row.source,
+          JSON.stringify(row.custom_fields ?? {}),
+        ]
+      );
+      created.push(copy.rows[0]!);
+    }
+    await client.query('COMMIT');
+    return { ended_ids: found.rows.map((row) => row.id), created };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export {
   createMedication,
   listMedications,
@@ -425,6 +568,7 @@ export {
   addSchedule,
   updateSchedule,
   deleteSchedule,
+  moveSchedules,
 };
 export default {
   createMedication,
@@ -435,4 +579,5 @@ export default {
   addSchedule,
   updateSchedule,
   deleteSchedule,
+  moveSchedules,
 };

@@ -731,6 +731,33 @@ export const useAddScheduleMutation = (medId: string) => {
   });
 };
 
+export const useMoveSchedulesMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      medicationId,
+      body,
+    }: {
+      medicationId: string;
+      body: medicationService.MoveSchedulesInput;
+    }) => medicationService.moveSchedules(medicationId, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medications'] });
+      invalidateReports(queryClient);
+    },
+    meta: {
+      errorMessage: i18n.t(
+        'hooks.useMedications.couldNotMoveSchedule',
+        'Could not move the schedule.'
+      ),
+      successMessage: i18n.t(
+        'hooks.useMedications.scheduleMoved',
+        'Schedule moved.'
+      ),
+    },
+  });
+};
+
 export const useDeleteScheduleMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({

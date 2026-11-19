@@ -130,6 +130,19 @@ export type CreateScheduleBody = z.infer<typeof CreateScheduleBodySchema>;
 export const UpdateScheduleBodySchema = CreateScheduleBodySchema.partial();
 export type UpdateScheduleBody = z.infer<typeof UpdateScheduleBodySchema>;
 
+// Moving schedules: end the named rules on `end_date` and start copies on `new_start_date`.
+// Weekly rules rotate by `rotate_days`; an every-N-days rule counts on from the dose day, so it
+// takes no rotation. The repository checks the dates against each rule.
+export const MoveSchedulesBodySchema = z
+  .object({
+    schedule_ids: z.array(z.string().uuid()).min(1).max(20),
+    end_date: z.iso.date(),
+    new_start_date: z.iso.date(),
+    rotate_days: z.number().int().min(1).max(6).optional(),
+  })
+  .strict();
+export type MoveSchedulesBody = z.infer<typeof MoveSchedulesBodySchema>;
+
 // --------------------------------------------------------------------------
 // Pens / vials
 // --------------------------------------------------------------------------

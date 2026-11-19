@@ -1017,6 +1017,105 @@ describe('Medication Routes V2', () => {
       expect(medicationRepository.updateSchedule).not.toHaveBeenCalled();
     });
 
+    it('moves schedules through the repository', async () => {
+      const moved = { ended_ids: [UID], created: [{ id: 'new-rule' }] };
+      vi.mocked(medicationRepository.moveSchedules).mockResolvedValue(
+        moved as never
+      );
+      const res = await request(app)
+        .post(`/api/v2/medications/${UID}/schedules/move`)
+        .set('Cookie', cookie)
+        .send({
+          schedule_ids: [UID],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+          rotate_days: 2,
+        });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual(moved);
+      expect(medicationRepository.moveSchedules).toHaveBeenCalledWith(
+        'testUser',
+        UID,
+        {
+          schedule_ids: [UID],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+          rotate_days: 2,
+        }
+      );
+    });
+
+    it.each([
+      [
+        'no ids',
+        {
+          schedule_ids: [],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+        },
+      ],
+      [
+        'a bad id',
+        {
+          schedule_ids: ['nope'],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+        },
+      ],
+      [
+        'a bad date',
+        {
+          schedule_ids: [UID],
+          end_date: '18/11/2026',
+          new_start_date: '2026-11-19',
+        },
+      ],
+      [
+        'a rotation of zero',
+        {
+          schedule_ids: [UID],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+          rotate_days: 0,
+        },
+      ],
+      [
+        'an extra field',
+        {
+          schedule_ids: [UID],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+          active: false,
+        },
+      ],
+    ])('rejects a move with %s', async (_name, body) => {
+      const res = await request(app)
+        .post(`/api/v2/medications/${UID}/schedules/move`)
+        .set('Cookie', cookie)
+        .send(body);
+      expect(res.statusCode).toBe(400);
+      expect(medicationRepository.moveSchedules).not.toHaveBeenCalled();
+    });
+
+    it('passes a refused move through with its status', async () => {
+      vi.mocked(medicationRepository.moveSchedules).mockRejectedValue(
+        Object.assign(new Error('not movable'), {
+          statusCode: 422,
+          status: 422,
+        })
+      );
+      const res = await request(app)
+        .post(`/api/v2/medications/${UID}/schedules/move`)
+        .set('Cookie', cookie)
+        .send({
+          schedule_ids: [UID],
+          end_date: '2026-11-18',
+          new_start_date: '2026-11-19',
+          rotate_days: 2,
+        });
+      expect(res.statusCode).toBe(422);
+    });
+
     it('deletes a schedule', async () => {
       vi.mocked(medicationRepository.deleteSchedule).mockResolvedValue(true);
       const res = await request(app)

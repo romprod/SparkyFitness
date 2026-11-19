@@ -63,6 +63,7 @@ import MedicationCourseTimeline from './MedicationCourseTimeline';
 import TodayMedications from './TodayMedications';
 import MedicationLogCalendar from './MedicationLogCalendar';
 import MedicationSmoothWeek from './MedicationSmoothWeek';
+import MedicationScheduleMove from './MedicationScheduleMove';
 import MedicationSupplyTile from './MedicationSupplyTile';
 import SymptomsHub from '../Symptoms/SymptomsHub';
 import MedicationDisclaimer from './MedicationDisclaimer';
@@ -453,6 +454,7 @@ export default function Medications() {
               })
             }
           />
+          <MedicationScheduleMove medications={meds as MedicationDetail[]} />
           <MedicationSmoothWeek medications={meds as MedicationDetail[]} />
           <TodayMedications
             selectedDate={selectedDate}

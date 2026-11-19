@@ -1901,6 +1901,13 @@
       "planRunsOut": "On your plan: runs out {{date}} (~{{amount}} days)",
       "planRunsOutToday": "On your plan: runs out today"
     },
+    "scheduleMove": {
+      "weekly": "{{name}} was taken on {{taken}}, not on its usual day. Move its schedule from {{from}} to {{to}}?",
+      "interval": "{{name}} was taken on {{taken}}, off its every {{days}} days. Count {{days}} days on from that dose instead?",
+      "next": "The next dose would be {{date}}. Earlier doses stay as they are, and you can move it back from the medication’s schedule.",
+      "move": "Move schedule",
+      "keep": "Keep schedule"
+    },
     "smoothWeek": {
       "title": "Smooth your week",
       "subtitle": "Doses per day in the coming week, and how moving weekly injections to other days would spread them. Amounts, times and doses per week do not change.",
@@ -1910,7 +1917,11 @@
       "suggested": "With these moves",
       "move": "{{name}}: {{from}} → {{to}}",
       "flat": "Your week is already as flat as moving weekly injections can make it.",
-      "apply": "These are suggestions only. To use one, change the weekdays in that medication’s schedule.",
+      "apply": "Nothing changes until you apply a move. A move starts on the week shown; earlier days keep their schedule.",
+      "applyMove": "Apply",
+      "confirmTitle": "Move {{name}}?",
+      "confirmBody": "From {{date}} its schedule moves from {{from}} to {{to}}. Doses up to then, and your history, stay as they are.",
+      "confirmMove": "Move schedule",
       "managed": "follows a course plan, not moved here",
       "notWeekly": "not a weekly pattern",
       "endsSoon": "schedule ends within a week"
@@ -10111,6 +10122,8 @@
       "couldNotRemoveLoggedDose": "Could not remove logged dose.",
       "loggedDoseRemoved": "Logged dose removed.",
       "couldNotAddSchedule": "Could not add schedule.",
+      "couldNotMoveSchedule": "Could not move the schedule.",
+      "scheduleMoved": "Schedule moved.",
       "scheduleAdded": "Schedule added.",
       "couldNotDeleteSchedule": "Could not delete schedule.",
       "scheduleDeleted": "Schedule deleted."
