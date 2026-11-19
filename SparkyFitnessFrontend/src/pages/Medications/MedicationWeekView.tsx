@@ -51,23 +51,57 @@ export default function MedicationWeekView({
           : value === 'snoozed'
             ? '◷'
             : '○';
+  const tone = (value: string) =>
+    value === 'taken' || value === 'prn_taken'
+      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+      : value === 'missed'
+        ? 'border-destructive/50 bg-destructive/10 text-red-700 dark:text-red-300'
+        : value === 'snoozed'
+          ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+          : value === 'skipped'
+            ? 'border-border bg-muted text-muted-foreground'
+            : 'border-primary/40 bg-transparent text-primary';
+  const weekday = (day: string) =>
+    new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(`${day}T00:00:00Z`));
+  const shortTime = (value: string) =>
+    value.replace(/^(\d{1,2}:\d{2}):\d{2}/, '$1');
+  const coverageSeen = new Set<string>();
+  for (const item of data.coverage)
+    if (
+      item.coverage !== 'available' &&
+      lanes.some((lane) => lane.id === item.lane_id)
+    )
+      coverageSeen.add(item.coverage);
+  const chip = (
+    key: string,
+    glyphText: string,
+    toneClass: string,
+    time: string,
+    label: string,
+    dashed: boolean
+  ) => (
+    <span
+      key={key}
+      role="img"
+      aria-label={label}
+      title={label}
+      className={`mx-auto flex w-fit min-w-9 flex-col items-center rounded-md border px-1.5 py-0.5 leading-tight ${dashed ? 'border-dashed' : ''} ${toneClass}`}
+    >
+      <span aria-hidden="true" className="text-sm font-semibold">
+        {glyphText}
+      </span>
+      <span aria-hidden="true" className="text-[10px] tabular-nums">
+        {time}
+      </span>
+    </span>
+  );
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        {t(
-          'medications.week.provenance',
-          'Actual doses use their recorded calendar date; times are displayed in {{timezone}}. Planned times keep each plan’s saved timezone. Matching date labels do not imply the same instant.',
-          { timezone: data.timezone }
-        )}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {t(
-          'medications.week.future',
-          'Future plans show the recurrence currently configured; unknown future dose targets remain unknown. No hypothetical restarts are included.'
-        )}
-      </p>
       <div
-        className="flex flex-wrap gap-3 text-xs"
+        className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"
         aria-label={t('medications.week.legend', 'Dose status legend')}
       >
         {[
@@ -80,7 +114,12 @@ export default function MedicationWeekView({
           'snoozed',
         ].map((value) => (
           <span key={value}>
-            {glyph(value)} {status(value)}
+            <span
+              className={`mr-1 inline-block w-4 rounded border text-center ${tone(value)}`}
+            >
+              {glyph(value)}
+            </span>
+            {status(value)}
           </span>
         ))}
       </div>
@@ -101,12 +140,12 @@ export default function MedicationWeekView({
           )}
           className="overflow-x-auto border rounded-md focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <table className="w-full min-w-[900px] table-fixed text-xs">
+          <table className="w-full min-w-[640px] table-fixed text-xs">
             <thead>
               <tr>
                 <th
                   scope="col"
-                  className="w-40 sticky left-0 bg-background p-2 z-10 text-left"
+                  className="w-36 sticky left-0 bg-background p-2 z-10 text-left"
                 >
                   {t('medications.week.item', 'Medication / supplement')}
                 </th>
@@ -114,11 +153,14 @@ export default function MedicationWeekView({
                   <th
                     scope="col"
                     key={day}
-                    className={`p-2 border-l ${day === data.today ? 'bg-primary/10' : ''}`}
+                    className={`p-2 border-l font-medium ${day === data.today ? 'bg-primary/10 text-primary' : ''}`}
                   >
-                    {formatDate(day)}
+                    <span className="block">{weekday(day)}</span>
+                    <span className="block text-[11px] font-normal text-muted-foreground">
+                      {formatDate(day)}
+                    </span>
                     {day === data.today && (
-                      <span className="block">
+                      <span className="block text-[10px] uppercase tracking-wide">
                         {t('common.today', 'Today')}
                       </span>
                     )}
@@ -131,7 +173,7 @@ export default function MedicationWeekView({
                 <tr key={lane.id}>
                   <th
                     scope="row"
-                    className="sticky left-0 bg-background p-2 align-top z-10 break-words text-left"
+                    className="sticky left-0 bg-background p-2 align-middle z-10 break-words text-left font-medium"
                   >
                     {lane.name ||
                       t(
@@ -151,30 +193,30 @@ export default function MedicationWeekView({
                           .map((item) => item.coverage)
                       ),
                     ].filter((item) => item !== 'available');
+                    const coverageLabel = coverage
+                      .map((value) =>
+                        t(`medications.week.coverage.${value}`, value)
+                      )
+                      .join(' · ');
                     return (
                       <td
                         key={day}
-                        className={`p-2 border-l border-t align-top ${day === data.today ? 'bg-primary/5' : ''}`}
+                        title={coverageLabel || undefined}
+                        className={`p-1.5 border-l border-t align-middle text-center ${day === data.today ? 'bg-primary/5' : ''}`}
                       >
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           {items.map((item) => {
                             if (item.kind === 'actual') {
                               const actual = item.actual;
                               const slot = item.planned;
                               const description = `${status(actual.status)} · ${amount(actual.dose_amount, actual.dose_unit)} · ${actualTime(actual)} (${data.timezone})${slot ? ` · ${t('medications.week.plannedTime', 'Planned')}: ${plannedTime(slot)} (${slot.timezone})` : ''}`;
-                              return (
-                                <span
-                                  key={actual.key}
-                                  role="img"
-                                  aria-label={`${lane.name} · ${day} · ${description}`}
-                                  title={description}
-                                  className="block rounded border bg-muted/40 p-1.5 break-words"
-                                >
-                                  <span aria-hidden="true">
-                                    {glyph(actual.status)}{' '}
-                                  </span>
-                                  <span>{description}</span>
-                                </span>
+                              return chip(
+                                actual.key,
+                                glyph(actual.status),
+                                tone(actual.status),
+                                actual.occurred_at ? actualTime(actual) : '',
+                                `${lane.name} · ${day} · ${description}`,
+                                false
                               );
                             }
                             const slot = item.planned;
@@ -194,23 +236,20 @@ export default function MedicationWeekView({
                                 )
                               : `${status(slot.status)} · ${amount(slot.dose_amount, slot.dose_unit)}`;
                             const detail = `${description} · ${plannedTime(slot)} (${slot.timezone})`;
-                            return (
-                              <span
-                                key={slot.id}
-                                role="img"
-                                aria-label={`${lane.name} · ${day} · ${detail}`}
-                                title={detail}
-                                className="block rounded border border-dashed p-1.5 break-words"
-                              >
-                                <span aria-hidden="true">
-                                  {matched ? '↗' : glyph(slot.status)}{' '}
-                                </span>
-                                <span>{detail}</span>
-                              </span>
+                            return chip(
+                              slot.id,
+                              matched ? '↗' : glyph(slot.status),
+                              tone(matched ? matched.status : slot.status),
+                              slot.time_of_day
+                                ? shortTime(slot.time_of_day)
+                                : '',
+                              `${lane.name} · ${day} · ${detail}`,
+                              true
                             );
                           })}
                           {!items.length && (
                             <span
+                              className="text-muted-foreground"
                               aria-label={t(
                                 'medications.week.noEntry',
                                 'No entry'
@@ -219,14 +258,6 @@ export default function MedicationWeekView({
                               —
                             </span>
                           )}
-                          {coverage.map((value) => (
-                            <p
-                              key={value}
-                              className="text-[10px] text-muted-foreground"
-                            >
-                              {t(`medications.week.coverage.${value}`, value)}
-                            </p>
-                          ))}
                         </div>
                       </td>
                     );
@@ -237,6 +268,30 @@ export default function MedicationWeekView({
           </table>
         </div>
       )}
+      <div className="space-y-1 text-xs text-muted-foreground">
+        <p>
+          {t(
+            'medications.week.provenance',
+            'Actual doses use their recorded calendar date; times are displayed in {{timezone}}. Planned times keep each plan’s saved timezone. Matching date labels do not imply the same instant.',
+            { timezone: data.timezone }
+          )}
+        </p>
+        <p>
+          {t(
+            'medications.week.future',
+            'Future plans show the recurrence currently configured; unknown future dose targets remain unknown. No hypothetical restarts are included.'
+          )}
+        </p>
+        {[...coverageSeen].map((value) => (
+          <p key={value}>{t(`medications.week.coverage.${value}`, value)}</p>
+        ))}
+        <p>
+          {t(
+            'medications.week.hoverHint',
+            'Hover a mark for the dose, time and plan details.'
+          )}
+        </p>
+      </div>
     </div>
   );
 }

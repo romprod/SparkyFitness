@@ -1384,6 +1384,7 @@
       "unitUnknown": "(unit unknown)",
       "timeUnknown": "Time unknown",
       "timeNotSet": "Time not set",
+      "hoverHint": "Hover a mark for the dose, time and plan details.",
       "provenance": "Actual doses use their recorded calendar date; times are displayed in {{timezone}}. Planned times keep each plan’s saved timezone. Matching date labels do not imply the same instant.",
       "future": "Future plans show the recurrence currently configured; unknown future dose targets remain unknown. No hypothetical restarts are included.",
       "legend": "Dose status legend",

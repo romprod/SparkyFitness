@@ -27,9 +27,11 @@ it('shows the actual recorded value once instead of a changed planned amount on 
     />
   );
   expect(screen.getAllByRole('img')).toHaveLength(1);
-  expect(screen.getByRole('img')).toHaveTextContent('0.5 mg');
-  expect(screen.getByRole('img')).not.toHaveTextContent('0.9 mg');
-  expect(screen.getByRole('img')).toHaveTextContent('08:00 (America/New_York)');
+  expect(screen.getByRole('img')).toHaveAccessibleName(/0\.5 mg/);
+  expect(screen.getByRole('img')).not.toHaveAccessibleName(/0\.9 mg/);
+  expect(screen.getByRole('img')).toHaveAccessibleName(
+    /08:00 \(America\/New_York\)/
+  );
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 it('references cross-day fulfilment without a phantom actual glyph on the planned day', () => {
@@ -45,8 +47,8 @@ it('references cross-day fulfilment without a phantom actual glyph on the planne
     />
   );
   expect(screen.getAllByRole('img')).toHaveLength(1);
-  expect(screen.getByRole('img')).toHaveTextContent(
-    'Planned slot; recorded taken: 0.5 mg on 2026-11-24'
+  expect(screen.getByRole('img')).toHaveAccessibleName(
+    /Planned slot; recorded taken: 0\.5 mg on 2026-11-24/
   );
   expect(screen.getByRole('img')).not.toHaveTextContent('✓');
 });
@@ -69,8 +71,10 @@ it('keeps same-UUID injection and ordinary actuals distinct, with unknown quanti
     />
   );
   expect(screen.getAllByRole('img')).toHaveLength(2);
-  expect(screen.getByText(/Dose unknown/)).toHaveTextContent('Time unknown');
-  expect(screen.getByText(/0 mg/)).toBeInTheDocument();
+  expect(
+    screen.getByRole('img', { name: /Dose unknown/ })
+  ).toHaveAccessibleName(/Time unknown/);
+  expect(screen.getByRole('img', { name: /0 mg/ })).toBeInTheDocument();
   expect(screen.queryByText(/Off-schedule|Shifted/)).not.toBeInTheDocument();
   expect(screen.getByRole('region')).toHaveAttribute('tabindex', '0');
 });
@@ -112,7 +116,9 @@ it('retains multiple daily planned slots, future unknown doses, coverage caveats
   });
   render(<MedicationWeekView subtype="all" data={data} />);
   expect(screen.getAllByRole('img')).toHaveLength(3);
-  expect(screen.getByText(/Time not set/)).toHaveTextContent('Dose unknown');
+  expect(
+    screen.getByRole('img', { name: /Time not set/ })
+  ).toHaveAccessibleName(/Dose unknown/);
   expect(screen.getByText('Unknown recorded medication')).toBeInTheDocument();
   expect(screen.getByText('partial')).toBeInTheDocument();
 });
@@ -127,6 +133,8 @@ it('formats actual clocks in the captured response zone rather than mutable pref
       })}
     />
   );
-  expect(screen.getByRole('img')).toHaveTextContent('04:00 (America/New_York)');
-  expect(screen.getByRole('img')).not.toHaveTextContent('09:00');
+  expect(screen.getByRole('img')).toHaveAccessibleName(
+    /04:00 \(America\/New_York\)/
+  );
+  expect(screen.getByRole('img')).not.toHaveAccessibleName(/09:00/);
 });
