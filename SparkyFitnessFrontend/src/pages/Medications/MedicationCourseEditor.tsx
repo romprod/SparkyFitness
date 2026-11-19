@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/select';
 import MedicationCourseRules from './MedicationCourseRules';
 import MedicationCourseCycleDates from './MedicationCourseCycleDates';
+import MedicationCourseRampGenerator from './MedicationCourseRampGenerator';
 import { formatScheduleDescription } from './medicationUtils';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationForecastDevices } from '@/hooks/Medications/useMedicationInventoryForecast';
@@ -895,6 +896,12 @@ export default function MedicationCourseEditor({
                   </Button>
                 </div>
               ))}
+              <MedicationCourseRampGenerator
+                unit={draft.dose_unit}
+                hasPhases={draft.steps.length > 0}
+                disabled={locked}
+                onGenerate={(steps) => change({ steps })}
+              />
               <Button
                 type="button"
                 variant="outline"

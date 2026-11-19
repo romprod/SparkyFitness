@@ -1611,6 +1611,25 @@
         "Status": "Status",
         "Site": "Site",
         "Notes": "Notes"
+      },
+      "ramp": {
+        "title": "Generate phases from a ramp",
+        "help": "Builds one phase per step from the start dose to the target dose. The last phase has no end date. You can edit every phase afterwards, and nothing is saved until you review and save the course.",
+        "start": "Start dose ({{unit}})",
+        "target": "Target dose ({{unit}})",
+        "increase": "Increase by ({{unit}})",
+        "weeks": "Weeks per phase",
+        "generate": "Generate phases",
+        "replace": "Replace the phases below with this ramp",
+        "startInvalid": "Enter a start dose above zero.",
+        "targetInvalid": "Enter a target dose above zero.",
+        "increaseInvalid": "Enter how much each phase goes up by, above zero.",
+        "weeksInvalid": "Enter weeks per phase from 0.15 (about one day) up to 104.",
+        "unitMissing": "Set the course dose unit first.",
+        "startAboveTarget": "The start dose must not be above the target dose.",
+        "tooMany": "That would need more than 100 phases. Check the increase and its unit.",
+        "made_one": "Created {{count}} phase below. Review it, then save the course.",
+        "made_other": "Created {{count}} phases below. Review them, then save the course."
       }
     },
     "forecasts": {

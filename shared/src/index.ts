@@ -388,6 +388,7 @@ export * from './medications/packs.ts';
 export * from './medications/doseHistory.ts';
 export * from './medications/weekSmoothing.ts';
 export * from './medications/doseReminders.ts';
+export * from './medications/titrationRamp.ts';
 export * from './schemas/api/MedicationReminders.api.zod.ts';
 export * from './utils/labComparison.ts';
 export * from './medications/administration.ts';
