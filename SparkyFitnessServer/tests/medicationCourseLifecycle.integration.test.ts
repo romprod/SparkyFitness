@@ -632,6 +632,9 @@ describe.runIf(process.env.MEDICATION_COURSE_LIFECYCLE_INTEGRATION === '1')(
         await medicationEntryRepository.listEntriesWithInjections(owner, {
           fromDate: past,
           toDate: past,
+          // Earlier tests in this file log entries for the same owner on the
+          // same day, so scope the check to this test's medication.
+          medicationId: med,
         })
       ).toEqual([]);
       expect(

@@ -3,9 +3,15 @@ import injectionRepository from '../models/injectionRepository.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getClient } from '../db/poolManager.js';
 
-vi.mock('../db/poolManager', () => ({
+vi.mock('../db/poolManager', async () => ({
   getClient: vi.fn(),
+  dbContextStorage: new (await import('node:async_hooks')).AsyncLocalStorage(),
 }));
+
+type Route = [match: string | RegExp, result: unknown];
+// The repository runs a few lock and validation queries around the interesting
+// statements, so answer by SQL text instead of by call order.
+const medicationRow = { id: 'med', type_id: 'injection', route_id: null };
 
 describe('injectionRepository', () => {
   let mockClient: {
@@ -30,18 +36,29 @@ describe('injectionRepository', () => {
     vi.clearAllMocks();
   });
 
+  const route = (...routes: Route[]) =>
+    mockClient.query.mockImplementation(async (sql: string) => {
+      for (const [match, result] of routes)
+        if (typeof match === 'string' ? sql.includes(match) : match.test(sql))
+          return result;
+      if (sql.includes('FROM medications WHERE id=$1 AND user_id=$2 FOR SHARE'))
+        return { rows: [medicationRow] };
+      return { rows: [], rowCount: 0 };
+    });
+
   describe('createInjection', () => {
     it('deducts the given pen inside the transaction', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: penId }] }) // standalone stock lock
-        .mockResolvedValueOnce({
-          rows: [{ id: injectionId, pen_id: penId }],
-        }) // INSERT injection
-        .mockResolvedValueOnce({
-          rows: [{ id: penId, doses_used: 2, status: 'in_use' }],
-        }) // UPDATE pen
-        .mockResolvedValueOnce({}); // COMMIT
+      route(
+        ['FROM medication_pens WHERE id=$1', { rows: [{ id: penId }] }],
+        [
+          'INSERT INTO injection_entries',
+          { rows: [{ id: injectionId, pen_id: penId }] },
+        ],
+        [
+          'doses_used = doses_used + 1',
+          { rows: [{ id: penId, doses_used: 2, status: 'in_use' }] },
+        ]
+      );
 
       const result = await injectionRepository.createInjection(userId, {
         medication_id: medicationId,
@@ -76,17 +93,21 @@ describe('injectionRepository', () => {
 
     it('auto-picks a pen when deduct_pen is set without pen_id', async () => {
       const pickedPenId = uuidv4();
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ id: pickedPenId }] }) // auto-pick
-        .mockResolvedValueOnce({ rows: [{ id: pickedPenId }] }) // stock lock
-        .mockResolvedValueOnce({
-          rows: [{ id: injectionId, pen_id: pickedPenId }],
-        }) // INSERT
-        .mockResolvedValueOnce({
-          rows: [{ id: pickedPenId, doses_used: 1, status: 'in_use' }],
-        }) // UPDATE pen
-        .mockResolvedValueOnce({}); // COMMIT
+      route(
+        ['FROM medication_pens WHERE id=$1', { rows: [{ id: pickedPenId }] }],
+        [
+          /SELECT id FROM medication_pens\s+WHERE user_id/,
+          { rows: [{ id: pickedPenId }] },
+        ],
+        [
+          'INSERT INTO injection_entries',
+          { rows: [{ id: injectionId, pen_id: pickedPenId }] },
+        ],
+        [
+          'doses_used = doses_used + 1',
+          { rows: [{ id: pickedPenId, doses_used: 1, status: 'in_use' }] },
+        ]
+      );
 
       const result = await injectionRepository.createInjection(userId, {
         medication_id: medicationId,
@@ -111,12 +132,10 @@ describe('injectionRepository', () => {
     });
 
     it('does not record a pen_id when deduct_pen is false, even if one is passed', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({
-          rows: [{ id: injectionId, pen_id: null }],
-        }) // INSERT
-        .mockResolvedValueOnce({}); // COMMIT
+      route([
+        'INSERT INTO injection_entries',
+        { rows: [{ id: injectionId, pen_id: null }] },
+      ]);
 
       await injectionRepository.createInjection(userId, {
         medication_id: medicationId,
@@ -147,13 +166,10 @@ describe('injectionRepository', () => {
     });
 
     it('logs without deduction when no candidate pen exists', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({ rows: [] }) // auto-pick finds nothing
-        .mockResolvedValueOnce({
-          rows: [{ id: injectionId, pen_id: null }],
-        }) // INSERT
-        .mockResolvedValueOnce({}); // COMMIT
+      route([
+        'INSERT INTO injection_entries',
+        { rows: [{ id: injectionId, pen_id: null }] },
+      ]); // auto-pick finds nothing
 
       const result = await injectionRepository.createInjection(userId, {
         medication_id: medicationId,
@@ -176,20 +192,22 @@ describe('injectionRepository', () => {
     ])(
       'resolves non-GLP-1 %s defaults without changing the meaning of the unit',
       async (unit, amount, expected) => {
-        mockClient.query
-          .mockResolvedValueOnce({})
-          .mockResolvedValueOnce({
-            rows: [
-              {
-                dose_mg: null,
-                dose_amount: amount,
-                dose_unit: unit,
-                is_glp1: false,
-              },
-            ],
-          })
-          .mockResolvedValueOnce({ rows: [{ id: injectionId }] })
-          .mockResolvedValueOnce({});
+        route(
+          [
+            'medication_titration_steps',
+            {
+              rows: [
+                {
+                  dose_mg: null,
+                  dose_amount: amount,
+                  dose_unit: unit,
+                  is_glp1: false,
+                },
+              ],
+            },
+          ],
+          ['INSERT INTO injection_entries', { rows: [{ id: injectionId }] }]
+        );
         await injectionRepository.createInjection(userId, {
           medication_id: medicationId,
         });
@@ -201,13 +219,13 @@ describe('injectionRepository', () => {
     );
 
     it('resolves a missing dose from titration/medication defaults', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockResolvedValueOnce({ rows: [{ dose_mg: 0.5 }] }) // dose resolution
-        .mockResolvedValueOnce({
-          rows: [{ id: injectionId, dose_mg: 0.5 }],
-        }) // INSERT
-        .mockResolvedValueOnce({}); // COMMIT
+      route(
+        ['medication_titration_steps', { rows: [{ dose_mg: 0.5 }] }],
+        [
+          'INSERT INTO injection_entries',
+          { rows: [{ id: injectionId, dose_mg: 0.5 }] },
+        ]
+      );
 
       await injectionRepository.createInjection(userId, {
         medication_id: medicationId,
@@ -224,9 +242,12 @@ describe('injectionRepository', () => {
     });
 
     it('rolls back when a query fails', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({}) // BEGIN
-        .mockRejectedValueOnce(new Error('boom')); // INSERT fails
+      mockClient.query.mockImplementation(async (sql: string) => {
+        if (sql.includes('INSERT INTO injection_entries'))
+          throw new Error('boom');
+        if (sql.includes('FOR SHARE')) return { rows: [medicationRow] };
+        return { rows: [], rowCount: 0 };
+      });
 
       await expect(
         injectionRepository.createInjection(userId, {
@@ -322,11 +343,16 @@ describe('injectionRepository', () => {
 
   describe('updateInjection', () => {
     it('updates only provided fields scoped to the user', async () => {
-      mockClient.query
-        .mockResolvedValueOnce({ rows: [{ id: injectionId }] })
-        .mockResolvedValueOnce({
-          rows: [{ id: injectionId, site: 'right_thigh' }],
-        });
+      route(
+        [
+          'UPDATE injection_entries',
+          { rows: [{ id: injectionId, site: 'right_thigh' }] },
+        ],
+        [
+          'SELECT * FROM injection_entries',
+          { rows: [{ id: injectionId, medication_id: medicationId }] },
+        ]
+      );
 
       const result = await injectionRepository.updateInjection(
         userId,
@@ -334,7 +360,9 @@ describe('injectionRepository', () => {
         { site: 'right_thigh', dose_mg: 0.5 }
       );
 
-      const [sql, values] = mockClient.query.mock.calls[1];
+      const [sql, values] = mockClient.query.mock.calls.find(([text]) =>
+        String(text).includes('UPDATE injection_entries')
+      )!;
       expect(sql).toContain('UPDATE injection_entries');
       expect(sql).toContain('site = $3');
       expect(sql).toContain('dose_mg = $4');
@@ -344,7 +372,7 @@ describe('injectionRepository', () => {
     });
 
     it('returns null when the injection does not exist', async () => {
-      mockClient.query.mockResolvedValueOnce({ rows: [] });
+      route();
       const result = await injectionRepository.updateInjection(
         userId,
         injectionId,

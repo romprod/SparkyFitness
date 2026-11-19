@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import repository from '../models/medicationPenRepository.js';
 import { getClient } from '../db/poolManager.js';
-vi.mock('../db/poolManager.js', () => ({ getClient: vi.fn() }));
+vi.mock('../db/poolManager.js', async () => ({
+  getClient: vi.fn(),
+  dbContextStorage: new (await import('node:async_hooks')).AsyncLocalStorage(),
+}));
 const query = vi.fn();
 const release = vi.fn();
 beforeEach(() => {
