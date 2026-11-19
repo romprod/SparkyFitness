@@ -1091,7 +1091,15 @@
       "confirm": "Confirm and save",
       "pastBud": "Past beyond-use date ({{date}}).",
       "nearBud": "Beyond-use date {{date}} — {{days}} days left.",
-      "reviewCorrections": "Preparation corrections must be reviewed before saving."
+      "reviewCorrections": "Preparation corrections must be reviewed before saving.",
+      "typeHelp": "{{name}} — choose how it’s prepared.",
+      "drySub": "Add diluent to mix",
+      "premixedSub": "Ready to use, known concentration",
+      "mixTitle": "Mix it up",
+      "labelTitle": "What’s in the vial",
+      "details": "Vial details",
+      "dosesInVial": "Doses in vial",
+      "detailsHint": "(label, prepared date, beyond-use date)"
     },
     "devices": {
       "manage": "Manage devices",

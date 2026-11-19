@@ -591,3 +591,78 @@ it('keeps labels and inputs distinct when two inline queue preparations are open
     within(sections[1]!).getByLabelText('Prepared date').id
   );
 });
+
+describe('Pitstop-style presentation', () => {
+  it('names the compound, describes each choice and has no back arrow on the first step', () => {
+    render(
+      <MedicationPreparationWizard
+        med={{ ...medication, name: 'Retatrutide' } as Medication}
+        onClose={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByRole('heading', { name: 'How does this vial come?' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Retatrutide — choose how it’s prepared.')
+    ).toBeInTheDocument();
+    const dry = screen.getByRole('button', { name: /Dry powder —/ });
+    expect(dry).toHaveTextContent('Add diluent to mix');
+    expect(
+      screen.getByRole('button', { name: /Premixed —/ })
+    ).toHaveTextContent('Ready to use, known concentration');
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveClass(
+      'invisible'
+    );
+  });
+
+  it('shows the concentration as you type, and a back arrow after the first step', () => {
+    render(
+      <MedicationPreparationWizard med={medication} onClose={jest.fn()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+    expect(
+      screen.getByRole('heading', { name: 'Mix it up' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    change('Powder in the vial', '10');
+    expect(
+      screen.getByText('Concentration').nextElementSibling
+    ).toHaveTextContent('5 mg/mL');
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveClass('visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(
+      screen.getByRole('heading', { name: 'How does this vial come?' })
+    ).toBeInTheDocument();
+  });
+
+  it('asks for label details when the vial is premixed', () => {
+    render(
+      <MedicationPreparationWizard med={medication} onClose={jest.fn()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Premixed —/ }));
+    expect(
+      screen.getByRole('heading', { name: 'What’s in the vial' })
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the optional vial details folded for a new vial, and open when editing', () => {
+    const { unmount } = render(
+      <MedicationPreparationWizard med={medication} onClose={jest.fn()} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+    // The dialog renders in a portal, outside the render container.
+    expect(document.querySelector('details')).not.toHaveAttribute('open');
+    // The fields stay reachable and valid while folded.
+    change('Prepared date', '2026-11-15');
+    unmount();
+    render(
+      <MedicationPreparationWizard
+        med={medication}
+        pen={pen}
+        onClose={jest.fn()}
+      />
+    );
+    expect(document.querySelector('details')).toHaveAttribute('open');
+  });
+});

@@ -36,6 +36,7 @@ import type {
   MedicationPen,
   MedicationPenWriteInput,
 } from '@/types/medications';
+import { ChevronLeft, Droplet, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -73,7 +74,7 @@ function PreparationSurface({
   if (inline)
     return (
       <section aria-label={title} className="min-w-0 space-y-4 border-t pt-4">
-        <h3 className="font-semibold">{title}</h3>
+        <h3 className="sr-only">{title}</h3>
         {children}
       </section>
     );
@@ -168,6 +169,10 @@ export default function MedicationPreparationWizard({
   }
   const correcting = !!saved;
   const [step, setStep] = useState(correcting ? 2 : 1);
+  // Optional vial details stay folded away unless this is an edit or a date is already recorded.
+  const [detailsOpen, setDetailsOpen] = useState(
+    correcting || !!pen?.bud_mode || !!pen?.bud_date
+  );
   const [queueStale, setQueueStale] = useState(false);
   const [queueState] = useState(queueContext?.state);
   const queueChanged = queueStale || queueState !== queueContext?.state;
@@ -443,48 +448,105 @@ export default function MedicationPreparationWizard({
           : t('medications.stock.prepare', 'Prepare a vial')
       }
     >
-      <div
-        className="flex gap-2"
-        aria-label={t(
-          'medications.preparationFlow.progress',
-          'Preparation steps'
-        )}
-      >
-        {(correcting ? [2, 3] : [1, 2, 3]).map((number) => (
-          <span
-            key={number}
-            className={`h-1 flex-1 rounded-full ${number <= step ? 'bg-primary' : 'bg-muted'}`}
-          />
-        ))}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          aria-label={t('common.back', 'Back')}
+          className={`text-muted-foreground disabled:opacity-40 ${
+            step > (correcting ? 2 : 1) ? 'visible' : 'invisible'
+          }`}
+          disabled={pending}
+          onClick={() => {
+            setStep(step - 1);
+            setReviewInput(null);
+            setAttempted(null);
+          }}
+        >
+          <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+        </button>
+        <div
+          className="flex flex-1 gap-1.5"
+          aria-label={t(
+            'medications.preparationFlow.progress',
+            'Preparation steps'
+          )}
+        >
+          {(correcting ? [2, 3] : [1, 2, 3]).map((number) => (
+            <span
+              key={number}
+              className={`h-1 flex-1 rounded-full ${number <= step ? 'bg-primary' : 'bg-muted'}`}
+            />
+          ))}
+        </div>
       </div>
       {step === 1 && (
-        <div className="space-y-3">
-          <h3 className="font-medium">
+        <div>
+          <h3 className="text-lg font-medium">
             {t(
               'medications.preparationFlow.typeQuestion',
               'How does this vial come?'
             )}
           </h3>
-          {(['reconstituted', 'premixed'] as const).map((option) => (
-            <Button
+          <p className="mb-4 mt-1 text-sm text-muted-foreground">
+            {t('medications.preparationFlow.typeHelp', {
+              defaultValue: '{{name}} — choose how it’s prepared.',
+              name: med.display_name || med.name,
+            })}
+          </p>
+          {(
+            [
+              {
+                option: 'reconstituted',
+                Icon: FlaskConical,
+                tone: 'text-emerald-600 dark:text-emerald-400',
+                full: t(
+                  'medications.preparationFlow.dry',
+                  'Dry powder — add diluent to mix'
+                ),
+                title: t('medications.preparationFlow.dryShort', 'Dry powder'),
+                sub: t(
+                  'medications.preparationFlow.drySub',
+                  'Add diluent to mix'
+                ),
+              },
+              {
+                option: 'premixed',
+                Icon: Droplet,
+                tone: 'text-sky-600 dark:text-sky-400',
+                full: t(
+                  'medications.preparationFlow.premixed',
+                  'Premixed — ready to use, known concentration'
+                ),
+                title: t('medications.preparation.premixed', 'Premixed'),
+                sub: t(
+                  'medications.preparationFlow.premixedSub',
+                  'Ready to use, known concentration'
+                ),
+              },
+            ] as const
+          ).map(({ option, Icon, tone, full, title, sub }) => (
+            <button
               key={option}
-              className="h-auto w-full justify-start whitespace-normal py-4 text-left"
-              variant={mode === option ? 'default' : 'outline'}
+              type="button"
+              aria-label={full}
+              className={`mb-2.5 flex w-full items-center gap-3 rounded-lg p-3.5 text-left transition-colors ${
+                mode === option
+                  ? 'bg-primary/5 ring-2 ring-primary'
+                  : 'bg-muted/40 ring-1 ring-border hover:bg-muted/70'
+              }`}
               onClick={() => {
                 setMode(option);
                 setStep(2);
               }}
             >
-              {option === 'reconstituted'
-                ? t(
-                    'medications.preparationFlow.dry',
-                    'Dry powder — add diluent to mix'
-                  )
-                : t(
-                    'medications.preparationFlow.premixed',
-                    'Premixed — ready to use, known concentration'
-                  )}
-            </Button>
+              <Icon className={`h-6 w-6 shrink-0 ${tone}`} aria-hidden="true" />
+              <span>
+                <span className="block font-medium">{title}</span>
+                <span className="block text-sm text-muted-foreground">
+                  {sub}
+                </span>
+              </span>
+            </button>
           ))}
         </div>
       )}
@@ -506,20 +568,14 @@ export default function MedicationPreparationWizard({
               ))}
             </div>
           )}
-          {!pen &&
-            field(
-              'label',
-              t('medications.preparationFlow.label', 'Vial label (optional)'),
-              label,
-              setLabel
-            )}
-          {!pen && (
-            <VialLabelMassField
-              id={`${fieldPrefix}-label-mass`}
-              value={labelMass}
-              onChange={setLabelMass}
-            />
-          )}
+          <h3 className="text-lg font-medium">
+            {mode === 'reconstituted'
+              ? t('medications.preparationFlow.mixTitle', 'Mix it up')
+              : t(
+                  'medications.preparationFlow.labelTitle',
+                  'What’s in the vial'
+                )}
+          </h3>
           {mode === 'reconstituted' ? (
             <>
               {field(
@@ -596,89 +652,138 @@ export default function MedicationPreparationWizard({
               )}
             </>
           )}
-          {field(
-            'date',
-            t('medications.preparation.preparedDate', 'Prepared date'),
-            preparedDate,
-            setPreparedDate,
-            'date'
-          )}
-          {field(
-            'diluent',
-            t('medications.preparation.diluent', 'Diluent (optional)'),
-            diluent,
-            setDiluent
-          )}
-          <div className="space-y-1">
-            <Label htmlFor={`${fieldPrefix}-bud-mode`}>
-              {t('medications.preparation.bud', 'Beyond-use date (BUD)')}
-            </Label>
-            <Select
-              value={budMode}
-              onValueChange={(value) => setBudMode(value as typeof budMode)}
-            >
-              <SelectTrigger id={`${fieldPrefix}-bud-mode`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">
-                  {t('medications.preparationFlow.notRecorded', 'Not recorded')}
-                </SelectItem>
-                <SelectItem value="date">
-                  {t('medications.preparationFlow.explicitDate', 'Date')}
-                </SelectItem>
-                <SelectItem value="interval">
-                  {t(
-                    'medications.preparationFlow.interval',
-                    'Interval and source'
-                  )}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          <div
+            className="rounded-lg bg-primary/10 p-4 text-center"
+            aria-live="polite"
+          >
+            <p className="text-xs font-medium text-primary">
+              {t('medications.preparation.concentration', 'Concentration')}
+            </p>
+            <p className="text-3xl font-semibold tabular-nums text-primary">
+              {values ? values.concentration_mg_ml : '—'}
+              <span className="text-base"> mg/mL</span>
+            </p>
           </div>
-          {budMode === 'date' &&
-            field(
-              'bud-date',
-              t('medications.preparationFlow.useBy', 'Use by'),
-              budDate,
-              setBudDate,
-              'date'
-            )}
-          {budMode === 'interval' && (
-            <>
-              {field(
-                'bud-days',
-                t('medications.preparationFlow.days', 'Days'),
-                budDays,
-                setBudDays
+          <details
+            className="space-y-4 rounded-lg border p-3"
+            open={detailsOpen}
+            onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer text-sm font-medium">
+              {t('medications.preparationFlow.details', 'Vial details')}
+              <span className="ml-1 font-normal text-muted-foreground">
+                {t(
+                  'medications.preparationFlow.detailsHint',
+                  '(label, prepared date, beyond-use date)'
+                )}
+              </span>
+            </summary>
+            <div className="mt-4 space-y-4">
+              {!pen &&
+                field(
+                  'label',
+                  t(
+                    'medications.preparationFlow.label',
+                    'Vial label (optional)'
+                  ),
+                  label,
+                  setLabel
+                )}
+              {!pen && (
+                <VialLabelMassField
+                  id={`${fieldPrefix}-label-mass`}
+                  value={labelMass}
+                  onChange={setLabelMass}
+                />
               )}
               {field(
-                'bud-base',
-                t('medications.preparationFlow.base', 'From date'),
-                budBaseDate,
-                setBudBaseDate,
+                'date',
+                t('medications.preparation.preparedDate', 'Prepared date'),
+                preparedDate,
+                setPreparedDate,
                 'date'
               )}
-            </>
-          )}
-          {budMode !== 'none' &&
-            field(
-              'bud-source',
-              t('medications.preparation.budSource', 'BUD source'),
-              budSource,
-              setBudSource
-            )}
-          <p className="text-xs text-muted-foreground">
-            {t(
-              'medications.preparationFlow.noAssumption',
-              'Use the date or interval from your product or clinician guidance. No interval is assumed.'
-            )}
-          </p>
+              {field(
+                'diluent',
+                t('medications.preparation.diluent', 'Diluent (optional)'),
+                diluent,
+                setDiluent
+              )}
+              <div className="space-y-1">
+                <Label htmlFor={`${fieldPrefix}-bud-mode`}>
+                  {t('medications.preparation.bud', 'Beyond-use date (BUD)')}
+                </Label>
+                <Select
+                  value={budMode}
+                  onValueChange={(value) => setBudMode(value as typeof budMode)}
+                >
+                  <SelectTrigger id={`${fieldPrefix}-bud-mode`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {t(
+                        'medications.preparationFlow.notRecorded',
+                        'Not recorded'
+                      )}
+                    </SelectItem>
+                    <SelectItem value="date">
+                      {t('medications.preparationFlow.explicitDate', 'Date')}
+                    </SelectItem>
+                    <SelectItem value="interval">
+                      {t(
+                        'medications.preparationFlow.interval',
+                        'Interval and source'
+                      )}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {budMode === 'date' &&
+                field(
+                  'bud-date',
+                  t('medications.preparationFlow.useBy', 'Use by'),
+                  budDate,
+                  setBudDate,
+                  'date'
+                )}
+              {budMode === 'interval' && (
+                <>
+                  {field(
+                    'bud-days',
+                    t('medications.preparationFlow.days', 'Days'),
+                    budDays,
+                    setBudDays
+                  )}
+                  {field(
+                    'bud-base',
+                    t('medications.preparationFlow.base', 'From date'),
+                    budBaseDate,
+                    setBudBaseDate,
+                    'date'
+                  )}
+                </>
+              )}
+              {budMode !== 'none' &&
+                field(
+                  'bud-source',
+                  t('medications.preparation.budSource', 'BUD source'),
+                  budSource,
+                  setBudSource
+                )}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'medications.preparationFlow.noAssumption',
+                  'Use the date or interval from your product or clinician guidance. No interval is assumed.'
+                )}
+              </p>
+            </div>
+          </details>
         </div>
       )}
       {step === 3 && (
         <div className="space-y-3">
-          <h3 className="font-medium">
+          <h3 className="text-lg font-medium">
             {t('medications.preparationFlow.review', 'Review preparation')}
           </h3>
           {correcting ? (
@@ -783,24 +888,45 @@ export default function MedicationPreparationWizard({
             </>
           ) : (
             values && (
-              <dl className="grid grid-cols-1 gap-2 rounded-md border p-3 text-sm sm:grid-cols-2">
-                <dt>
-                  {t('medications.preparation.concentration', 'Concentration')}
-                </dt>
-                <dd className="min-w-0 break-words">
-                  {estimate?.values.concentration_mg_ml ??
-                    values.concentration_mg_ml}{' '}
-                  mg/mL
-                </dd>
-                <dt>{t('medications.preparation.mass', 'Vial content')}</dt>
-                <dd className="min-w-0 break-words">
-                  {estimate?.values.mass_mg ?? values.mass_mg} mg
-                </dd>
-                <dt>
-                  {t('medications.preparation.finalVolume', 'Final volume')}
-                </dt>
-                <dd className="min-w-0 break-words">{volume} mL</dd>
-              </dl>
+              <>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'medications.preparation.concentration',
+                        'Concentration'
+                      )}
+                    </p>
+                    <p className="text-lg font-medium tabular-nums">
+                      {estimate?.values.concentration_mg_ml ??
+                        values.concentration_mg_ml}{' '}
+                      mg/mL
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-muted/50 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'medications.preparationFlow.dosesInVial',
+                        'Doses in vial'
+                      )}
+                    </p>
+                    <p className="text-lg font-medium tabular-nums">
+                      {estimate?.doses_in_vial != null
+                        ? `~${estimate.doses_in_vial}`
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {t('medications.preparation.mass', 'Vial content')}:{' '}
+                  <span>{estimate?.values.mass_mg ?? values.mass_mg} mg</span>
+                  {' · '}
+                  {t(
+                    'medications.preparation.finalVolume',
+                    'Final volume'
+                  )}: <span>{volume} mL</span>
+                </p>
+              </>
             )
           )}
           {!correcting && (
@@ -851,15 +977,6 @@ export default function MedicationPreparationWizard({
                 isFetching={false}
                 isError={false}
               />
-              {estimate?.doses_in_vial != null && (
-                <p className="text-sm">
-                  {t(
-                    'medications.preparationFlow.yield',
-                    'Estimated doses in vial: {{doses}}',
-                    { doses: estimate.doses_in_vial }
-                  )}
-                </p>
-              )}
               <p className="text-xs text-muted-foreground">
                 {t(
                   'medications.preparationFlow.estimateOnly',
@@ -910,19 +1027,6 @@ export default function MedicationPreparationWizard({
         <Button variant="ghost" onClick={onClose} disabled={pending}>
           {t('common.cancel', 'Cancel')}
         </Button>
-        {step > (correcting ? 2 : 1) && (
-          <Button
-            variant="outline"
-            disabled={pending}
-            onClick={() => {
-              setStep(step - 1);
-              setReviewInput(null);
-              setAttempted(null);
-            }}
-          >
-            {t('common.back', 'Back')}
-          </Button>
-        )}
         {step === 2 && (
           <Button
             disabled={
