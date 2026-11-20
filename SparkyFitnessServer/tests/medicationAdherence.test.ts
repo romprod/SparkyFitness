@@ -543,3 +543,64 @@ describe('explicit managed and legacy adherence separation', () => {
     ).toBe(0);
   });
 });
+
+describe('computeAdherence rate, as Pitstop counts it (taken out of taken plus missed)', () => {
+  const end = '2026-10-14';
+  const day = (d: number) => `2026-10-${String(d).padStart(2, '0')}`;
+
+  it('does not hold the still-open day against the rate', () => {
+    const entries: AdherenceEntry[] = [];
+    for (let d = 1; d <= 13; d++) entries.push(entry({ entry_date: day(d) }));
+    const result = computeAdherence({
+      medications: [med('med-1')],
+      entries,
+      endDate: end,
+      timezone: TZ,
+      openDay: end,
+    });
+    expect(result).toMatchObject({ due: 13, taken: 13, pct: 100 });
+  });
+
+  it('still counts a dose taken on the open day', () => {
+    const result = computeAdherence({
+      medications: [med('med-1')],
+      entries: [entry({ entry_date: end })],
+      endDate: end,
+      timezone: TZ,
+      windowDays: 2,
+      openDay: end,
+    });
+    // Yesterday was missed, today's dose is taken.
+    expect(result).toMatchObject({ due: 2, taken: 1, pct: 50 });
+  });
+
+  it('leaves a deliberately skipped dose out of the rate', () => {
+    const entries: AdherenceEntry[] = [
+      entry({ entry_date: day(11) }),
+      entry({ entry_date: day(12), status: 'skipped' }),
+      entry({ entry_date: day(13) }),
+    ];
+    const result = computeAdherence({
+      medications: [med('med-1')],
+      entries,
+      endDate: day(13),
+      timezone: TZ,
+      windowDays: 3,
+    });
+    expect(result).toMatchObject({ due: 2, taken: 2, pct: 100 });
+    // It is not a perfect day, and it still breaks the streak.
+    expect(result.perfectDays).toBe(2);
+    expect(result.streak).toBe(1);
+  });
+
+  it('still counts a day with no entry at all as missed', () => {
+    const result = computeAdherence({
+      medications: [med('med-1')],
+      entries: [entry({ entry_date: day(13) })],
+      endDate: day(13),
+      timezone: TZ,
+      windowDays: 2,
+    });
+    expect(result).toMatchObject({ due: 2, taken: 1, pct: 50 });
+  });
+});

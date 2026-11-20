@@ -1705,6 +1705,7 @@
         "made_other": "Created {{count}} phases below. Review them, then save the course."
       },
       "perWeekEstimate": "≈ {{amount}} {{unit}} per administration at {{count}}×/week",
+      "perWeekNeedsSchedule": "Set a weekly schedule first. Per-week dosing needs a known injection frequency.",
       "perWeekNeedsRhythm": "Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration."
     },
     "forecasts": {
@@ -1839,6 +1840,9 @@
       "offWeeks": "Then break (weeks)",
       "invalidWeeks": "Use whole weeks from 1 to 104. Enter Run for before adding a break, or leave both fields blank.",
       "anchor": "Recorded weekly cycle anchor",
+      "previewNoStart": "Set a start date to see the planned last dose.",
+      "previewWithBreak": "Planned last dose: {{date}}. The next cycle starts {{restart}}.",
+      "previewLast": "Planned last dose: {{date}}.",
       "advisory": "Cycle dates are planned only. Saving them does not stop scheduled doses or start another cycle. Use the reviewed End cycle or Start next cycle actions explicitly.",
       "onSummary": "Run for {{weeks}} weeks",
       "offSummary": "Then break {{weeks}} weeks",

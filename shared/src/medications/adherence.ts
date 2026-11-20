@@ -157,6 +157,11 @@ export interface ComputeAdherenceInput<M extends SharedMedication> {
   timezone: string;
   /** Window length in days. Defaults to 14. */
   windowDays?: number;
+  /**
+   * The day still in progress, normally today. Doses due on it that are not taken yet are not
+   * held against the rate, as in Pitstop: a dose is only missed once its day has passed.
+   */
+  openDay?: string;
 }
 
 export const DEFAULT_ADHERENCE_WINDOW_DAYS = 14;
@@ -164,7 +169,9 @@ export const DEFAULT_ADHERENCE_WINDOW_DAYS = 14;
 /**
  * Scores each day's scheduled doses against what was taken, over a window ending on
  * `endDate`. Logged as-needed doses top a day up (capped at the due count) and make a
- * day with nothing scheduled count as perfect. A skipped dose never counts as taken, and
+ * day with nothing scheduled count as perfect. The rate is taken out of taken plus missed:
+ * a dose that was deliberately skipped is left out of it (as in Pitstop), and so is a dose on
+ * the still-open day that has not been taken yet. A skipped dose never counts as taken, and
  * any skip on a day breaks the streak.
  */
 export function computeAdherence<M extends SharedMedication>({
@@ -173,6 +180,7 @@ export function computeAdherence<M extends SharedMedication>({
   endDate,
   timezone,
   windowDays = DEFAULT_ADHERENCE_WINDOW_DAYS,
+  openDay,
 }: ComputeAdherenceInput<M>): AdherenceSummary {
   let due = 0;
   let taken = 0;
@@ -185,6 +193,7 @@ export function computeAdherence<M extends SharedMedication>({
     const dayEntries = entries.filter((e) => entryDay(e) === date);
 
     let dayTaken = 0;
+    let daySkipped = 0;
     for (const dose of dayDue) {
       if (
         dayEntries.some(
@@ -194,6 +203,12 @@ export function computeAdherence<M extends SharedMedication>({
         )
       ) {
         dayTaken++;
+      } else if (
+        dayEntries.some(
+          (e) => entryMatchesDue(e, dose) && e.status === 'skipped'
+        )
+      ) {
+        daySkipped++;
       }
     }
     const prnTaken = dayEntries.filter(
@@ -219,8 +234,11 @@ export function computeAdherence<M extends SharedMedication>({
     days.push({ date, due: dayDue.length, taken: dayTaken, prnTaken, pct });
 
     if (dayDue.length > 0) {
-      due += dayDue.length;
-      taken += effectiveTaken;
+      // Skipped doses are not missed doses, and the open day has no missed doses yet.
+      const counted = dayDue.length - daySkipped;
+      const rateTaken = Math.min(counted, effectiveTaken);
+      due += date === openDay ? rateTaken : counted;
+      taken += rateTaken;
       if (effectiveTaken >= dayDue.length) perfectDays++;
     } else if (prnTaken > 0) {
       due += 1;

@@ -10,6 +10,7 @@ import {
   isDeviceEligibleForRoute,
   addDays,
   perAdministrationEstimate,
+  administrationsPerWeek,
   type CourseAdvanceProposal,
   type MedicationCourse,
   type MedicationCourseRevision,
@@ -230,6 +231,9 @@ export default function MedicationCourseEditor({
   });
   const weeksValid = (raw: string) =>
     raw === '' || (/^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 104);
+  // A per-week amount needs a known number of administrations a week to be spread over.
+  const perWeekNeedsRhythm =
+    draft.dose_basis === 'per_week' && !administrationsPerWeek(draft.rules);
   const cycleFieldsValid =
     weeksValid(onWeeks) &&
     weeksValid(offWeeks) &&
@@ -706,11 +710,23 @@ export default function MedicationCourseEditor({
                     })}
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {t(
-                      'medications.courses.perWeekNeedsRhythm',
-                      'Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration.'
-                    )}
+                  <p
+                    className={
+                      perWeekNeedsRhythm
+                        ? 'text-sm text-destructive'
+                        : 'text-xs text-muted-foreground'
+                    }
+                    role={perWeekNeedsRhythm ? 'alert' : undefined}
+                  >
+                    {perWeekNeedsRhythm
+                      ? t(
+                          'medications.courses.perWeekNeedsSchedule',
+                          'Set a weekly schedule first. Per-week dosing needs a known injection frequency.'
+                        )
+                      : t(
+                          'medications.courses.perWeekNeedsRhythm',
+                          'Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration.'
+                        )}
                   </p>
                 );
               })()}
@@ -836,6 +852,41 @@ export default function MedicationCourseEditor({
                     'medications.courseCycles.invalidWeeks',
                     'Use whole weeks from 1 to 104. Enter Run for before adding a break, or leave both fields blank.'
                   )}
+                </p>
+              )}
+              {cycleFieldsValid && onWeeks !== '' && (
+                <p className="text-sm" role="status">
+                  {(() => {
+                    const anchor =
+                      revision?.course_cycle_anchor_date ??
+                      draft.cycle_anchor_date ??
+                      draft.start_date;
+                    if (!anchor)
+                      return t(
+                        'medications.courseCycles.previewNoStart',
+                        'Set a start date to see the planned last dose.'
+                      );
+                    const last = addDays(anchor, Number(onWeeks) * 7 - 1);
+                    return offWeeks !== ''
+                      ? t(
+                          'medications.courseCycles.previewWithBreak',
+                          'Planned last dose: {{date}}. The next cycle starts {{restart}}.',
+                          {
+                            date: formatDate(last),
+                            restart: formatDate(
+                              addDays(
+                                anchor,
+                                (Number(onWeeks) + Number(offWeeks)) * 7
+                              )
+                            ),
+                          }
+                        )
+                      : t(
+                          'medications.courseCycles.previewLast',
+                          'Planned last dose: {{date}}.',
+                          { date: formatDate(last) }
+                        );
+                  })()}
                 </p>
               )}
               {revision?.course_cycle_anchor_date && (
@@ -1338,7 +1389,7 @@ export default function MedicationCourseEditor({
           ) : (
             <Button
               type="button"
-              disabled={locked || !valid || stale}
+              disabled={locked || !valid || stale || perWeekNeedsRhythm}
               onClick={() => void requestReview()}
             >
               {pending

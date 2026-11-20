@@ -729,8 +729,9 @@ export default function TodayMedications({
         entries: recentEntries,
         endDate: selectedDate,
         timezone,
+        openDay: today,
       }),
-    [meds, selectedDate, recentEntries, timezone]
+    [meds, selectedDate, recentEntries, timezone, today]
   );
 
   // The next GLP-1 dose due today (if any), for the next-injection banner.

@@ -684,7 +684,7 @@ it('works out the amount per administration for a per-week plan', () => {
     '≈ 0.5 mg per administration at 2×/week'
   );
 });
-it('explains why a per-week plan with an irregular schedule has no estimate', () => {
+it('blocks review of a per-week plan with no known weekly frequency, and says why', () => {
   const base = courseFixture();
   setup(
     'edit',
@@ -698,7 +698,27 @@ it('explains why a per-week plan with an irregular schedule has no estimate', ()
       ],
     })
   );
-  expect(screen.getByText(/need a steady weekly schedule/)).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Set a weekly schedule first. Per-week dosing needs a known injection frequency.'
+  );
+  expect(screen.getByRole('button', { name: 'Review changes' })).toBeDisabled();
+});
+it('shows the planned last dose and restart as the cycle weeks are typed', () => {
+  setup('edit');
+  fireEvent.change(screen.getByLabelText('Run for (weeks)'), {
+    target: { value: '4' },
+  });
+  expect(
+    screen.getByText(/Planned last dose: Formatted 2026-11-28\./)
+  ).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Then break (weeks)'), {
+    target: { value: '2' },
+  });
+  expect(
+    screen.getByText(
+      /Planned last dose: Formatted 2026-11-28\. The next cycle starts Formatted 2026-12-13\./
+    )
+  ).toBeInTheDocument();
 });
 it('shows no per-administration line for a per-administration plan', () => {
   setup('edit');

@@ -52,6 +52,13 @@ export default function MedicationCourseRules({
                   change(index, {
                     schedule_type_id:
                       value as MedicationCourseRuleInput['schedule_type_id'],
+                    // As in Pitstop, an interval starts at 3 days and a cycle at 5 on / 2 off.
+                    ...(value === 'every_n_days' && !rule.interval_days
+                      ? { interval_days: 3 }
+                      : {}),
+                    ...(value === 'cyclic' && !rule.cycle_on_days
+                      ? { cycle_on_days: 5, cycle_off_days: 2 }
+                      : {}),
                   })
                 }
               >
