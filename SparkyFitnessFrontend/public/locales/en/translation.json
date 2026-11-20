@@ -2018,6 +2018,18 @@
     "missedPolicy": {
       "skip": "Overdue by {{hours}} h. You set this medication to skip a missed dose.",
       "takeNow": "Overdue by {{hours}} h. You set this medication to take a missed dose when you notice."
+    },
+    "cycleBanner": {
+      "endingSoon": "{{name}}: cycle ends in {{count}} days",
+      "endingSoonBody": "Planned last dose {{date}}.",
+      "lastDose": "{{name}}: last dose of the cycle",
+      "lastDoseBody": "Today ({{date}}) is the final day of this run.",
+      "stopNow": "{{name}}: planned run is over",
+      "stopNowBody": "The run finished on {{date}} but the course is still active. Open the course to end the cycle.",
+      "restartSoon": "{{name}}: restart in {{count}} days",
+      "restartSoonBody": "The break ends {{date}}; the next cycle starts then.",
+      "restartNow": "{{name}}: back on today",
+      "restartNowBody": "The break is over. Open the course to start the next cycle."
     }
   },
   "nav": {

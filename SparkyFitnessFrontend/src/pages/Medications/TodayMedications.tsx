@@ -95,6 +95,7 @@ import { MedTypeIcon } from './AddMedicationDialog';
 import GlpDailyCheckIn from './GlpDailyCheckIn';
 import Glp1QuickLogDialog from './Glp1QuickLogDialog';
 import { useMedicationCourseDue } from '@/hooks/Medications/useMedicationCourses';
+import MedicationCycleBanner from './MedicationCycleBanner';
 import MedicationCourseDoseDialog from './MedicationCourseDoseDialog';
 import MedicationCourseAttributionPicker from './MedicationCourseAttributionPicker';
 
@@ -1117,6 +1118,9 @@ export default function TodayMedications({
 
   return (
     <div className="space-y-6">
+      {selectedDate === today && courseDue.data?.courses && (
+        <MedicationCycleBanner courses={courseDue.data.courses} />
+      )}
       {courseDue.scope.ready && courseDue.query.isLoading && (
         <p className="text-sm text-muted-foreground">
           {t('medications.courses.loadingDues', 'Loading course doses…')}
