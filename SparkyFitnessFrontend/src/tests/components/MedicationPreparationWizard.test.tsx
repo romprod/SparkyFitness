@@ -711,3 +711,48 @@ it('explains a non-number in the powder field instead of silently disabling Revi
     screen.getByRole('button', { name: 'Review preparation' })
   ).toBeEnabled();
 });
+
+describe('a new preparation follows the vial and medication settings', () => {
+  const pen = (labelMass: string | null) =>
+    ({
+      id: 'pen-1',
+      medication_id: 'med-1',
+      status: 'sealed',
+      label_mass_mg: labelMass,
+    }) as unknown as MedicationPen;
+
+  it('starts the powder amount from the vial label, with 2 mL of diluent', () => {
+    render(
+      <MedicationPreparationWizard
+        med={medication}
+        pen={pen('10.000')}
+        onClose={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+    expect(screen.getByLabelText('Powder in the vial')).toHaveValue('10');
+    expect(screen.getByLabelText('Diluent added (mL)')).toHaveValue('2');
+  });
+
+  it('starts the beyond-use days from the medication default, counted from the prepared date', () => {
+    render(
+      <MedicationPreparationWizard
+        med={{ ...medication, custom_fields: { default_bud_days: 28 } }}
+        pen={pen('10')}
+        onClose={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+    expect(screen.getByLabelText('Days')).toHaveValue('28');
+    expect(screen.getByLabelText('BUD source')).toHaveValue(
+      'Medication default'
+    );
+    expect(screen.getByLabelText('From date')).toHaveValue(
+      screen.getByLabelText('Prepared date').getAttribute('value')
+    );
+    // Powder from the label, 2 mL and a ready beyond-use interval: nothing left to fill in.
+    expect(
+      screen.getByRole('button', { name: 'Review preparation' })
+    ).toBeEnabled();
+  });
+});

@@ -21,6 +21,7 @@ import {
   type MedicationPreparationReview,
   type MedicationPreparationCorrectionInput,
 } from '@workspace/shared';
+import { displayQuantity, displayWholeDoses } from '@/utils/displayNumber';
 import MedicationDrawPreview from './MedicationDrawPreview';
 import VialLabelMassField from './VialLabelMassField';
 import { useMedicationSyringes } from '@/hooks/useMedicationSyringes';
@@ -172,7 +173,10 @@ export default function MedicationPreparationWizard({
   const [step, setStep] = useState(correcting ? 2 : 1);
   // Optional vial details stay folded away unless this is an edit or a date is already recorded.
   const [detailsOpen, setDetailsOpen] = useState(
-    correcting || !!pen?.bud_mode || !!pen?.bud_date
+    correcting ||
+      !!pen?.bud_mode ||
+      !!pen?.bud_date ||
+      !!readDefaultBudDays(med.custom_fields)
   );
   const [queueStale, setQueueStale] = useState(false);
   const [queueState] = useState(queueContext?.state);
@@ -180,8 +184,13 @@ export default function MedicationPreparationWizard({
   const [mode, setMode] = useState<'reconstituted' | 'premixed'>(
     saved?.mode ?? 'reconstituted'
   );
+  // A new preparation starts from the amount printed on the vial, which can still be changed.
   const [mass, setMass] = useState(
-    saved ? (saved.exact?.mass_value ?? String(saved.mass_value)) : ''
+    saved
+      ? (saved.exact?.mass_value ?? String(saved.mass_value))
+      : pen?.label_mass_mg
+        ? displayQuantity(pen.label_mass_mg, 3)
+        : ''
   );
   const [massUnit, setMassUnit] = useState<'mg' | 'mcg'>(
     saved?.mass_unit ?? 'mg'
@@ -217,15 +226,37 @@ export default function MedicationPreparationWizard({
     !!pen ||
     !labelMass.trim() ||
     medicationVialLabelMassSchema.safeParse(labelMass).success;
+  // A medication with its own default beyond-use days starts a new preparation from that figure,
+  // counted from the prepared date. Nothing is assumed when the person has not set one.
+  const presetBudDays =
+    !saved && !pen?.bud_mode && !pen?.bud_date
+      ? readDefaultBudDays(med.custom_fields)
+      : null;
   const [budMode, setBudMode] = useState<'none' | 'date' | 'interval'>(
-    pen?.bud_mode ?? (pen?.bud_date ? 'date' : 'none')
+    presetBudDays
+      ? 'interval'
+      : (pen?.bud_mode ?? (pen?.bud_date ? 'date' : 'none'))
   );
   const [budDate, setBudDate] = useState(pen?.bud_date ?? '');
   const [budDays, setBudDays] = useState(
-    pen?.bud_interval_days != null ? String(pen.bud_interval_days) : ''
+    pen?.bud_interval_days != null
+      ? String(pen.bud_interval_days)
+      : presetBudDays
+        ? String(presetBudDays)
+        : ''
   );
-  const [budBaseDate, setBudBaseDate] = useState(pen?.bud_base_date ?? '');
-  const [budSource, setBudSource] = useState(pen?.bud_source ?? '');
+  const [budBaseDate, setBudBaseDate] = useState(
+    pen?.bud_base_date ?? (presetBudDays ? preparedDate : '')
+  );
+  const [budSource, setBudSource] = useState(
+    pen?.bud_source ??
+      (presetBudDays
+        ? t(
+            'medications.preparationFlow.defaultBudSource',
+            'Medication default'
+          )
+        : '')
+  );
   const [reviewInput, setReviewInput] =
     useState<MedicationPreparationReviewInput | null>(null);
   const [operationId, setOperationId] = useState('');
@@ -693,7 +724,7 @@ export default function MedicationPreparationWizard({
               {t('medications.preparation.concentration', 'Concentration')}
             </p>
             <p className="text-3xl font-semibold tabular-nums text-primary">
-              {values ? values.concentration_mg_ml : '—'}
+              {values ? displayQuantity(values.concentration_mg_ml, 2) : '—'}
               <span className="text-base"> mg/mL</span>
             </p>
           </div>
@@ -733,7 +764,11 @@ export default function MedicationPreparationWizard({
                 'date',
                 t('medications.preparation.preparedDate', 'Prepared date'),
                 preparedDate,
-                setPreparedDate,
+                (next) => {
+                  // The interval counts from the prepared date unless the person chose another.
+                  if (budBaseDate === preparedDate) setBudBaseDate(next);
+                  setPreparedDate(next);
+                },
                 'date'
               )}
               {field(
@@ -938,8 +973,11 @@ export default function MedicationPreparationWizard({
                       )}
                     </p>
                     <p className="text-lg font-medium tabular-nums">
-                      {estimate?.values.concentration_mg_ml ??
-                        values.concentration_mg_ml}{' '}
+                      {displayQuantity(
+                        estimate?.values.concentration_mg_ml ??
+                          values.concentration_mg_ml,
+                        2
+                      )}{' '}
                       mg/mL
                     </p>
                   </div>
@@ -952,14 +990,20 @@ export default function MedicationPreparationWizard({
                     </p>
                     <p className="text-lg font-medium tabular-nums">
                       {estimate?.doses_in_vial != null
-                        ? `~${estimate.doses_in_vial}`
+                        ? `~${displayWholeDoses(estimate.doses_in_vial)}`
                         : '—'}
                     </p>
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {t('medications.preparation.mass', 'Vial content')}:{' '}
-                  <span>{estimate?.values.mass_mg ?? values.mass_mg} mg</span>
+                  <span>
+                    {displayQuantity(
+                      estimate?.values.mass_mg ?? values.mass_mg,
+                      3
+                    )}{' '}
+                    mg
+                  </span>
                   {' · '}
                   {t(
                     'medications.preparation.finalVolume',

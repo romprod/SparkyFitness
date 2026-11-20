@@ -758,7 +758,6 @@
       "capsule": "Capsule",
       "softgel": "Softgel",
       "gummy": "Gummy",
-      "numberError": "Enter a number greater than zero, for example 10.",
       "powder": "Powder",
       "liquid": "Liquid"
     },
@@ -1082,6 +1081,8 @@
       "originalUnavailable": "The original syringe or vial is unavailable, so the amount cannot be changed. Notes, site and time can still be edited."
     },
     "preparationFlow": {
+      "defaultBudSource": "Medication default",
+      "numberError": "Enter a number greater than zero, for example 10.",
       "edit": "Edit preparation",
       "progress": "Preparation steps",
       "typeQuestion": "How does this vial come?",

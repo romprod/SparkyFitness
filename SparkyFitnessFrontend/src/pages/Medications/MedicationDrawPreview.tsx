@@ -8,6 +8,7 @@ import {
 } from '@workspace/shared';
 import { Badge } from '@/components/ui/badge';
 import SyringeDrawFigure from './SyringeDrawFigure';
+import { displayQuantity } from '@/utils/displayNumber';
 export default function MedicationDrawPreview({
   preview: cachedPreview,
   isFetching,
@@ -111,18 +112,22 @@ export default function MedicationDrawPreview({
               {t('medications.syringes.target', 'Target')}
             </dt>
             <dd className="break-words">
-              {preview.targetMassMcg} mcg · {preview.targetVolumeMl} mL
+              {displayQuantity(preview.targetMassMcg, 2)} mcg ·{' '}
+              {displayQuantity(preview.targetVolumeMl, 3)} mL
             </dd>
             <dt className="text-muted-foreground">
               {t('medications.syringes.delivered', 'Delivered')}
             </dt>
             <dd className="break-words">
-              {preview.deliveredMassMcg} mcg · {preview.deliveredVolumeMl} mL
+              {displayQuantity(preview.deliveredMassMcg, 2)} mcg ·{' '}
+              {displayQuantity(preview.deliveredVolumeMl, 3)} mL
             </dd>
             <dt className="text-muted-foreground">
               {t('medications.syringes.rounding', 'Rounding difference')}
             </dt>
-            <dd className="break-words">{preview.roundingErrorMcg} mcg</dd>
+            <dd className="break-words">
+              {displayQuantity(preview.roundingErrorMcg, 2)} mcg
+            </dd>
           </dl>
           {preview.warnings.map((warning) =>
             warning.severity === 'block' ? (
