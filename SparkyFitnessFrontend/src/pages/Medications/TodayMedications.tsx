@@ -749,6 +749,16 @@ export default function TodayMedications({
     }
   };
 
+  // Today logs the moment of the tap. A past day logs at the dose's scheduled time that day, or at
+  // local noon when it has none, so an evening dose stays an evening dose.
+  const takenAtFor = (due?: DueDose): string => {
+    if (selectedDate === today) return new Date().toISOString();
+    return (
+      (due ? scheduledForDue(due) : null) ??
+      localDateTimeToUtc(`${selectedDate}T12:00`, timezone).toISOString()
+    );
+  };
+
   const isDueLogged = (due: DueDose) =>
     checklistEntries.some(
       (e) =>
@@ -763,11 +773,8 @@ export default function TodayMedications({
 
   const logStackDues = async (list: DueDose[]): Promise<StackLogResult> => {
     const result: StackLogResult = { logged: 0, failed: [] };
-    const takenAt =
-      selectedDate === today
-        ? new Date().toISOString()
-        : `${selectedDate}T12:00:00.000Z`;
     for (const due of list) {
+      const takenAt = takenAtFor(due);
       try {
         await createEntryMutation.mutateAsync({
           medication_id: due.medication.id,
@@ -852,10 +859,7 @@ export default function TodayMedications({
     const scheduledFor = scheduledForDue(due);
 
     const notesVal = logNotes[due.schedule.id]?.trim() || null;
-    const takenAt =
-      selectedDate === today
-        ? new Date().toISOString()
-        : `${selectedDate}T12:00:00.000Z`;
+    const takenAt = takenAtFor(due);
     const clearNote = () =>
       setLogNotes((prev) => {
         const copy = { ...prev };
@@ -904,10 +908,7 @@ export default function TodayMedications({
     const prnSched = med.schedules?.find((s) => s.schedule_type_id === 'prn');
     const schedId = prnSched?.id || med.id;
     const notesVal = logNotes[schedId]?.trim() || null;
-    const takenAt =
-      selectedDate === today
-        ? new Date().toISOString()
-        : `${selectedDate}T12:00:00.000Z`;
+    const takenAt = takenAtFor();
     const clearNote = () =>
       setLogNotes((prev) => {
         const copy = { ...prev };

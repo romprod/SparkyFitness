@@ -253,6 +253,31 @@ describe('TodayMedications scheduled doses', () => {
   );
 });
 
+it('logs a past-day dose at its scheduled time, not at noon UTC', () => {
+  mockTimezone = 'Europe/London';
+  render(
+    <TodayMedications
+      selectedDate="2026-11-19"
+      today="2026-11-20"
+      meds={[medWithDose('21:00')]}
+      entries={[]}
+      recentEntries={[]}
+      loadingMeds={false}
+      loadingEntries={false}
+      onSelectDate={jest.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+  expect(mockCreateEntry).toHaveBeenCalledWith(
+    expect.objectContaining({
+      status: 'taken',
+      taken_at: '2026-11-19T21:00:00.000Z',
+      entry_date: '2026-11-19',
+    }),
+    expect.anything()
+  );
+});
+
 it('deducts a scheduled non-GLP-1 peptide dose with micrograms converted to mg', () => {
   mockLogInjection.mockClear();
   const med = medWithDose('09:00');
@@ -383,13 +408,14 @@ describe('quick injection prompt time', () => {
     );
   });
 
+  // The 09:00 schedule on that day in Tokyo is 00:00 UTC the same calendar date.
   it('preserves a deliberately selected historical calendar day', () => {
     renderQuick('2026-07-08');
     fireEvent.click(screen.getByRole('button', { name: 'Take' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm injection' }));
     expect(mockLogInjection).toHaveBeenCalledWith(
       expect.objectContaining({
-        injected_at: '2026-07-08T12:00:00.000Z',
+        injected_at: '2026-07-08T00:00:00.000Z',
         entry_date: '2026-07-08',
       }),
       expect.anything()
