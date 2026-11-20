@@ -37,11 +37,13 @@ let mockDefault: string | null = 'syringe';
 let mockFetching = false;
 let mockTimezone = 'Europe/London';
 let mockSyringes: Partial<MedicationSyringe>[] = [];
+let mockInjections: Array<{ injected_at: string | null }> = [];
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationPens: () => ({
     data: mockPens,
     refetch: jest.fn(async () => ({ data: mockPens })),
   }),
+  useMedicationInjections: () => ({ data: mockInjections }),
   useLogInjectionMutation: () => ({ mutate: mockLog, isPending: false }),
 }));
 jest.mock('@/hooks/useMedicationSyringes', () => ({
@@ -105,6 +107,7 @@ const prep = {
   created_at: '2026-11-15T00:00:00Z',
 };
 beforeEach(() => {
+  mockInjections = [];
   mockLog.mockClear();
   mockCourseCurrent = true;
   mockCourseSlots = [];
@@ -176,6 +179,38 @@ it('submits the chosen syringe and original decimal input while the server deriv
     expect.anything()
   );
   expect(mockLog.mock.calls[0][0]).not.toHaveProperty('dose_mg');
+});
+it('warns, without blocking, when the last injection is inside the minimum interval', () => {
+  mockInjections = [
+    { injected_at: new Date(Date.now() - 24 * 3_600_000).toISOString() },
+  ];
+  render(
+    <Glp1LogInjection
+      med={{ ...medication, custom_fields: { min_interval_hours: 72 } }}
+    />
+  );
+  expect(screen.getByRole('status')).toHaveTextContent(
+    'Last dose 24 h ago. Your minimum interval is 72 h. You can still log it.'
+  );
+  fireEvent.click(button());
+  expect(mockLog).toHaveBeenCalled();
+});
+it('says nothing about timing without a minimum interval or after it has passed', () => {
+  mockInjections = [
+    { injected_at: new Date(Date.now() - 24 * 3_600_000).toISOString() },
+  ];
+  const { unmount } = render(<Glp1LogInjection med={medication} />);
+  expect(screen.queryByText(/Last dose/)).toBeNull();
+  unmount();
+  mockInjections = [
+    { injected_at: new Date(Date.now() - 100 * 3_600_000).toISOString() },
+  ];
+  render(
+    <Glp1LogInjection
+      med={{ ...medication, custom_fields: { min_interval_hours: 72 } }}
+    />
+  );
+  expect(screen.queryByText(/Last dose/)).toBeNull();
 });
 it('retains the explicit manual dose path', async () => {
   mockDefault = null;

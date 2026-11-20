@@ -12,8 +12,12 @@ import {
   positiveDeviceDoseSchema,
   resolvePreparedMedicationRoute,
   isDeviceEligibleForRoute,
+  todayInZone,
+  intervalWarning,
+  readDosePolicy,
 } from '@workspace/shared';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { displayQuantity } from '@/utils/displayNumber';
 import InjectionSitePicker from './InjectionSitePicker';
 import { useInjectionSiteSelection } from '@/hooks/useInjectionSiteSelection';
 import InjectionSiteSettings from './InjectionSiteSettings';
@@ -44,6 +48,7 @@ import {
 } from '@/components/ui/select';
 import {
   useMedicationPens,
+  useMedicationInjections,
   useLogInjectionMutation,
 } from '@/hooks/useMedications';
 import type { Medication } from '@/types/medications';
@@ -118,6 +123,15 @@ export default function Glp1LogInjection({
 
   const pensQ = useMedicationPens(medId);
   const logMutation = useLogInjectionMutation(medId);
+  // Warn, as Pitstop does, when the last logged injection is inside the minimum interval.
+  const recentInjections = useMedicationInjections(medId);
+  const tooSoon = intervalWarning({
+    takenAt: (recentInjections.data ?? [])
+      .map((entry) => entry.injected_at)
+      .filter((value): value is string => !!value),
+    minHours: readDosePolicy(med.custom_fields).min_interval_hours,
+    now: new Date(),
+  });
 
   const siteSelection = useInjectionSiteSelection(medId);
   const { sitesQ, site, setSelectedSite } = siteSelection;
@@ -396,7 +410,7 @@ export default function Glp1LogInjection({
                   : injectedAt.slice(0, 10),
             }
           : {}),
-        site: nasal ? null : site,
+        site: nasal ? null : site || null,
         ...(calculatedMode && calculatedInput
           ? { calculated_draw: calculatedInput }
           : { dose_mg: manualDose }),
@@ -557,6 +571,12 @@ export default function Glp1LogInjection({
                         doses_total: (p.doses_total ?? 0) - p.doses_used,
                       }
                     )}
+                    {p.concentration_mg_ml
+                      ? ` · ${displayQuantity(p.concentration_mg_ml, 2)} mg/mL`
+                      : ''}
+                    {p.bud_date && p.bud_date < todayInZone(timezone)
+                      ? ` · ${t('medications.glp1.pastUseBy', '⚠ past use-by')}`
+                      : ''}
                   </SelectItem>
                 ))}
             </SelectContent>
@@ -774,10 +794,21 @@ export default function Glp1LogInjection({
           />
         </div>
 
+        {tooSoon && (
+          <p
+            role="status"
+            className="rounded-md border border-amber-400/50 bg-amber-50 p-2 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+          >
+            {t(
+              'medications.glp1.tooSoon',
+              'Last dose {{hours}} h ago. Your minimum interval is {{min}} h. You can still log it.',
+              { hours: tooSoon.hours_since, min: tooSoon.min_hours }
+            )}
+          </p>
+        )}
         <Button
           onClick={handleLog}
           disabled={
-            (!nasal && !site) ||
             !doseValid ||
             logMutation.isPending ||
             courseStale ||

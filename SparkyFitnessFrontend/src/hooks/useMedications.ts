@@ -163,6 +163,17 @@ export const useMedicationInjections = (medId: string, enabled = true) =>
     },
   });
 
+/** Reads a medication's injections on demand, for checks made at the moment of a tap. */
+export const useFetchMedicationInjections = () => {
+  const client = useQueryClient();
+  return (medId: string) =>
+    client.fetchQuery({
+      queryKey: medKeys.injections(medId),
+      queryFn: () => medicationService.listInjections(medId),
+      staleTime: 30_000,
+    });
+};
+
 export const useMedicationTitration = (medId: string) =>
   useQuery({
     queryKey: medKeys.titration(medId),

@@ -78,6 +78,7 @@ import { usePreferences } from '@/contexts/PreferencesContext';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import {
   useCreateMedicationEntryMutation,
+  useFetchMedicationInjections,
   useMedicationEntries,
   useUpdateMedicationEntryMutation,
   useDeleteMedicationEntryMutation,
@@ -197,28 +198,43 @@ export default function TodayMedications({
     warning: IntervalWarning;
     proceed: () => void;
   } | null>(null);
+  const fetchInjections = useFetchMedicationInjections();
   const guardInterval = (med: MedicationDetail, proceed: () => void) => {
     const { min_interval_hours } = readDosePolicy(med.custom_fields);
-    const warning =
-      selectedDate === today
-        ? intervalWarning({
-            takenAt: (intervalEntries.data ?? [])
-              .filter(
-                (e) =>
-                  e.medication_id === med.id &&
-                  (e.status === 'taken' || e.status === 'prn_taken')
-              )
-              .map((e) => e.taken_at),
-            minHours: min_interval_hours,
-            now: new Date(),
-          })
-        : null;
-    if (!warning) return proceed();
-    setIntervalGuard({
-      name: med.display_name || med.name,
-      warning,
-      proceed,
-    });
+    if (!min_interval_hours || selectedDate !== today) return proceed();
+    const check = (injected: string[]) => {
+      const warning = intervalWarning({
+        takenAt: [
+          ...(intervalEntries.data ?? [])
+            .filter(
+              (e) =>
+                e.medication_id === med.id &&
+                (e.status === 'taken' || e.status === 'prn_taken')
+            )
+            .map((e) => e.taken_at),
+          ...injected,
+        ],
+        minHours: min_interval_hours,
+        now: new Date(),
+      });
+      if (!warning) return proceed();
+      setIntervalGuard({
+        name: med.display_name || med.name,
+        warning,
+        proceed,
+      });
+    };
+    // Injections are stored apart from other doses, so an injectable's last dose is read from them.
+    if (med.type_id !== 'injection') return check([]);
+    void fetchInjections(med.id)
+      .then((rows) =>
+        check(
+          rows
+            .map((row) => row.injected_at)
+            .filter((value): value is string => !!value)
+        )
+      )
+      .catch(() => check([]));
   };
 
   // Mutations

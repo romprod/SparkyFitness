@@ -583,6 +583,8 @@
       "doseMg": "Dose (mg)",
       "dateTime": "Date & time",
       "deduct": "Deduct from pen/vial",
+      "tooSoon": "Last dose {{hours}} h ago. Your minimum interval is {{min}} h. You can still log it.",
+      "pastUseBy": "⚠ past use-by",
       "dontDeduct": "Don't deduct",
       "pkTitle": "PK serum level",
       "pkEmpty": "Log injections to model your serum level. (Needs a recognized GLP-1 drug — set it on the medication.)",

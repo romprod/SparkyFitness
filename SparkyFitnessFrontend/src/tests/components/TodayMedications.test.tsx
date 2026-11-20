@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import TodayMedications from '@/pages/Medications/TodayMedications';
 import type {
@@ -48,6 +48,7 @@ const mockScope = {
   key: 'scope-1',
   isCurrent: () => true,
 };
+const mockListInjections = jest.fn(async (_id: string) => [] as unknown[]);
 let mockSlots: MedicationCourseExpectedSlot[] = [];
 let mockFulfilled: MedicationCourseDue['fulfilled_slots'] = [];
 jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
@@ -115,6 +116,7 @@ const mockLogInjection = jest.fn();
 let mockIntervalEntries: unknown[] = [];
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationEntries: () => ({ data: mockIntervalEntries }),
+  useFetchMedicationInjections: () => (id: string) => mockListInjections(id),
   useCreateMedicationEntryMutation: () => ({
     mutate: mockCreateEntry,
     isPending: false,
@@ -760,6 +762,36 @@ describe('minimum interval and missed-dose policy', () => {
       expect.objectContaining({ status: 'taken', schedule_id: 'sched-1' }),
       expect.anything()
     );
+  });
+
+  it("reads an injectable's last dose from its injections, which are stored apart", async () => {
+    mockListInjections.mockResolvedValue([
+      { injected_at: '2026-12-31T12:00:00Z' },
+    ]);
+    const med = medWithDose('09:00');
+    med.type_id = 'injection';
+    med.is_glp1 = false;
+    med.custom_fields = { min_interval_hours: 24 };
+    render(
+      <TodayMedications
+        selectedDate="2026-12-31"
+        today="2026-12-31"
+        meds={[med]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByText('Log Vitamin D sooner than planned?')
+    ).toBeInTheDocument();
+    expect(mockListInjections).toHaveBeenCalledWith('med-1');
   });
 
   it('logs straight away once the interval has passed or none is set', () => {
