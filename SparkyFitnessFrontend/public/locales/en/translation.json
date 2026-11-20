@@ -758,6 +758,7 @@
       "capsule": "Capsule",
       "softgel": "Softgel",
       "gummy": "Gummy",
+      "numberError": "Enter a number greater than zero, for example 10.",
       "powder": "Powder",
       "liquid": "Liquid"
     },

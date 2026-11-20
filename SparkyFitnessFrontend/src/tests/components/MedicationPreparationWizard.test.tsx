@@ -691,3 +691,23 @@ it('prefills the beyond-use days from the medication default, not an assumed fig
   fireEvent.click(screen.getByRole('option', { name: 'Interval and source' }));
   expect(screen.getByLabelText('Days')).toHaveValue('');
 });
+it('explains a non-number in the powder field instead of silently disabling Review', () => {
+  render(<MedicationPreparationWizard med={medication} onClose={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  change('Powder in the vial', 'Cagri');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Enter a number greater than zero'
+  );
+  expect(screen.getByLabelText('Powder in the vial')).toHaveAttribute(
+    'aria-invalid',
+    'true'
+  );
+  expect(
+    screen.getByRole('button', { name: 'Review preparation' })
+  ).toBeDisabled();
+  change('Powder in the vial', '10');
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Review preparation' })
+  ).toBeEnabled();
+});

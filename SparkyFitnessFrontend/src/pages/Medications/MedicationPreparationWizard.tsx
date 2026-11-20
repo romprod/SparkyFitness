@@ -425,18 +425,42 @@ export default function MedicationPreparationWizard({
     title: string,
     value: string,
     set: (next: string) => void,
-    type = 'text'
-  ) => (
-    <div className="space-y-1">
-      <Label htmlFor={`${fieldPrefix}-${name}`}>{title}</Label>
-      <Input
-        id={`${fieldPrefix}-${name}`}
-        type={type}
-        value={value}
-        onChange={(event) => set(event.target.value)}
-      />
-    </div>
-  );
+    type = 'text',
+    numeric = false
+  ) => {
+    const badNumber =
+      numeric &&
+      value.trim() !== '' &&
+      !(/^\d+(\.\d+)?$/.test(value.trim()) && Number(value) > 0);
+    return (
+      <div className="space-y-1">
+        <Label htmlFor={`${fieldPrefix}-${name}`}>{title}</Label>
+        <Input
+          id={`${fieldPrefix}-${name}`}
+          type={type}
+          inputMode={numeric ? 'decimal' : undefined}
+          aria-invalid={badNumber || undefined}
+          aria-describedby={
+            badNumber ? `${fieldPrefix}-${name}-error` : undefined
+          }
+          value={value}
+          onChange={(event) => set(event.target.value)}
+        />
+        {badNumber && (
+          <p
+            id={`${fieldPrefix}-${name}-error`}
+            role="alert"
+            className="text-xs text-destructive"
+          >
+            {t(
+              'medications.preparationFlow.numberError',
+              'Enter a number greater than zero, for example 10.'
+            )}
+          </p>
+        )}
+      </div>
+    );
+  };
   return (
     <PreparationSurface
       inline={inline}
@@ -583,7 +607,9 @@ export default function MedicationPreparationWizard({
                 'mass',
                 t('medications.preparationFlow.powder', 'Powder in the vial'),
                 mass,
-                setMass
+                setMass,
+                'text',
+                true
               )}
               <div className="space-y-1">
                 <Label htmlFor={`${fieldPrefix}-mass-unit`}>
@@ -609,7 +635,9 @@ export default function MedicationPreparationWizard({
                   'Diluent added (mL)'
                 ),
                 volume,
-                setVolume
+                setVolume,
+                'text',
+                true
               )}
               <div className="flex flex-wrap gap-2">
                 {['1', '2', '3', '5'].map((amount) => (
@@ -640,7 +668,9 @@ export default function MedicationPreparationWizard({
                   'Label concentration (mg/mL)'
                 ),
                 labelConcentration,
-                setLabelConcentration
+                setLabelConcentration,
+                'text',
+                true
               )}
               {field(
                 'volume',
@@ -649,7 +679,9 @@ export default function MedicationPreparationWizard({
                   'Volume in the vial (mL)'
                 ),
                 volume,
-                setVolume
+                setVolume,
+                'text',
+                true
               )}
             </>
           )}
