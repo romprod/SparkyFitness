@@ -666,3 +666,28 @@ describe('Pitstop-style presentation', () => {
     expect(document.querySelector('details')).toHaveAttribute('open');
   });
 });
+it('prefills the beyond-use days from the medication default, not an assumed figure', () => {
+  const { unmount } = render(
+    <MedicationPreparationWizard
+      med={{ ...medication, custom_fields: { default_bud_days: 21 } }}
+      onClose={jest.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  fireEvent.click(screen.getByText('Vial details'));
+  fireEvent.keyDown(screen.getByLabelText('Beyond-use date (BUD)'), {
+    key: 'Enter',
+  });
+  fireEvent.click(screen.getByRole('option', { name: 'Interval and source' }));
+  expect(screen.getByLabelText('Days')).toHaveValue('21');
+  unmount();
+
+  render(<MedicationPreparationWizard med={medication} onClose={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  fireEvent.click(screen.getByText('Vial details'));
+  fireEvent.keyDown(screen.getByLabelText('Beyond-use date (BUD)'), {
+    key: 'Enter',
+  });
+  fireEvent.click(screen.getByRole('option', { name: 'Interval and source' }));
+  expect(screen.getByLabelText('Days')).toHaveValue('');
+});

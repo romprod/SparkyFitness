@@ -10,6 +10,7 @@ import {
   isDeviceEligibleForRoute,
   type DeviceDose,
   isDayString,
+  readDefaultBudDays,
   medicationDoseInMg,
   medicationPreparationInputSchema,
   medicationPreparationCorrectionValuesSchema,
@@ -715,7 +716,14 @@ export default function MedicationPreparationWizard({
                 </Label>
                 <Select
                   value={budMode}
-                  onValueChange={(value) => setBudMode(value as typeof budMode)}
+                  onValueChange={(value) => {
+                    setBudMode(value as typeof budMode);
+                    // A new preparation starts from the days the person set for this medication.
+                    if (value === 'interval' && !budDays && !correcting) {
+                      const preset = readDefaultBudDays(med.custom_fields);
+                      if (preset) setBudDays(String(preset));
+                    }
+                  }}
                 >
                   <SelectTrigger id={`${fieldPrefix}-bud-mode`}>
                     <SelectValue />

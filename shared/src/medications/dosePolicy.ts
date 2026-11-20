@@ -37,6 +37,24 @@ export function readDosePolicy(customFields: unknown): DosePolicy {
   };
 }
 
+/** Longest default beyond-use window accepted, in days. */
+export const MAX_DEFAULT_BUD_DAYS = 365;
+
+/**
+ * The beyond-use days the person chose for a medication, to prefill a new preparation. Their own
+ * figure, never an assumed one; the preparation still records its own source.
+ */
+export function readDefaultBudDays(customFields: unknown): number | null {
+  const fields =
+    customFields && typeof customFields === 'object'
+      ? (customFields as Record<string, unknown>)
+      : {};
+  const days = Math.floor(Number(fields['default_bud_days']));
+  return Number.isFinite(days) && days > 0
+    ? Math.min(days, MAX_DEFAULT_BUD_DAYS)
+    : null;
+}
+
 export interface IntervalWarning {
   hours_since: number;
   min_hours: number;

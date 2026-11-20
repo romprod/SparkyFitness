@@ -739,6 +739,8 @@
       "drPrescriber": "Dr. {{prescriber}}",
       "schedulesAndDailyChecklistsFor": "Schedules and daily checklists for non-GLP-1 medications are fully active. Manage schedule rules below, and log daily intake from the <strong>Today</strong> tab.",
       "minInterval": "Minimum hours between doses (optional)",
+      "defaultBud": "Default beyond-use days (optional)",
+      "defaultBudHint": "Prefilled as the days when you record a beyond-use interval for a new preparation. Use the figure from your product or clinician guidance.",
       "minIntervalHint": "You are asked to confirm a dose logged sooner than this after the last one.",
       "missedPolicy": "If a dose is missed",
       "missedPrompt": "Ask me",

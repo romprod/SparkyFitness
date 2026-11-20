@@ -160,6 +160,37 @@ describe('AddMedicationDialog dosing guardrails', () => {
   });
 });
 
+describe('AddMedicationDialog default beyond-use days', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('saves the default with the medication and keeps it on edit', () => {
+    render(<AddMedicationDialog />);
+    openDialog();
+    fireEvent.click(screen.getByText('Show Advanced Options'));
+    setField('Name', 'Retatrutide');
+    setField('Default beyond-use days (optional)', '30');
+    save();
+    expect(lastCreateBody().custom_fields).toEqual({ default_bud_days: 30 });
+  });
+
+  it('shows a saved default and drops it when cleared', () => {
+    const med = {
+      ...mobileDoseMed,
+      custom_fields: { default_bud_days: 21, missed_policy: 'skip' },
+    };
+    render(<AddMedicationDialog editMed={med} />);
+    openDialog();
+    expect(
+      screen.getByLabelText('Default beyond-use days (optional)')
+    ).toHaveValue(21);
+    setField('Default beyond-use days (optional)', '');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      missed_policy: 'skip',
+    });
+  });
+});
+
 describe('AddMedicationDialog dose fields', () => {
   beforeEach(() => jest.clearAllMocks());
 

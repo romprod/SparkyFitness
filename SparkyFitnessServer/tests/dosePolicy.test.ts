@@ -3,6 +3,7 @@ import {
   intervalWarning,
   overdueHours,
   readDosePolicy,
+  readDefaultBudDays,
 } from '@workspace/shared';
 
 const now = new Date('2026-11-19T12:00:00Z');
@@ -13,16 +14,17 @@ describe('readDosePolicy', () => {
       min_interval_hours: null,
       missed_policy: 'prompt',
     });
-    expect(readDosePolicy({ min_interval_hours: 'x', missed_policy: 'bad' }))
-      .toEqual({ min_interval_hours: null, missed_policy: 'prompt' });
+    expect(
+      readDosePolicy({ min_interval_hours: 'x', missed_policy: 'bad' })
+    ).toEqual({ min_interval_hours: null, missed_policy: 'prompt' });
   });
   it('reads, and caps, stored values', () => {
     expect(
       readDosePolicy({ min_interval_hours: 24, missed_policy: 'skip' })
     ).toEqual({ min_interval_hours: 24, missed_policy: 'skip' });
-    expect(readDosePolicy({ min_interval_hours: 9999 }).min_interval_hours).toBe(
-      192
-    );
+    expect(
+      readDosePolicy({ min_interval_hours: 9999 }).min_interval_hours
+    ).toBe(192);
     expect(readDosePolicy({ missed_policy: 'take_now' }).missed_policy).toBe(
       'take_now'
     );
@@ -48,7 +50,11 @@ describe('intervalWarning', () => {
     ).toBeNull();
     expect(intervalWarning({ takenAt: [], minHours: 24, now })).toBeNull();
     expect(
-      intervalWarning({ takenAt: ['2026-11-19T11:00:00Z'], minHours: null, now })
+      intervalWarning({
+        takenAt: ['2026-11-19T11:00:00Z'],
+        minHours: null,
+        now,
+      })
     ).toBeNull();
   });
   it('ignores doses dated after now', () => {
@@ -63,5 +69,19 @@ describe('overdueHours', () => {
     expect(overdueHours('2026-11-19T08:30:00Z', now)).toBe(3);
     expect(overdueHours('2026-11-19T13:00:00Z', now)).toBeNull();
     expect(overdueHours(null, now)).toBeNull();
+  });
+});
+
+describe('readDefaultBudDays', () => {
+  it('reads a whole positive number of days, capped at a year', () => {
+    expect(readDefaultBudDays({ default_bud_days: 28 })).toBe(28);
+    expect(readDefaultBudDays({ default_bud_days: '14.9' })).toBe(14);
+    expect(readDefaultBudDays({ default_bud_days: 9999 })).toBe(365);
+  });
+  it('assumes nothing when unset or invalid', () => {
+    expect(readDefaultBudDays(null)).toBeNull();
+    expect(readDefaultBudDays({})).toBeNull();
+    expect(readDefaultBudDays({ default_bud_days: 0 })).toBeNull();
+    expect(readDefaultBudDays({ default_bud_days: 'x' })).toBeNull();
   });
 });

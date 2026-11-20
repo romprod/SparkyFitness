@@ -9,6 +9,8 @@ import {
   resolveMacroFieldKey,
   MAX_MIN_INTERVAL_HOURS,
   readDosePolicy,
+  readDefaultBudDays,
+  MAX_DEFAULT_BUD_DAYS,
   type MissedDosePolicy,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
@@ -243,6 +245,10 @@ export default function AddMedicationDialog({
   );
   const [missedPolicy, setMissedPolicy] = useState<MissedDosePolicy>(
     savedPolicy.missed_policy
+  );
+  const savedBudDays = readDefaultBudDays(editMed?.custom_fields);
+  const [defaultBudDays, setDefaultBudDays] = useState(
+    savedBudDays ? String(savedBudDays) : ''
   );
   const [effectiveness, setEffectiveness] = useState<number>(
     editMed?.effectiveness_rating ?? 0
@@ -515,8 +521,12 @@ export default function AddMedicationDialog({
   // and the default policy store nothing.
   const withDosePolicy = (fields: Record<string, unknown>) => {
     const hours = Number(minIntervalHours);
+    const budDays = Math.floor(Number(defaultBudDays));
     return {
       ...fields,
+      ...(!isSupplement && budDays > 0
+        ? { default_bud_days: Math.min(budDays, MAX_DEFAULT_BUD_DAYS) }
+        : {}),
       ...(!isSupplement && hours > 0
         ? { min_interval_hours: Math.min(hours, MAX_MIN_INTERVAL_HOURS) }
         : {}),
@@ -653,6 +663,7 @@ export default function AddMedicationDialog({
         setNotes('');
         setMinIntervalHours('');
         setMissedPolicy('prompt');
+        setDefaultBudDays('');
         setEffectiveness(0);
         setPhotoPath('');
         setIsSupplement(defaultIsSupplement);
@@ -1380,6 +1391,33 @@ export default function AddMedicationDialog({
                         )}
                       </p>
                     </div>
+                  </div>
+                )}
+
+                {!isSupplement && (
+                  <div className="space-y-2">
+                    <Label htmlFor="med-default-bud">
+                      {t(
+                        'medications.cabinet.defaultBud',
+                        'Default beyond-use days (optional)'
+                      )}
+                    </Label>
+                    <Input
+                      id="med-default-bud"
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      max={MAX_DEFAULT_BUD_DAYS}
+                      value={defaultBudDays}
+                      onChange={(e) => setDefaultBudDays(e.target.value)}
+                      placeholder="28"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'medications.cabinet.defaultBudHint',
+                        'Prefilled as the days when you record a beyond-use interval for a new preparation. Use the figure from your product or clinician guidance.'
+                      )}
+                    </p>
                   </div>
                 )}
 
