@@ -15,8 +15,10 @@ import { error } from '@/utils/logging';
 import { HttpApiError } from './api/api.ts';
 import { createMutationCache } from './lib/mutationCache.ts';
 import { installTranslationDomGuard } from './utils/translationDomGuard.ts';
+import { installBundleHeartbeat } from './utils/bundleHeartbeat.ts';
 
 installTranslationDomGuard();
+installBundleHeartbeat();
 
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
