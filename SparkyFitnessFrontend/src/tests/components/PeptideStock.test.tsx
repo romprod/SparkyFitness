@@ -122,14 +122,28 @@ jest.mock('@/pages/Medications/AddMedicationDialog', () => ({
   default: ({
     open,
     onOpenChange,
+    onCreated,
   }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    onCreated?: (med: Medication) => void;
   }) =>
     open ? (
       <div role="dialog">
         <button onClick={() => onOpenChange(false)}>
           Cancel new medication
+        </button>
+        <button
+          onClick={() => {
+            onOpenChange(false);
+            onCreated?.({
+              ...peptide,
+              id: 'fresh',
+              name: 'Fresh',
+            } as Medication);
+          }}
+        >
+          Save new medication
         </button>
       </div>
     ) : null,
@@ -450,6 +464,52 @@ it('shows one empty message instead of a placeholder card per medication, so sto
   expect(screen.queryByText(/No vials yet/)).not.toBeInTheDocument();
   const tracked = screen.getByRole('region', { name: 'Tracked stock' });
   expect(tracked.querySelectorAll('article')).toHaveLength(1);
+});
+
+it('lists a compound that has no vials yet, with a way to add one', () => {
+  const other = {
+    ...peptide,
+    id: 'other',
+    name: 'Cagrilintide',
+  } as Medication;
+  mockPens.mockImplementation((id: string) => ({
+    data:
+      id === 'other'
+        ? []
+        : [dashboardPen({ medication_id: id, status: 'in_use' })],
+  }));
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, other]} />
+    </MemoryRouter>
+  );
+  const none = screen.getByRole('region', { name: 'No stock yet' });
+  expect(none).toHaveTextContent('Cagrilintide');
+  expect(none).toHaveTextContent('No vials or pens yet');
+  expect(none).not.toHaveTextContent(peptide.name);
+  fireEvent.click(
+    within(none).getByRole('button', { name: 'Add a vial or pen' })
+  );
+  expect(screen.getByRole('dialog')).toHaveTextContent('Add Pen / Vial');
+});
+
+it('goes on to add a vial straight after a new peptide is saved', () => {
+  mockPens.mockReturnValue({ data: [] });
+  const fresh = { ...peptide, id: 'fresh', name: 'Fresh' } as Medication;
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide, fresh]} />
+    </MemoryRouter>
+  );
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Add peptide / injectable' })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save new medication' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Add Pen / Vial');
 });
 
 it('says so once when nothing is tracked for any medication', () => {

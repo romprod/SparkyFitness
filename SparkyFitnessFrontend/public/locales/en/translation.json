@@ -990,6 +990,8 @@
     "stockLayout": {
       "more": "More stock tools",
       "addStock": "Add stock",
+      "noStock": "No stock yet",
+      "noVials": "No vials or pens yet",
       "addVial": "Add a vial or pen",
       "chooseMedication": "Which medication is this for?",
       "medication": "Medication",

@@ -145,6 +145,17 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
   const queue = !dashboard.query.isError
     ? (dashboard.data?.preparation_queue ?? [])
     : [];
+  // Compounds that exist but have no vial or pen at all, which the stock lists above would not show.
+  const noStock = injectables.filter((med) => {
+    const seen = counts[`${scope.key}:${med.id}`];
+    return (
+      med.is_active &&
+      seen !== undefined &&
+      seen.active === 0 &&
+      seen.closed === 0 &&
+      !queue.some((row) => row.medication_id === med.id)
+    );
+  });
   const manager = (
     med: Medication,
     stockView: 'active' | 'closed' | 'queue'
@@ -286,6 +297,16 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
         key={`${scope.key}:add-medication`}
         defaultTypeId="injection"
         trigger={false}
+        onCreated={(med) => {
+          // A new compound has no vial yet, so go straight on to adding one.
+          setParams((previous) => {
+            const next = new URLSearchParams(previous);
+            next.set('tab', 'stock');
+            next.set('medication', med.id);
+            return next;
+          });
+          setRequest({ medicationId: med.id, kind: 'add' });
+        }}
         open={addMedication === scope.key && scope.ready && scope.isCurrent()}
         onOpenChange={(open) => setAddMedication(open ? scope.key : null)}
         onCloseAutoFocus={(event) => {
@@ -358,6 +379,59 @@ export default function PeptideStock({ meds }: { meds: Medication[] }) {
               {injectables.map((med) => manager(med, 'active'))}
               {packCards(openPacks)}
             </section>
+            {noStock.length > 0 && (
+              <section
+                className="space-y-3"
+                aria-label={t(
+                  'medications.stockLayout.noStock',
+                  'No stock yet'
+                )}
+              >
+                <h3 className="text-sm font-semibold">
+                  {t('medications.stockLayout.noStock', 'No stock yet')}
+                </h3>
+                <div className="grid min-w-0 gap-3 lg:max-[1899px]:grid-cols-2 min-[1900px]:grid-cols-3">
+                  {noStock.map((med) => (
+                    <div
+                      key={med.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">
+                          {med.display_name || med.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {t(
+                            'medications.stockLayout.noVials',
+                            'No vials or pens yet'
+                          )}
+                        </p>
+                      </div>
+                      {scope.canWrite && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setParams((previous) => {
+                              const next = new URLSearchParams(previous);
+                              next.set('tab', 'stock');
+                              next.set('medication', med.id);
+                              return next;
+                            });
+                            setRequest({ medicationId: med.id, kind: 'add' });
+                          }}
+                        >
+                          {t(
+                            'medications.stockLayout.addVial',
+                            'Add a vial or pen'
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
             {(queue.length > 0 || dashboard.query.isError) && (
               <section
                 className="space-y-3"

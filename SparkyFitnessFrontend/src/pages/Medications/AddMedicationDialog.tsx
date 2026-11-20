@@ -96,6 +96,7 @@ export default function AddMedicationDialog({
   open: controlledOpen,
   onOpenChange,
   onCloseAutoFocus,
+  onCreated,
 }: {
   editMed?: Medication;
   trigger?: ReactNode;
@@ -105,6 +106,8 @@ export default function AddMedicationDialog({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  /** Called with the saved medication after a successful add. */
+  onCreated?: (medication: Medication) => void;
 } = {}) {
   const { t } = useTranslation();
   const { energyUnit, convertEnergy } = usePreferences();
@@ -648,8 +651,9 @@ export default function AddMedicationDialog({
       return;
     }
     createMutation.mutate(body, {
-      onSuccess: () => {
+      onSuccess: (created) => {
         setOpen(false);
+        if (created) onCreated?.(created);
         setName('');
         setStrength('');
         setStrengthUnit('mg');
