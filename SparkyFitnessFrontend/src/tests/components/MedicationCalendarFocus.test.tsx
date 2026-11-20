@@ -31,6 +31,11 @@ jest.mock('@/hooks/useSymptoms', () => ({
 }));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationEntries: () => ({ data: [] }),
+  useCreateMedicationEntryMutation: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+    isError: false,
+  }),
   useUpdateMedicationEntryMutation: () => ({ mutate: jest.fn() }),
   useUpdateInjectionEntryMutation: () => ({ mutate: jest.fn() }),
   useDeleteMedicationEntryMutation: () => ({

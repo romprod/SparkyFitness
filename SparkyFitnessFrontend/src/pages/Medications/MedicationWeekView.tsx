@@ -12,9 +12,11 @@ import { usePreferences } from '@/contexts/PreferencesContext';
 export default function MedicationWeekView({
   data,
   subtype,
+  onOpenDay,
 }: {
   data: MedicationLogWeekResponse;
   subtype: MedSubtype;
+  onOpenDay?: (day: string, trigger: HTMLButtonElement) => void;
 }) {
   const { t } = useTranslation();
   const { formatDate, timeFormat } = usePreferences();
@@ -155,15 +157,39 @@ export default function MedicationWeekView({
                     key={day}
                     className={`p-2 border-l font-medium ${day === data.today ? 'bg-primary/10 text-primary' : ''}`}
                   >
-                    <span className="block">{weekday(day)}</span>
-                    <span className="block text-[11px] font-normal text-muted-foreground">
-                      {formatDate(day)}
-                    </span>
-                    {day === data.today && (
-                      <span className="block text-[10px] uppercase tracking-wide">
-                        {t('common.today', 'Today')}
-                      </span>
-                    )}
+                    {(() => {
+                      const heading = (
+                        <>
+                          <span className="block">{weekday(day)}</span>
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            {formatDate(day)}
+                          </span>
+                          {day === data.today && (
+                            <span className="block text-[10px] uppercase tracking-wide">
+                              {t('common.today', 'Today')}
+                            </span>
+                          )}
+                        </>
+                      );
+                      return onOpenDay ? (
+                        <button
+                          type="button"
+                          className="mx-auto block rounded px-1 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={t(
+                            'medications.week.openDay',
+                            'Open {{date}}',
+                            { date: formatDate(day) }
+                          )}
+                          onClick={(event) =>
+                            onOpenDay(day, event.currentTarget)
+                          }
+                        >
+                          {heading}
+                        </button>
+                      ) : (
+                        heading
+                      );
+                    })()}
                   </th>
                 ))}
               </tr>

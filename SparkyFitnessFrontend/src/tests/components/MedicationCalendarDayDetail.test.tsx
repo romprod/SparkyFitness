@@ -13,7 +13,8 @@ let mockCurrent = true,
   mockWrite = true,
   mockDiaryWrite = false;
 let mockRead: MedicationInjectionRead | undefined;
-const mockUpdate = jest.fn(),
+const mockCreate = jest.fn(),
+  mockUpdate = jest.fn(),
   mockUpdateInjection = jest.fn(),
   mockDelete = jest.fn(),
   mockDeleteInjection = jest.fn(),
@@ -40,6 +41,11 @@ jest.mock('@/hooks/Medications/useMedicationLogWeek', () => ({
   },
 }));
 jest.mock('@/hooks/useMedications', () => ({
+  useCreateMedicationEntryMutation: () => ({
+    mutate: mockCreate,
+    isPending: false,
+    isError: false,
+  }),
   useUpdateMedicationEntryMutation: () => ({
     mutate: mockUpdate,
     isPending: false,
@@ -262,4 +268,54 @@ it('keeps actual day-detail clocks consistent with the response timezone label',
     )
   );
   expect(screen.getByText('04:00 (America/New_York)')).toBeInTheDocument();
+});
+
+describe('adding a dose for a past day', () => {
+  const pick = (label: string, option: string) => {
+    fireEvent.keyDown(screen.getByLabelText(label), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('option', { name: option }));
+  };
+
+  it('records the chosen medication on that day at a time that is not now', () => {
+    const med = {
+      ...courseMedication,
+      id: calendarIds.med,
+      display_name: 'Sertraline',
+      type_id: 'tablet',
+      is_active: true,
+      is_glp1: false,
+      schedules: [{ id: 's1', time_of_day: '21:00' }],
+    };
+    const p = props(calendarWeek({ actuals: [] }));
+    renderDetail({
+      ...p,
+      medications: [med] as unknown as typeof p.medications,
+    });
+    expect(
+      screen.getByRole('region', { name: 'Add a dose for this day' })
+    ).toBeInTheDocument();
+    pick('Medication or supplement', 'Sertraline');
+    fireEvent.click(screen.getByRole('button', { name: 'Record dose' }));
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({
+      medication_id: calendarIds.med,
+      status: 'taken',
+      entry_date: '2026-11-17',
+      taken_at: '2026-11-17T21:00:00.000Z',
+    });
+  });
+
+  it('is not offered for a future day or without write access', () => {
+    const p = props(calendarWeek({ actuals: [] }));
+    const { unmount } = renderDetail({ ...p, day: '2026-11-18' });
+    expect(
+      screen.queryByRole('region', { name: 'Add a dose for this day' })
+    ).toBeNull();
+    unmount();
+    mockWrite = false;
+    renderDetail(p);
+    expect(
+      screen.queryByRole('region', { name: 'Add a dose for this day' })
+    ).toBeNull();
+  });
 });

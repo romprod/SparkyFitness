@@ -137,6 +137,13 @@ export default function MedicationLogCalendar(
               <MedicationWeekView
                 data={result.data}
                 subtype={props.subtype ?? 'all'}
+                onOpenDay={(day, trigger) => {
+                  if (result.scope.ready && result.scope.isCurrent()) {
+                    returnFocus.current = null;
+                    props.onSelectDate(day);
+                    setDetail({ day, scopeKey: result.scope.key, trigger });
+                  }
+                }}
               />
             )}
           </CardContent>

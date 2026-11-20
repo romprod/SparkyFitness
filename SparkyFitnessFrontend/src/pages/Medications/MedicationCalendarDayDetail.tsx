@@ -42,6 +42,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import Glp1RecentInjections from './Glp1RecentInjections';
+import MedicationAddDoseForDay from './MedicationAddDoseForDay';
 
 type Result = ReturnType<typeof useMedicationLogWeek>;
 type Scope = Result['scope'];
@@ -497,6 +498,21 @@ export default function MedicationCalendarDayDetail({
               {!planned.length && !actuals.length && (
                 <p>{t('medications.week.noDoses', 'No doses on this date.')}</p>
               )}
+              {(hasWritePermission('can_manage_medications') ||
+                hasWritePermission('diary')) &&
+                day <= data.today && (
+                  <MedicationAddDoseForDay
+                    day={day}
+                    medicationId={medicationId}
+                    medications={medications.filter(
+                      (med) =>
+                        subtype === 'all' ||
+                        (subtype === 'supplements'
+                          ? med.is_supplement
+                          : !med.is_supplement)
+                    )}
+                  />
+                )}
             </>
           )}
           <Button variant="outline" onClick={onClose}>

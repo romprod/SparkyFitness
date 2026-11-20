@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import MedicationWeekView from '@/pages/Medications/MedicationWeekView';
 import {
   calendarWeek,
@@ -137,4 +137,17 @@ it('formats actual clocks in the captured response zone rather than mutable pref
     /04:00 \(America\/New_York\)/
   );
   expect(screen.getByRole('img')).not.toHaveAccessibleName(/09:00/);
+});
+
+it('opens a day from its column heading when asked to', () => {
+  const onOpenDay = jest.fn();
+  render(
+    <MedicationWeekView
+      data={calendarWeek({ actuals: [calendarActual()] })}
+      subtype="all"
+      onOpenDay={onOpenDay}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Open 2026-11-17' }));
+  expect(onOpenDay).toHaveBeenCalledWith('2026-11-17', expect.anything());
 });
