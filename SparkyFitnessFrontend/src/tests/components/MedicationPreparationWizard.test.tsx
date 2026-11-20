@@ -138,7 +138,10 @@ it('creates dry preparation only after labelled inputs and review, retaining val
       final_volume_ml: '2',
       prepared_date: '2026-11-15',
     },
-    bud_date: null,
+    // Pitstop's 28 days from the prepared date, unless another figure is set.
+    bud_mode: 'interval',
+    bud_interval_days: 28,
+    bud_date: '2026-12-13',
   });
 });
 it('submits premix label concentration and fill without a client supplied mass', () => {
@@ -441,7 +444,7 @@ const queuedPen = {
   preparation: null,
 };
 const queueToken = 'c'.repeat(64);
-it('prepares a queued existing vial inline with blank volume/target and same-ID guarded PUT only', () => {
+it('prepares a queued existing vial inline from the usual defaults and same-ID guarded PUT only', () => {
   render(
     <MedicationPreparationWizard
       inline
@@ -453,11 +456,14 @@ it('prepares a queued existing vial inline with blank volume/target and same-ID 
   );
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
-  expect(screen.getByLabelText('Diluent added (mL)')).toHaveValue('');
+  // As in Pitstop, 2 mL of diluent and the medication's own dose are the starting points.
+  expect(screen.getByLabelText('Diluent added (mL)')).toHaveValue('2');
   change('Powder in the vial', '8');
   change('Diluent added (mL)', '1.5');
   review();
-  expect(screen.getByLabelText('Target amount')).toHaveValue('');
+  expect(screen.getByLabelText('Target amount')).toHaveValue(
+    String(medication.dose_amount)
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
   expect(mockCreate).not.toHaveBeenCalled();
   expect(mockCorrect).not.toHaveBeenCalled();
@@ -666,7 +672,7 @@ describe('Pitstop-style presentation', () => {
     expect(document.querySelector('details')).toHaveAttribute('open');
   });
 });
-it('prefills the beyond-use days from the medication default, not an assumed figure', () => {
+it('starts the beyond-use days at 28, or at the medication default, and lets them change on the last step', () => {
   const { unmount } = render(
     <MedicationPreparationWizard
       med={{ ...medication, custom_fields: { default_bud_days: 21 } }}
@@ -674,22 +680,33 @@ it('prefills the beyond-use days from the medication default, not an assumed fig
     />
   );
   fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
-  fireEvent.click(screen.getByText('Vial details'));
-  fireEvent.keyDown(screen.getByLabelText('Beyond-use date (BUD)'), {
-    key: 'Enter',
-  });
-  fireEvent.click(screen.getByRole('option', { name: 'Interval and source' }));
-  expect(screen.getByLabelText('Days')).toHaveValue('21');
+  change('Powder in the vial', '10');
+  review();
+  expect(screen.getByLabelText('Use within')).toHaveValue('21');
+  expect(screen.getByText(/Medication default/)).toBeInTheDocument();
+  expect(screen.getByText('Keep refrigerated')).toBeInTheDocument();
   unmount();
 
   render(<MedicationPreparationWizard med={medication} onClose={jest.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
-  fireEvent.click(screen.getByText('Vial details'));
-  fireEvent.keyDown(screen.getByLabelText('Beyond-use date (BUD)'), {
-    key: 'Enter',
+  change('Powder in the vial', '10');
+  change('Prepared date', '2026-11-15');
+  review();
+  expect(screen.getByLabelText('Use within')).toHaveValue('28');
+  expect(screen.getByText(/Beyond-use date 2026-12-13/)).toBeInTheDocument();
+  expect(screen.getByText(/Standard 28 days/)).toBeInTheDocument();
+  change('Use within', '14');
+  expect(screen.getByText(/Beyond-use date 2026-11-29/)).toBeInTheDocument();
+  change('Use within', '');
+  expect(
+    screen.getByRole('button', { name: 'Confirm and save' })
+  ).toBeDisabled();
+  change('Use within', '14');
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  expect(mockCreate.mock.calls.at(-1)![0]).toMatchObject({
+    bud_interval_days: 14,
+    bud_date: '2026-11-29',
   });
-  fireEvent.click(screen.getByRole('option', { name: 'Interval and source' }));
-  expect(screen.getByLabelText('Days')).toHaveValue('');
 });
 it('explains a non-number in the powder field instead of silently disabling Review', () => {
   render(<MedicationPreparationWizard med={medication} onClose={jest.fn()} />);
@@ -754,5 +771,23 @@ describe('a new preparation follows the vial and medication settings', () => {
     expect(
       screen.getByRole('button', { name: 'Review preparation' })
     ).toBeEnabled();
+  });
+});
+it('stamps the opened date when it prepares a sealed vial', () => {
+  render(
+    <MedicationPreparationWizard
+      med={medication}
+      pen={{ ...queuedPen, opened_at: null } as MedicationPen}
+      onClose={jest.fn()}
+    />
+  );
+  fireEvent.click(screen.getByRole('button', { name: /Dry powder —/ }));
+  change('Powder in the vial', '10');
+  change('Prepared date', '2026-11-15');
+  review();
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm and save' }));
+  expect(mockAttach.mock.calls.at(-1)![0].body).toMatchObject({
+    status: 'in_use',
+    opened_at: '2026-11-15',
   });
 });

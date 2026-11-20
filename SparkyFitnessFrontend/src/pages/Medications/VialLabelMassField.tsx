@@ -9,11 +9,14 @@ export default function VialLabelMassField({
   value,
   onChange,
   conflictsWithPen = false,
+  required = false,
 }: {
   id: string;
   value: string;
   onChange: (value: string) => void;
   conflictsWithPen?: boolean;
+  /** A new vial needs its printed strength, as it does in Pitstop. */
+  required?: boolean;
 }) {
   const { t } = useTranslation();
   const invalid =
@@ -26,16 +29,23 @@ export default function VialLabelMassField({
       <Input
         id={id}
         inputMode="decimal"
+        placeholder={required ? 'e.g. 15' : undefined}
+        required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-describedby={`${id}-help`}
         aria-invalid={invalid || (conflictsWithPen && !!value.trim())}
       />
       <p id={`${id}-help`} className="text-xs text-muted-foreground">
-        {t(
-          'medications.labelMass.help',
-          'Optional total printed on the vial, independent of the dose and preparation content.'
-        )}
+        {required
+          ? t(
+              'medications.labelMass.requiredHelp',
+              'Enter the vial strength in mg, as printed on the vial.'
+            )
+          : t(
+              'medications.labelMass.help',
+              'Optional total printed on the vial, independent of the dose and preparation content.'
+            )}
       </p>
       {(invalid || (conflictsWithPen && !!value.trim())) && (
         <Badge

@@ -137,7 +137,7 @@ export default function MedicationPreparationWizard({
     med.dose_amount != null &&
     med.dose_amount > 0;
   const [targetValue, setTargetValue] = useState(
-    !queueContext && compatibleDefault ? String(med.dose_amount) : ''
+    compatibleDefault ? String(med.dose_amount) : ''
   );
   const [targetUnit, setTargetUnit] = useState<DeviceDose['unit']>(
     compatibleDefault
@@ -198,9 +198,7 @@ export default function MedicationPreparationWizard({
   const [dryVolume, setDryVolume] = useState(
     saved?.mode === 'reconstituted'
       ? (saved.exact?.final_volume_ml ?? String(saved.final_volume_ml))
-      : queueContext
-        ? ''
-        : '2'
+      : '2'
   );
   const [premixVolume, setPremixVolume] = useState(
     saved?.mode === 'premixed'
@@ -226,12 +224,11 @@ export default function MedicationPreparationWizard({
     !!pen ||
     !labelMass.trim() ||
     medicationVialLabelMassSchema.safeParse(labelMass).success;
-  // A medication with its own default beyond-use days starts a new preparation from that figure,
-  // counted from the prepared date. Nothing is assumed when the person has not set one.
+  // A new preparation starts from the medication's own default beyond-use days, or 28 days as
+  // Pitstop does, counted from the prepared date and shown on the last step to change.
+  const ownBudDays = readDefaultBudDays(med.custom_fields);
   const presetBudDays =
-    !saved && !pen?.bud_mode && !pen?.bud_date
-      ? readDefaultBudDays(med.custom_fields)
-      : null;
+    !saved && !pen?.bud_mode && !pen?.bud_date ? (ownBudDays ?? 28) : null;
   const [budMode, setBudMode] = useState<'none' | 'date' | 'interval'>(
     presetBudDays
       ? 'interval'
@@ -251,10 +248,15 @@ export default function MedicationPreparationWizard({
   const [budSource, setBudSource] = useState(
     pen?.bud_source ??
       (presetBudDays
-        ? t(
-            'medications.preparationFlow.defaultBudSource',
-            'Medication default'
-          )
+        ? ownBudDays
+          ? t(
+              'medications.preparationFlow.defaultBudSource',
+              'Medication default'
+            )
+          : t(
+              'medications.preparationFlow.standardBudSource',
+              'Standard 28 days'
+            )
         : '')
   );
   const [reviewInput, setReviewInput] =
@@ -430,6 +432,8 @@ export default function MedicationPreparationWizard({
           body.status = 'in_use';
           body.lifecycle_intent = true;
         }
+        // Preparing a vial opens it, so it carries the prepared date as its opened date.
+        if (!pen.opened_at) body.opened_at = preparedDate;
         if (queueContext) body.expected_preparation_queue_state = queueState;
         attach.mutate(
           { id: pen.id, body },
@@ -1080,10 +1084,49 @@ export default function MedicationPreparationWizard({
             {t('medications.preparation.preparedDate', 'Prepared date')}:{' '}
             {preparedDate}
           </p>
-          {budMode !== 'none' && (
-            <p className="text-sm">
-              {t('medications.preparationFlow.useBy', 'Use by')}: {derivedBud}
-              {budSource && ` · ${budSource}`}
+          {budMode === 'interval' && !correcting ? (
+            <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+              <div>
+                <Label htmlFor={`${fieldPrefix}-bud-review`}>
+                  {t('medications.preparationFlow.useWithin', 'Use within')}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'medications.preparationFlow.budDateIs',
+                    'Beyond-use date {{date}}',
+                    { date: isDayString(derivedBud) ? derivedBud : '—' }
+                  )}
+                  {budSource && ` · ${budSource}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  id={`${fieldPrefix}-bud-review`}
+                  className="w-20 text-right"
+                  inputMode="numeric"
+                  aria-invalid={!budValid || undefined}
+                  value={budDays}
+                  onChange={(event) => setBudDays(event.target.value)}
+                />
+                <span>
+                  {t('medications.preparationFlow.days', 'Days').toLowerCase()}
+                </span>
+              </div>
+            </div>
+          ) : (
+            budMode !== 'none' && (
+              <p className="text-sm">
+                {t('medications.preparationFlow.useBy', 'Use by')}: {derivedBud}
+                {budSource && ` · ${budSource}`}
+              </p>
+            )
+          )}
+          {!correcting && (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'medications.preparationFlow.refrigerate',
+                'Keep refrigerated'
+              )}
             </p>
           )}
           {queueChanged && (
@@ -1128,6 +1171,7 @@ export default function MedicationPreparationWizard({
           <Button
             disabled={
               pending ||
+              (!correcting && !budValid) ||
               queueChanged ||
               (queueContext !== undefined && !queueContext.isCurrent()) ||
               (correcting &&

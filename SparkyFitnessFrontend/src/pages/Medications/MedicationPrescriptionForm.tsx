@@ -109,6 +109,19 @@ export default function MedicationPrescriptionForm({
       return;
     if (!attempt.current) {
       const { medication_id, ...fields } = draft;
+      // A prescription cannot expire, or be due for a refill, before it was written.
+      const written = fields.date_written.trim();
+      const outOfOrder = (later: string) =>
+        !!written && !!later.trim() && written > later.trim();
+      if (outOfOrder(fields.expiration) || outOfOrder(fields.next_refill)) {
+        setMessage(
+          t(
+            'medications.prescriptions.dateOrder',
+            'Date written must be on or before the expiry and next refill dates.'
+          )
+        );
+        return;
+      }
       const operation_id = crypto.randomUUID();
       const basis = costTouched
         ? { cost_basis: fields.cost.trim() ? ('per_vial' as const) : null }
@@ -235,7 +248,8 @@ export default function MedicationPrescriptionForm({
     key: keyof typeof draft,
     label: string,
     type = 'text',
-    inputMode?: 'decimal' | 'numeric'
+    inputMode?: 'decimal' | 'numeric',
+    placeholder?: string
   ) => (
     <div className="space-y-1" key={key}>
       <Label htmlFor={`rx-${key}`}>{label}</Label>
@@ -244,6 +258,7 @@ export default function MedicationPrescriptionForm({
         value={draft[key]}
         type={type}
         inputMode={inputMode}
+        placeholder={placeholder}
         onChange={(event) => change(key, event.target.value)}
         onInput={
           key === 'cost'
@@ -330,7 +345,16 @@ export default function MedicationPrescriptionForm({
               </p>
             )}
           <div className="grid gap-3 sm:grid-cols-2">
-            {field('source', t('medications.prescriptions.source', 'Source'))}
+            {field(
+              'source',
+              t('medications.prescriptions.source', 'Source'),
+              'text',
+              undefined,
+              t(
+                'medications.prescriptions.sourcePlaceholder',
+                'e.g. your supplier'
+              )
+            )}
             {field(
               'pharmacy',
               t('medications.prescriptions.pharmacy', 'Pharmacy')
@@ -341,7 +365,13 @@ export default function MedicationPrescriptionForm({
             )}
             {field(
               'dose_instructions',
-              t('medications.prescriptions.instructions', 'Dose instructions')
+              t('medications.prescriptions.instructions', 'Dose instructions'),
+              'text',
+              undefined,
+              t(
+                'medications.prescriptions.instructionsPlaceholder',
+                'e.g. 0.5 mL three times a week'
+              )
             )}
             {field(
               'cost',
@@ -351,7 +381,10 @@ export default function MedicationPrescriptionForm({
             )}
             {field(
               'currency',
-              t('medications.prescriptions.currency', 'Currency')
+              t('medications.prescriptions.currency', 'Currency'),
+              'text',
+              undefined,
+              'AUD'
             )}
             {field(
               'quantity',
@@ -390,7 +423,8 @@ export default function MedicationPrescriptionForm({
               'lead_time_days',
               t('medications.prescriptions.lead', 'Reorder lead time (days)'),
               'text',
-              'numeric'
+              'numeric',
+              'e.g. 14'
             )}
             {base && (
               <div className="space-y-1">

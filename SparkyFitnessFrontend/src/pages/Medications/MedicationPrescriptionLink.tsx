@@ -65,6 +65,7 @@ export default function MedicationPrescriptionLink({
           )}
           {options.map((row) => (
             <option key={row.id} value={row.id}>
+              {medication.display_name || medication.name} ·{' '}
               {row.source ??
                 row.prescriber ??
                 row.pharmacy ??

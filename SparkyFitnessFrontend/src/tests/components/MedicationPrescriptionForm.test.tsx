@@ -97,7 +97,7 @@ it('uses source defaults, full fields, exact cost and zero counters without touc
   });
   expect(p.onSaved).toHaveBeenCalledWith(prescriptionIds.first);
 });
-it('rejects fractional counters without inventing cross-field date restrictions', async () => {
+it('rejects fractional counters and a prescription that expires before it was written', async () => {
   render(<MedicationPrescriptionForm {...props()} />);
   fireEvent.change(screen.getByLabelText('Refills remaining'), {
     target: { value: '1.9' },
@@ -115,10 +115,18 @@ it('rejects fractional counters without inventing cross-field date restrictions'
     target: { value: '2026-11-01' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Date written must be on or before'
+  );
+  expect(mockCreate).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Expiry date'), {
+    target: { value: '2027-11-01' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
   await waitFor(() => expect(mockCreate).toHaveBeenCalled());
   expect(mockCreate.mock.calls[0][0]).toMatchObject({
     date_written: '2026-11-20',
-    expiration: '2026-11-01',
+    expiration: '2027-11-01',
   });
 });
 it('locks the medication target on edit, retains blanks as null and never changes the target', async () => {

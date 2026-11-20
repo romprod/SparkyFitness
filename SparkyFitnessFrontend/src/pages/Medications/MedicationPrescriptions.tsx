@@ -331,7 +331,16 @@ function PrescriptionRegister({
                             '—'}
                         </p>
                       </div>
-                      <Badge variant="outline" className="self-start">
+                      <Badge
+                        variant="outline"
+                        className={`self-start ${
+                          record.status === 'active'
+                            ? 'border-green-600/40 text-green-700 dark:text-green-400'
+                            : record.status === 'expired'
+                              ? 'border-red-600/40 text-red-700 dark:text-red-400'
+                              : 'text-muted-foreground'
+                        }`}
+                      >
                         {t(
                           `medications.prescriptions.statuses.${record.status}`,
                           record.status
@@ -339,10 +348,10 @@ function PrescriptionRegister({
                       </Badge>
                     </div>
                     {notice && (
-                      <p className="rounded border bg-muted p-2 text-xs">
+                      <p className="rounded border border-amber-400/50 bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
                         {t(
                           'medications.prescriptions.refillNotice',
-                          'Next refill date is within 7 days or overdue.'
+                          'Refill due soon. Reorder to avoid a gap.'
                         )}
                       </p>
                     )}
@@ -390,7 +399,13 @@ function PrescriptionRegister({
                           </p>
                         )}
                         {record.expiration && (
-                          <p>
+                          <p
+                            className={
+                              record.expiration < today
+                                ? 'text-red-700 dark:text-red-400'
+                                : undefined
+                            }
+                          >
                             {t(
                               'medications.prescriptions.expiration',
                               'Expiry date'

@@ -762,3 +762,54 @@ it('deletes a vial only after confirming that it cannot be undone', () => {
   fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
   expect(mockDeletePen).toHaveBeenCalledWith('unused');
 });
+
+it('adds a new vial from its printed strength alone, as sealed stock waiting to be prepared', () => {
+  mockPens.mockReturnValue({ data: [] });
+  mockSave.mockClear();
+  render(
+    <MemoryRouter>
+      <PeptideStock meds={[peptide]} />
+    </MemoryRouter>
+  );
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'Add stock' }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Add a vial or pen' }));
+  const dialog = screen.getByRole('dialog');
+  const add = within(dialog).getByRole('button', { name: 'Add Inventory' });
+  // The printed strength is needed, so nothing can be added without it.
+  expect(add).toBeDisabled();
+  expect(
+    within(dialog).getByLabelText('Vial label amount (mg)')
+  ).toBeRequired();
+  // Fields that Prepare fills in sit under More options, not in the way.
+  const more = within(dialog)
+    .getByText(/More options/)
+    .closest('details') as HTMLElement;
+  expect(more).toContainElement(
+    within(dialog).getByLabelText('Concentration (mg/mL)')
+  );
+  expect(more).toContainElement(within(dialog).getByLabelText('Date Opened'));
+  expect(more).not.toContainElement(
+    within(dialog).getByLabelText('Lot number')
+  );
+  fireEvent.change(within(dialog).getByLabelText('Vial label amount (mg)'), {
+    target: { value: '10' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('Lot number'), {
+    target: { value: 'CAG10-1016' },
+  });
+  expect(add).toBeEnabled();
+  fireEvent.click(add);
+  expect(mockSave).toHaveBeenCalledTimes(1);
+  expect(mockSave.mock.calls[0]![0]).toMatchObject({
+    kind: 'vial',
+    status: 'sealed',
+    label_mass_mg: '10',
+    lot_number: 'CAG10-1016',
+    opened_at: null,
+    concentration_mg_ml: null,
+    volume_ml: null,
+  });
+});

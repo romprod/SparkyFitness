@@ -287,6 +287,14 @@ it('requires an explicit interval basis and source and permits a zero-day interv
   fireEvent.click(
     await screen.findByRole('option', { name: 'Interval and source' })
   );
+  // The 28-day starting point is cleared to check each part is still needed.
+  fireEvent.change(screen.getByLabelText('From date'), {
+    target: { value: '' },
+  });
+  fireEvent.change(screen.getByLabelText('Days'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('BUD source'), {
+    target: { value: '' },
+  });
   expect(
     screen.getByRole('button', { name: 'Review preparation' })
   ).toBeDisabled();

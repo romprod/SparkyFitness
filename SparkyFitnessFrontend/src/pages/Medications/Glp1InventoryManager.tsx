@@ -903,6 +903,421 @@ function InventorySession({
     );
   };
 
+  const quickAdd = !editingPen && kind === 'vial';
+  const fieldKind = (
+    <div className="space-y-1">
+      <Label htmlFor="inv-kind">
+        {t('medications.glp1InventoryManager.kind', 'Kind')}
+      </Label>
+      <Select
+        value={kind}
+        disabled={!!editingPen?.preparation}
+        onValueChange={(v) => {
+          setKind(v as 'pen' | 'vial');
+          if (v === 'pen') {
+            setDosesTotal('4');
+          } else {
+            setDosesTotal('10');
+          }
+        }}
+      >
+        <SelectTrigger id="inv-kind">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="pen">
+            {t('medications.glp1InventoryManager.pen', 'Pen')}
+          </SelectItem>
+          <SelectItem value="vial">
+            {t('medications.glp1InventoryManager.vial', 'Vial')}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+  const fieldLabel = (
+    <div className="space-y-1">
+      <Label htmlFor="inv-label">
+        {t('medications.glp1InventoryManager.labelName', 'Label / Name')}
+      </Label>
+      <Input
+        id="inv-label"
+        placeholder={t(
+          'medications.glp1InventoryManager.eGPen2Vial',
+          'e.g. Pen #2, Vial Batch A'
+        )}
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+      />
+    </div>
+  );
+  const fieldOpened = (
+    <div className="space-y-1">
+      <Label htmlFor="inv-opened">
+        {t('medications.glp1InventoryManager.dateOpened', 'Date Opened')}
+      </Label>
+      <Input
+        id="inv-opened"
+        type="date"
+        value={openedAt}
+        onChange={(e) => setOpenedAt(e.target.value)}
+      />
+    </div>
+  );
+  const fieldExpiry = (
+    <div className="space-y-1">
+      <Label htmlFor="inv-expiry">
+        {t('medications.glp1InventoryManager.expiryDate', 'Expiry Date')}
+      </Label>
+      <Input
+        id="inv-expiry"
+        type="date"
+        value={expiryDate}
+        onChange={(e) => setExpiryDate(e.target.value)}
+      />
+    </div>
+  );
+  const fieldPrescription = (
+    <>
+      <MedicationPrescriptionLink
+        medication={med}
+        value={prescriptionId}
+        onChange={(id) => {
+          setPrescriptionId(id);
+          setPrescriptionTouched(true);
+        }}
+        disabled={savePending}
+      />
+    </>
+  );
+  const fieldLabelMass = (
+    <>
+      {labelMassRelevant && (
+        <VialLabelMassField
+          id="inv-label-mass"
+          value={labelMass}
+          onChange={(value) => {
+            setLabelMass(value);
+            setLabelMassTouched(true);
+          }}
+          conflictsWithPen={kind === 'pen'}
+          required={quickAdd}
+        />
+      )}
+    </>
+  );
+  const fieldDose = (
+    <>
+      {kind === 'pen' ? (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="inv-dose">
+              {t(
+                'medications.glp1InventoryManager.doseStrengthMg',
+                'Dose Strength (mg)'
+              )}
+            </Label>
+            <Input
+              id="inv-dose"
+              type="number"
+              step="0.05"
+              value={inventoryDoseMg}
+              onChange={(e) => setInventoryDoseMg(e.target.value)}
+              placeholder={
+                medicationDoseInMg(med) != null
+                  ? String(medicationDoseInMg(med))
+                  : '0'
+              }
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="inv-doses-total">
+              {t('medications.glp1InventoryManager.totalDoses', 'Total Doses')}
+            </Label>
+            <Input
+              id="inv-doses-total"
+              type="number"
+              value={dosesTotal}
+              onChange={(e) => setDosesTotal(e.target.value)}
+            />
+          </div>
+        </div>
+      ) : (
+        <details className="rounded-md border p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            {t(
+              'medications.glp1InventoryManager.doseCountDetails',
+              'Dose size and count (optional)'
+            )}
+          </summary>
+          <div className="mt-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="inv-dose">
+                  {t(
+                    'medications.glp1InventoryManager.doseStrengthMg',
+                    'Dose Strength (mg)'
+                  )}
+                </Label>
+                <Input
+                  id="inv-dose"
+                  type="number"
+                  step="0.05"
+                  value={inventoryDoseMg}
+                  onChange={(e) => setInventoryDoseMg(e.target.value)}
+                  placeholder={
+                    medicationDoseInMg(med) != null
+                      ? String(medicationDoseInMg(med))
+                      : '0'
+                  }
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="inv-doses-total">
+                  {t(
+                    'medications.glp1InventoryManager.totalDoses',
+                    'Total Doses'
+                  )}
+                </Label>
+                <Input
+                  id="inv-doses-total"
+                  type="number"
+                  value={dosesTotal}
+                  onChange={(e) => setDosesTotal(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        </details>
+      )}
+    </>
+  );
+  const fieldConcVolume = (
+    <>
+      {kind === 'vial' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label htmlFor="inv-concentration">
+              {t(
+                'medications.glp1InventoryManager.concentrationMgML',
+                'Concentration (mg/mL)'
+              )}
+            </Label>
+            <Input
+              id="inv-concentration"
+              type="number"
+              step="0.1"
+              placeholder="e.g. 5"
+              value={concentration}
+              readOnly={
+                !!editingPen?.preparation || (editingPen?.doses_used ?? 0) > 0
+              }
+              onChange={(e) => setConcentration(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="inv-volume">
+              {t('medications.glp1InventoryManager.volumeML', 'Volume (mL)')}
+            </Label>
+            <Input
+              id="inv-volume"
+              type="number"
+              step="0.1"
+              placeholder="e.g. 2"
+              value={volume}
+              readOnly={
+                !!editingPen?.preparation || (editingPen?.doses_used ?? 0) > 0
+              }
+              onChange={(e) => setVolume(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+  const fieldLotStorage = (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label htmlFor="inv-lot">
+            {t('medications.preparation.lot', 'Lot number')}
+          </Label>
+          <Input
+            id="inv-lot"
+            value={lotNumber}
+            onChange={(event) => setLotNumber(event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="inv-storage">
+            {t('medications.preparation.storage', 'Storage location')}
+          </Label>
+          <Input
+            id="inv-storage"
+            value={storageLocation}
+            onChange={(event) => setStorageLocation(event.target.value)}
+          />
+        </div>
+      </div>
+    </>
+  );
+  const fieldBud = (
+    <>
+      <div className="space-y-2 rounded-md border p-3">
+        <Label htmlFor="inv-bud-mode">
+          {t('medications.preparation.budMethod', 'Beyond-use date (BUD)')}
+        </Label>
+        <Select
+          value={budMode}
+          onValueChange={(value) => setBudMode(value as typeof budMode)}
+        >
+          <SelectTrigger id="inv-bud-mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">
+              {t('medications.preparation.notRecorded', 'Not recorded')}
+            </SelectItem>
+            <SelectItem value="date">
+              {t('medications.preparation.explicitDate', 'Explicit date')}
+            </SelectItem>
+            <SelectItem value="interval">
+              {t('medications.preparation.interval', 'Interval and source')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        {budMode === 'date' && (
+          <>
+            <Label htmlFor="inv-bud-date">
+              {t('medications.preparation.budDate', 'BUD date')}
+            </Label>
+            <Input
+              id="inv-bud-date"
+              type="date"
+              value={budDate}
+              onChange={(event) => setBudDate(event.target.value)}
+            />
+          </>
+        )}
+        {budMode === 'interval' && (
+          <>
+            <Label htmlFor="inv-bud-base">
+              {t('medications.preparation.budBase', 'BUD basis date')}
+            </Label>
+            <Input
+              id="inv-bud-base"
+              type="date"
+              value={budBaseDate}
+              onChange={(event) => setBudBaseDate(event.target.value)}
+            />
+            <Label htmlFor="inv-bud-days">
+              {t('medications.preparation.budDays', 'BUD interval (days)')}
+            </Label>
+            <Input
+              id="inv-bud-days"
+              type="number"
+              min="0"
+              step="1"
+              value={budInterval}
+              onChange={(event) => setBudInterval(event.target.value)}
+            />
+            {calculatedBudDate && (
+              <p className="text-sm">
+                {t('medications.glp1InventoryManager.bud', 'BUD {{bud_date}}', {
+                  bud_date: calculatedBudDate,
+                })}
+              </p>
+            )}
+          </>
+        )}
+        {budMode !== 'none' && (
+          <>
+            <Label htmlFor="inv-bud-source">
+              {t('medications.preparation.budSource', 'BUD source')}
+            </Label>
+            <Input
+              id="inv-bud-source"
+              value={budSource}
+              onChange={(event) => setBudSource(event.target.value)}
+            />
+          </>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'medications.preparation.budHelp',
+            'Enter the date or interval from your product or clinician guidance. No stability interval is assumed.'
+          )}
+        </p>
+      </div>
+    </>
+  );
+  const fieldReorder = (
+    <>
+      <div className="rounded-md border p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="inv-reorder" className="flex flex-col gap-0.5">
+            <span>
+              {t(
+                'medications.glp1InventoryManager.enableReorderWarning',
+                'Enable Reorder Warning'
+              )}
+            </span>
+            <span className="font-normal text-[10px] text-muted-foreground">
+              {t(
+                'medications.glp1InventoryManager.alertWhenRemainingDosesAre',
+                'Alert when remaining doses are low'
+              )}
+            </span>
+          </Label>
+          <Switch
+            id="inv-reorder"
+            checked={reorderFlag}
+            onCheckedChange={setReorderFlag}
+          />
+        </div>
+
+        {reorderFlag && (
+          <div className="space-y-1 pt-1">
+            <Label htmlFor="inv-threshold">
+              {t(
+                'medications.glp1InventoryManager.reorderThresholdDosesLeft',
+                'Reorder Threshold (doses left)'
+              )}
+            </Label>
+            <Input
+              id="inv-threshold"
+              type="number"
+              value={reorderThreshold}
+              onChange={(e) => setReorderThreshold(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+    </>
+  );
+  const fieldNotes = (
+    <>
+      <div className="space-y-1">
+        <Label htmlFor="inv-notes">
+          {t('medications.glp1InventoryManager.notes2', 'Notes')}
+        </Label>
+        <Textarea
+          id="inv-notes"
+          placeholder={t(
+            'medications.glp1InventoryManager.batchNumberBrandPharmacyInfo',
+            'Batch number, brand, pharmacy info...'
+          )}
+          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+    </>
+  );
+
   return (
     <>
       {stockView ? (
@@ -1064,420 +1479,57 @@ function InventorySession({
                 </Select>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="inv-kind">
-                  {t('medications.glp1InventoryManager.kind', 'Kind')}
-                </Label>
-                <Select
-                  value={kind}
-                  disabled={!!editingPen?.preparation}
-                  onValueChange={(v) => {
-                    setKind(v as 'pen' | 'vial');
-                    if (v === 'pen') {
-                      setDosesTotal('4');
-                    } else {
-                      setDosesTotal('10');
-                    }
-                  }}
-                >
-                  <SelectTrigger id="inv-kind">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pen">
-                      {t('medications.glp1InventoryManager.pen', 'Pen')}
-                    </SelectItem>
-                    <SelectItem value="vial">
-                      {t('medications.glp1InventoryManager.vial', 'Vial')}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="inv-label">
-                  {t(
-                    'medications.glp1InventoryManager.labelName',
-                    'Label / Name'
-                  )}
-                </Label>
-                <Input
-                  id="inv-label"
-                  placeholder={t(
-                    'medications.glp1InventoryManager.eGPen2Vial',
-                    'e.g. Pen #2, Vial Batch A'
-                  )}
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <MedicationPrescriptionLink
-              medication={med}
-              value={prescriptionId}
-              onChange={(id) => {
-                setPrescriptionId(id);
-                setPrescriptionTouched(true);
-              }}
-              disabled={savePending}
-            />
-            {labelMassRelevant && (
-              <VialLabelMassField
-                id="inv-label-mass"
-                value={labelMass}
-                onChange={(value) => {
-                  setLabelMass(value);
-                  setLabelMassTouched(true);
-                }}
-                conflictsWithPen={kind === 'pen'}
-              />
-            )}
-            {kind === 'pen' ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="inv-dose">
+            {quickAdd ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">{fieldKind}</div>
+                {fieldLabelMass}
+                {fieldPrescription}
+                <div className="grid grid-cols-2 gap-3">{fieldExpiry}</div>
+                {fieldLotStorage}
+                <details className="rounded-md border p-3">
+                  <summary className="cursor-pointer text-sm font-medium">
                     {t(
-                      'medications.glp1InventoryManager.doseStrengthMg',
-                      'Dose Strength (mg)'
+                      'medications.glp1InventoryManager.moreOptions',
+                      'More options (label, already opened or prepared stock, beyond-use date, notes)'
                     )}
-                  </Label>
-                  <Input
-                    id="inv-dose"
-                    type="number"
-                    step="0.05"
-                    value={inventoryDoseMg}
-                    onChange={(e) => setInventoryDoseMg(e.target.value)}
-                    placeholder={
-                      medicationDoseInMg(med) != null
-                        ? String(medicationDoseInMg(med))
-                        : '0'
-                    }
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label htmlFor="inv-doses-total">
-                    {t(
-                      'medications.glp1InventoryManager.totalDoses',
-                      'Total Doses'
-                    )}
-                  </Label>
-                  <Input
-                    id="inv-doses-total"
-                    type="number"
-                    value={dosesTotal}
-                    onChange={(e) => setDosesTotal(e.target.value)}
-                  />
-                </div>
-              </div>
-            ) : (
-              <details className="rounded-md border p-3">
-                <summary className="cursor-pointer text-sm font-medium">
-                  {t(
-                    'medications.glp1InventoryManager.doseCountDetails',
-                    'Dose size and count (optional)'
-                  )}
-                </summary>
-                <div className="mt-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="inv-dose">
-                        {t(
-                          'medications.glp1InventoryManager.doseStrengthMg',
-                          'Dose Strength (mg)'
-                        )}
-                      </Label>
-                      <Input
-                        id="inv-dose"
-                        type="number"
-                        step="0.05"
-                        value={inventoryDoseMg}
-                        onChange={(e) => setInventoryDoseMg(e.target.value)}
-                        placeholder={
-                          medicationDoseInMg(med) != null
-                            ? String(medicationDoseInMg(med))
-                            : '0'
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="inv-doses-total">
-                        {t(
-                          'medications.glp1InventoryManager.totalDoses',
-                          'Total Doses'
-                        )}
-                      </Label>
-                      <Input
-                        id="inv-doses-total"
-                        type="number"
-                        value={dosesTotal}
-                        onChange={(e) => setDosesTotal(e.target.value)}
-                      />
-                    </div>
+                  </summary>
+                  <div className="mt-3 space-y-4">
+                    <div className="grid grid-cols-2 gap-3">{fieldLabel}</div>
+                    {fieldDose}
+                    {fieldConcVolume}
+                    <div className="grid grid-cols-2 gap-3">{fieldOpened}</div>
+                    {fieldBud}
+                    {fieldReorder}
+                    {fieldNotes}
                   </div>
+                </details>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  {fieldKind}
+                  {fieldLabel}
                 </div>
-              </details>
-            )}
-            {editingPen?.preparation && (
-              <SavedPreparation preparation={editingPen.preparation} expanded />
-            )}
-            {kind === 'vial' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="inv-concentration">
-                    {t(
-                      'medications.glp1InventoryManager.concentrationMgML',
-                      'Concentration (mg/mL)'
-                    )}
-                  </Label>
-                  <Input
-                    id="inv-concentration"
-                    type="number"
-                    step="0.1"
-                    placeholder="e.g. 5"
-                    value={concentration}
-                    readOnly={
-                      !!editingPen?.preparation ||
-                      (editingPen?.doses_used ?? 0) > 0
-                    }
-                    onChange={(e) => setConcentration(e.target.value)}
+                {fieldPrescription}
+                {fieldLabelMass}
+                {fieldDose}
+                {editingPen?.preparation && (
+                  <SavedPreparation
+                    preparation={editingPen.preparation}
+                    expanded
                   />
-                </div>
-
-                <div className="space-y-1">
-                  <Label htmlFor="inv-volume">
-                    {t(
-                      'medications.glp1InventoryManager.volumeML',
-                      'Volume (mL)'
-                    )}
-                  </Label>
-                  <Input
-                    id="inv-volume"
-                    type="number"
-                    step="0.1"
-                    placeholder="e.g. 2"
-                    value={volume}
-                    readOnly={
-                      !!editingPen?.preparation ||
-                      (editingPen?.doses_used ?? 0) > 0
-                    }
-                    onChange={(e) => setVolume(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="inv-opened">
-                  {t(
-                    'medications.glp1InventoryManager.dateOpened',
-                    'Date Opened'
-                  )}
-                </Label>
-                <Input
-                  id="inv-opened"
-                  type="date"
-                  value={openedAt}
-                  onChange={(e) => setOpenedAt(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="inv-expiry">
-                  {t(
-                    'medications.glp1InventoryManager.expiryDate',
-                    'Expiry Date'
-                  )}
-                </Label>
-                <Input
-                  id="inv-expiry"
-                  type="date"
-                  value={expiryDate}
-                  onChange={(e) => setExpiryDate(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="inv-lot">
-                  {t('medications.preparation.lot', 'Lot number')}
-                </Label>
-                <Input
-                  id="inv-lot"
-                  value={lotNumber}
-                  onChange={(event) => setLotNumber(event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="inv-storage">
-                  {t('medications.preparation.storage', 'Storage location')}
-                </Label>
-                <Input
-                  id="inv-storage"
-                  value={storageLocation}
-                  onChange={(event) => setStorageLocation(event.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2 rounded-md border p-3">
-              <Label htmlFor="inv-bud-mode">
-                {t(
-                  'medications.preparation.budMethod',
-                  'Beyond-use date (BUD)'
                 )}
-              </Label>
-              <Select
-                value={budMode}
-                onValueChange={(value) => setBudMode(value as typeof budMode)}
-              >
-                <SelectTrigger id="inv-bud-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">
-                    {t('medications.preparation.notRecorded', 'Not recorded')}
-                  </SelectItem>
-                  <SelectItem value="date">
-                    {t('medications.preparation.explicitDate', 'Explicit date')}
-                  </SelectItem>
-                  <SelectItem value="interval">
-                    {t(
-                      'medications.preparation.interval',
-                      'Interval and source'
-                    )}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              {budMode === 'date' && (
-                <>
-                  <Label htmlFor="inv-bud-date">
-                    {t('medications.preparation.budDate', 'BUD date')}
-                  </Label>
-                  <Input
-                    id="inv-bud-date"
-                    type="date"
-                    value={budDate}
-                    onChange={(event) => setBudDate(event.target.value)}
-                  />
-                </>
-              )}
-              {budMode === 'interval' && (
-                <>
-                  <Label htmlFor="inv-bud-base">
-                    {t('medications.preparation.budBase', 'BUD basis date')}
-                  </Label>
-                  <Input
-                    id="inv-bud-base"
-                    type="date"
-                    value={budBaseDate}
-                    onChange={(event) => setBudBaseDate(event.target.value)}
-                  />
-                  <Label htmlFor="inv-bud-days">
-                    {t(
-                      'medications.preparation.budDays',
-                      'BUD interval (days)'
-                    )}
-                  </Label>
-                  <Input
-                    id="inv-bud-days"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={budInterval}
-                    onChange={(event) => setBudInterval(event.target.value)}
-                  />
-                  {calculatedBudDate && (
-                    <p className="text-sm">
-                      {t(
-                        'medications.glp1InventoryManager.bud',
-                        'BUD {{bud_date}}',
-                        { bud_date: calculatedBudDate }
-                      )}
-                    </p>
-                  )}
-                </>
-              )}
-              {budMode !== 'none' && (
-                <>
-                  <Label htmlFor="inv-bud-source">
-                    {t('medications.preparation.budSource', 'BUD source')}
-                  </Label>
-                  <Input
-                    id="inv-bud-source"
-                    value={budSource}
-                    onChange={(event) => setBudSource(event.target.value)}
-                  />
-                </>
-              )}
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  'medications.preparation.budHelp',
-                  'Enter the date or interval from your product or clinician guidance. No stability interval is assumed.'
-                )}
-              </p>
-            </div>
-
-            <div className="rounded-md border p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="inv-reorder" className="flex flex-col gap-0.5">
-                  <span>
-                    {t(
-                      'medications.glp1InventoryManager.enableReorderWarning',
-                      'Enable Reorder Warning'
-                    )}
-                  </span>
-                  <span className="font-normal text-[10px] text-muted-foreground">
-                    {t(
-                      'medications.glp1InventoryManager.alertWhenRemainingDosesAre',
-                      'Alert when remaining doses are low'
-                    )}
-                  </span>
-                </Label>
-                <Switch
-                  id="inv-reorder"
-                  checked={reorderFlag}
-                  onCheckedChange={setReorderFlag}
-                />
-              </div>
-
-              {reorderFlag && (
-                <div className="space-y-1 pt-1">
-                  <Label htmlFor="inv-threshold">
-                    {t(
-                      'medications.glp1InventoryManager.reorderThresholdDosesLeft',
-                      'Reorder Threshold (doses left)'
-                    )}
-                  </Label>
-                  <Input
-                    id="inv-threshold"
-                    type="number"
-                    value={reorderThreshold}
-                    onChange={(e) => setReorderThreshold(e.target.value)}
-                  />
+                {fieldConcVolume}
+                <div className="grid grid-cols-2 gap-3">
+                  {fieldOpened}
+                  {fieldExpiry}
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="inv-notes">
-                {t('medications.glp1InventoryManager.notes2', 'Notes')}
-              </Label>
-              <Textarea
-                id="inv-notes"
-                placeholder={t(
-                  'medications.glp1InventoryManager.batchNumberBrandPharmacyInfo',
-                  'Batch number, brand, pharmacy info...'
-                )}
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
+                {fieldLotStorage}
+                {fieldBud}
+                {fieldReorder}
+                {fieldNotes}
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setInventoryOpen(false)}>
@@ -1489,6 +1541,7 @@ function InventorySession({
                 savePending ||
                 !budValid ||
                 !labelMassValid ||
+                (quickAdd && !labelMass.trim()) ||
                 (prescriptionTouched &&
                   (!prescriptionScope.ready || !prescriptionScope.canWrite))
               }
@@ -1562,7 +1615,25 @@ function StockPrescriptionLine({
 }) {
   const { t } = useTranslation();
   const { data } = useMedicationPrescriptions(!!pen.prescription_id);
-  if (!pen.prescription_id) return null;
+  if (!pen.prescription_id) {
+    // Stock still in play can be linked to a prescription from its card, as in Pitstop.
+    if (
+      !canWrite ||
+      pen.kind !== 'vial' ||
+      pen.status === 'finished' ||
+      pen.status === 'discarded'
+    )
+      return null;
+    return (
+      <button
+        type="button"
+        className="text-primary hover:underline"
+        onClick={onChange}
+      >
+        {t('medications.stockLayout.addRx', '+ Add prescription')}
+      </button>
+    );
+  }
   const row = data?.prescriptions.find(
     (item) => item.id === pen.prescription_id
   );
