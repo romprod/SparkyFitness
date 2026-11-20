@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   formatPurchaseMoney,
+  formatPurchaseRate,
   type MedicationPurchaseView,
 } from '@workspace/shared';
 import {
@@ -151,7 +152,7 @@ function OwnedCosts({
             <p className="text-sm text-muted-foreground">
               {t(
                 'medications.costs.emptyHint',
-                'Add an invoice to record purchase spend. Confirmed stock-linked prescription estimates can still appear in the report above.'
+                'Add an order to start tracking landed cost. Put shipping on the invoice, not on a line, so it is shared across every vial it delivered.'
               )}
             </p>
           </CardContent>
@@ -199,7 +200,10 @@ function OwnedCosts({
                         <span className="shrink-0 tabular-nums">
                           {item.landed_unit === null
                             ? t('medications.costs.uncosted', 'Uncosted')
-                            : money(item.landed_unit, purchase.currency)}{' '}
+                            : formatPurchaseRate(
+                                item.landed_unit,
+                                purchase.currency
+                              )}{' '}
                           {t('medications.costs.cardEach', 'ea')}
                         </span>
                       </div>
@@ -214,6 +218,14 @@ function OwnedCosts({
                           item.pack_ids.length > 0 &&
                           ` · ${item.pack_ids.length === 1 ? t('medications.costs.cardMatchedPackOne', '1 pack matched') : t('medications.costs.cardMatchedPacks', '{{matched}} packs matched', { matched: item.pack_ids.length })}`}
                       </p>
+                      {item.kind === 'medication' && !item.medication_id && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          {t(
+                            'medications.costs.lineNoMedication',
+                            'No medication is set on this line, so no vials can be matched. Edit the invoice and choose one.'
+                          )}
+                        </p>
+                      )}
                       {item.kind === 'medication' &&
                         item.vial_ids.length + item.pack_ids.length >
                           item.quantity && (

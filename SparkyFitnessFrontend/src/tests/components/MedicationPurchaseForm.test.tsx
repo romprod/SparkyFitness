@@ -449,3 +449,123 @@ it('offers vials and packs together and hides a pack already picked on another l
   fireEvent.click(screen.getByRole('button', { name: 'Add medication' }));
   expect(screen.getAllByLabelText(/Synthetic pack 5/)).toHaveLength(1);
 });
+
+describe('an imported invoice line with no medication', () => {
+  const imported = (description: string) =>
+    ({
+      id: '50000000-0000-4000-8000-000000000015',
+      revision: 1,
+      vendor: 'Supplier',
+      reference: '',
+      ordered_date: '2026-11-13',
+      received_date: null,
+      currency: 'GBP',
+      shipping_cost: '0',
+      tax_cost: '0',
+      other_fees: '0',
+      discount: '0',
+      allocation_method: 'value',
+      notes: '',
+      items: [
+        {
+          id: '60000000-0000-4000-8000-000000000016',
+          kind: 'medication',
+          medication_id: null,
+          medication_name: null,
+          category: null,
+          description,
+          quantity: 10,
+          unit_cost: '11.2',
+          units_per_pack: null,
+          units_per_dose: null,
+          vial_ids: [],
+          pack_ids: [],
+          subtotal: '112',
+          allocated: '0',
+          landed: '112',
+          landed_unit: '11.2',
+        },
+      ],
+      totals: allocateMedicationPurchase({
+        lines: [],
+        allocation_method: 'none',
+      }),
+      vials_expected: 10,
+      vials_linked: 0,
+      packs_linked: 0,
+      created_at: '',
+    }) as unknown as MedicationPurchaseView;
+
+  it('starts from the medication the description names, so its vials can be ticked', async () => {
+    render(
+      <MedicationPurchaseForm
+        {...props()}
+        initial={imported('Synthetic medication 10mg LOT-1 × 1')}
+      />
+    );
+    expect(screen.getByLabelText('Medication')).toHaveValue(medId);
+    expect(
+      screen.getByText(
+        /It looks like Synthetic medication from the description/
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('checkbox')[0]!);
+    save();
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    const line = mockSave.mock.calls[0][0].body.items[0];
+    expect(line.medication_id).toBe(medId);
+    expect(line.vial_ids).toEqual([vial1]);
+  });
+
+  it('says why no vial is offered when the description names nothing', () => {
+    render(
+      <MedicationPurchaseForm
+        {...props()}
+        initial={imported('Something else entirely')}
+      />
+    );
+    expect(screen.getByLabelText('Medication')).toHaveValue('');
+    expect(
+      screen.getByRole('option', { name: 'Choose a medication…' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /This line has no medication, so no vials can be matched/
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('tells how many vials belong to other medications when none match', () => {
+    const other = '70000000-0000-4000-8000-000000000007';
+    const p = props();
+    render(
+      <MedicationPurchaseForm
+        {...p}
+        data={{
+          ...data,
+          medications: [
+            ...data.medications,
+            { id: other, name: 'Another medication' },
+          ],
+        }}
+        initial={
+          {
+            ...imported('x'),
+            items: [
+              {
+                ...imported('x').items[0]!,
+                medication_id: other,
+                medication_name: 'Another medication',
+              },
+            ],
+          } as unknown as MedicationPurchaseView
+        }
+      />
+    );
+    expect(
+      screen.getByText(
+        /Unmatched vials for other medications are not listed here \(2\)/
+      )
+    ).toBeInTheDocument();
+  });
+});

@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { suggestMedicationForLine } from './purchaseLineMedication';
 
 type Line = MedicationPurchaseInput['items'][number] & { key: string };
 const notice =
@@ -71,13 +72,23 @@ export default function MedicationPurchaseForm({
     allocation_method: initial?.allocation_method ?? 'value',
     notes: initial?.notes ?? '',
   });
+  // Lines imported without a medication start from the one their description names, if any.
+  const [suggested] = useState(() => {
+    const picks = new Map<string, string>();
+    for (const line of initial?.items ?? []) {
+      if (line.kind !== 'medication' || line.medication_id) continue;
+      const med = suggestMedicationForLine(line.description, data.medications);
+      if (med) picks.set(line.id, med.id);
+    }
+    return picks;
+  });
   const [lines, setLines] = useState<Line[]>(
     () =>
       initial?.items.map((line) => ({
         key: line.id,
         id: line.id,
         kind: line.kind,
-        medication_id: line.medication_id,
+        medication_id: line.medication_id ?? suggested.get(line.id) ?? null,
         category: line.category ?? undefined,
         description: line.description,
         quantity: line.quantity,
@@ -337,6 +348,10 @@ export default function MedicationPurchaseForm({
           (vial) =>
             vial.medication_id === line.medication_id && !elsewhere.has(vial.id)
         );
+        const otherMedicationVials = data.vials.filter(
+          (vial) =>
+            vial.medication_id !== line.medication_id && !elsewhere.has(vial.id)
+        ).length;
         const picked = line.vial_ids ?? [];
         const packsElsewhere = new Set(
           lines
@@ -450,8 +465,8 @@ export default function MedicationPurchaseForm({
                       <option value="">
                         {line.id && !line.medication_id
                           ? t(
-                              'medications.costs.removedMedication',
-                              'Removed medication'
+                              'medications.costs.chooseMedicationLine',
+                              'Choose a medication…'
                             )
                           : t('medications.costs.choose', 'Choose…')}
                       </option>
@@ -483,6 +498,22 @@ export default function MedicationPurchaseForm({
                       ))}
                     </select>
                   )}
+                  {line.kind === 'medication' &&
+                    line.id &&
+                    suggested.get(line.id) &&
+                    line.medication_id === suggested.get(line.id) && (
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          'medications.costs.suggestedMedication',
+                          'This line had no medication. It looks like {{name}} from the description. Check it, then save to match vials.',
+                          {
+                            name: data.medications.find(
+                              (med) => med.id === line.medication_id
+                            )?.name,
+                          }
+                        )}
+                      </p>
+                    )}
                 </div>
                 {lineField(
                   'description',
@@ -544,10 +575,15 @@ export default function MedicationPurchaseForm({
                   <p className="text-sm font-medium">{matchHeading}</p>
                   {!line.medication_id ? (
                     <p className="text-sm text-muted-foreground">
-                      {t(
-                        'medications.costs.chooseFirst',
-                        'Choose a medication to see its vials.'
-                      )}
+                      {line.id
+                        ? t(
+                            'medications.costs.noMedicationOnLine',
+                            'This line has no medication, so no vials can be matched to it yet. Choose its medication above to see its vials.'
+                          )
+                        : t(
+                            'medications.costs.chooseFirst',
+                            'Choose a medication to see its vials.'
+                          )}
                     </p>
                   ) : candidates.length === 0 && packCandidates.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
@@ -555,6 +591,12 @@ export default function MedicationPurchaseForm({
                         'medications.costs.noVials',
                         'No unmatched vials for this medication. Add them in Inventory, then link them here.'
                       )}
+                      {otherMedicationVials > 0 &&
+                        ` ${t(
+                          'medications.costs.otherMedicationVials',
+                          'Unmatched vials for other medications are not listed here ({{count}}). If one of them belongs on this line, change the line’s medication.',
+                          { count: otherMedicationVials }
+                        )}`}
                     </p>
                   ) : candidates.length === 0 ? null : (
                     <div className="grid gap-2 sm:grid-cols-2">
