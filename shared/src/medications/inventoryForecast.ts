@@ -4,6 +4,8 @@ import type {
   InventoryForecastPlanInput,
   InventoryForecastCycleAssumption,
 } from './inventoryForecastPlan.ts';
+/** Use-by days a sealed vial gets once the forecast opens it, when the medication sets none. */
+export const FORECAST_SEALED_BUD_DEFAULT_DAYS = 28;
 export interface InventoryPreparedContainer {
   id: string;
   status: 'sealed' | 'in_use';
@@ -14,6 +16,14 @@ export interface InventoryPreparedContainer {
   opened_at: string | null;
   expiry_date: string | null;
   created_at: string;
+  /**
+   * An unopened vial with no preparation, counted by its label mass in mg: each dose costs its
+   * nominal mass, and the vial's use-by clock starts at the first dose the walk draws from it.
+   * Omitted for every other container.
+   */
+  label_mass_mg?: string | null;
+  /** Days a sealed vial stays usable once opened; the default applies when omitted. */
+  sealed_bud_days?: number | null;
 }
 export interface InventoryForecastProjection {
   provisional_slots: number;
@@ -73,6 +83,7 @@ import {
   type DrawResult,
 } from './draw.ts';
 import { isDeviceEligibleForRoute } from './administration.ts';
+import { addDays } from '../utils/timezone.ts';
 import {
   buildInventoryForecastPlan,
   type InventoryForecastSlot,
@@ -213,6 +224,20 @@ function sizedDraw(
     return { draw: null, reason: 'blocked_draw' };
   }
 }
+/** An unopened, unprepared vial's label mass in mcg, or null for any container with a concentration. */
+function labelMassMcg(container: InventoryPreparedContainer): Decimal | null {
+  if (container.concentration_mcg_ml !== null) return null;
+  const mass = decimal(container.label_mass_mg ?? null);
+  return mass?.gt(0) ? mass.times(1000) : null;
+}
+/** A dose as mass in mcg, or null when its unit needs a concentration a sealed vial lacks. */
+function doseMassMcg(slot: InventoryForecastSlot): Decimal | null {
+  const dose = normalizedDose(slot);
+  if (dose === null) return null;
+  if (dose.unit === 'mcg') return new D(dose.value);
+  if (dose.unit === 'mg') return new D(dose.value).times(1000);
+  return null;
+}
 /** Known prepared-stock model. Caller must keep its scope separate from whole inventory. */
 export function forecastPreparedCoverage(
   input: InventoryPreparedCoverageInput
@@ -238,6 +263,10 @@ export function forecastPreparedCoverage(
   const live = orderedContainers(input.containers).map((container) => ({
     container,
     pool: decimal(container.remaining_ml),
+    // An unopened, unprepared vial is walked by its label mass, as Pitstop does.
+    mass: labelMassMcg(container),
+    until: container.usable_until,
+    opened: false,
   }));
   let served = 0,
     provisionalServed = false,
@@ -247,6 +276,27 @@ export function forecastPreparedCoverage(
       evaluable = false;
     const rowLimits = new Set<InventoryForecastLimitationCode>();
     for (const item of live) {
+      if (item.mass !== null) {
+        // No concentration exists yet, so syringe rounding cannot be known: a sealed vial is
+        // charged the nominal dose, which slightly overstates how far it stretches. An ml or
+        // unit dose cannot be sized against it at all.
+        const need = doseMassMcg(slot);
+        if (need === null || !need.gt(0)) continue;
+        evaluable = true;
+        if (dayValid(item.until) && slot.day > item.until) continue;
+        if (item.mass.lt(need)) continue;
+        if (!item.opened) {
+          // The use-by clock starts at the first dose actually drawn, not the first attempt.
+          item.opened = true;
+          const days =
+            item.container.sealed_bud_days ?? FORECAST_SEALED_BUD_DEFAULT_DAYS;
+          const bud = addDays(slot.day, days);
+          if (!dayValid(item.until) || bud < item.until) item.until = bud;
+        }
+        item.mass = item.mass.minus(need);
+        filled = true;
+        break;
+      }
       const sizing = sizedDraw(
         slot,
         item.container,
@@ -464,7 +514,11 @@ export function buildInventoryForecast(
   const uniqueDose = currentUniqueDose(plan);
   const containers = input.containers.map((container) => {
     let remaining: number | null = null;
-    if (uniqueDose) {
+    const labelMass = labelMassMcg(container);
+    if (uniqueDose && labelMass) {
+      const need = doseMassMcg(uniqueDose.slot);
+      if (need?.gt(0)) remaining = labelMass.div(need).floor().toNumber();
+    } else if (uniqueDose) {
       const pool = decimal(container.remaining_ml),
         sized = sizedDraw(uniqueDose.slot, container, input.plan.route);
       if (

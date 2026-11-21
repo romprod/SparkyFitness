@@ -5,10 +5,12 @@ import {
   addDays,
   drawConcentration,
   remainingDrawVolume,
+  FORECAST_SEALED_BUD_DEFAULT_DAYS,
   instantToDay,
   isDayString,
   isValidTimeZone,
   normalizePurchaseDecimal,
+  readDefaultBudDays,
   type InventoryForecastLimitationCode,
   type InventoryPreparedContainer,
   type MedicationCourse,
@@ -147,6 +149,7 @@ interface StockRow {
   medication_id: string;
   kind: string;
   status: 'sealed' | 'in_use';
+  label_mass_mg: string | null;
   concentration_mg_ml: string | null;
   volume_ml: string | null;
   doses_used: number;
@@ -203,7 +206,8 @@ function explicitBud(row: StockRow): string | null {
     : null;
 }
 function preparedStock(
-  rows: StockRow[]
+  rows: StockRow[],
+  defaultBudDays: number | null
 ): Pick<
   InventoryForecastMedicationSnapshot,
   'containers' | 'stock_limitations'
@@ -211,9 +215,38 @@ function preparedStock(
   const limitations = new Set<InventoryForecastLimitationCode>();
   const containers: InventoryPreparedContainer[] = [];
   for (const row of rows) {
-    // Sealed stock without a recorded preparation has no demonstrated physical
-    // concentration; never size it by nominal mass or simulate an opening date.
     if (row.status === 'sealed' && !row.preparation_id) {
+      // An untouched vial with a label mass is counted by that mass, as Pitstop does; its
+      // use-by clock is simulated from the first dose the forecast draws. A vial that was
+      // opened, used or linked to doses without a recorded preparation has an unknown
+      // remainder, so it stays out of the forecast.
+      const expiry =
+        row.expiry_date !== null && isDayString(row.expiry_date)
+          ? row.expiry_date
+          : null;
+      if (
+        row.kind === 'vial' &&
+        positive(row.label_mass_mg) &&
+        row.opened_at === null &&
+        row.doses_used === 0 &&
+        row.linked_count === '0' &&
+        validInstant(row.created_at) &&
+        (row.expiry_date === null || expiry !== null)
+      ) {
+        containers.push({
+          id: row.id,
+          status: 'sealed',
+          remaining_ml: null,
+          concentration_mcg_ml: null,
+          usable_until: expiry,
+          opened_at: null,
+          expiry_date: expiry,
+          created_at: iso(row.created_at),
+          label_mass_mg: row.label_mass_mg,
+          sealed_bud_days: defaultBudDays ?? FORECAST_SEALED_BUD_DEFAULT_DAYS,
+        });
+        continue;
+      }
       limitations.add('sealed_stock_excluded');
       continue;
     }
@@ -362,8 +395,10 @@ export async function loadInventoryForecastSnapshot(
       saved?.medication_reorder_buffer_days ??
       DEFAULT_MEDICATION_REORDER_BUFFER_DAYS,
   };
-  const medications = await client.query<MedicationRow>(
-    "SELECT id,COALESCE(NULLIF(display_name,''),name) AS name,is_active,type_id,route_id,dose_amount::text,dose_unit,is_glp1 FROM medications WHERE user_id=$1 ORDER BY id",
+  const medications = await client.query<
+    MedicationRow & { custom_fields: unknown }
+  >(
+    "SELECT id,COALESCE(NULLIF(display_name,''),name) AS name,is_active,type_id,route_id,dose_amount::text,dose_unit,is_glp1,custom_fields FROM medications WHERE user_id=$1 ORDER BY id",
     [owner]
   );
   const courseIds = await client.query<{
@@ -396,7 +431,7 @@ export async function loadInventoryForecastSnapshot(
     [owner]
   );
   const stock = await client.query<StockRow>(
-    `SELECT v.id,v.medication_id,v.kind,v.status,v.concentration_mg_ml::text,v.volume_ml::text,v.doses_used,v.opened_at::text,v.expiry_date::text,v.created_at,v.bud_date::text,v.bud_mode,v.bud_interval_days,v.bud_base_date::text,v.bud_source,
+    `SELECT v.id,v.medication_id,v.kind,v.status,v.label_mass_mg::text,v.concentration_mg_ml::text,v.volume_ml::text,v.doses_used,v.opened_at::text,v.expiry_date::text,v.created_at,v.bud_date::text,v.bud_mode,v.bud_interval_days,v.bud_base_date::text,v.bud_source,
       p.id AS preparation_id,p.mass_value::text,p.mass_unit,p.final_volume_ml::text,p.prepared_date::text,p.created_at AS preparation_created_at,
       (SELECT COALESCE(SUM(i.dose_mg),0)::text FROM injection_entries i WHERE i.pen_id=v.id AND i.user_id=v.user_id) AS used_mg,
       (SELECT COUNT(*)::text FROM injection_entries i WHERE i.pen_id=v.id AND i.user_id=v.user_id) AS linked_count,
@@ -450,7 +485,7 @@ export async function loadInventoryForecastSnapshot(
     )
       ? preferredId
       : null,
-    medications: medications.rows.map((medication) => ({
+    medications: medications.rows.map(({ custom_fields, ...medication }) => ({
       ...medication,
       courses: loaded.get(medication.id)?.courses ?? [],
       actuals: loaded.get(medication.id)?.actuals ?? [],
@@ -470,7 +505,8 @@ export async function loadInventoryForecastSnapshot(
         (row) => row.medication_id === medication.id
       ),
       ...preparedStock(
-        stock.rows.filter((row) => row.medication_id === medication.id)
+        stock.rows.filter((row) => row.medication_id === medication.id),
+        readDefaultBudDays(custom_fields)
       ),
     })),
   };

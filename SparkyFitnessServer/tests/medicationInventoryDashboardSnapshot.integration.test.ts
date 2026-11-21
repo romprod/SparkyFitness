@@ -156,12 +156,26 @@ describe.runIf(process.env.INVENTORY_DASHBOARD_SNAPSHOT_INTEGRATION === '1')(
         expect(snapshot.dashboard_stock.find((s) => s.id === f.id)).toEqual(
           row
         );
+        // An untouched sealed vial with a label mass is counted by that mass, using its stamped
+        // expiry (not its saved use-by) and the 28-day default once the forecast opens it.
         expect(
           snapshot.medications.find((m) => m.id === f.med)!.containers
-        ).toEqual([]);
+        ).toEqual([
+          expect.objectContaining({
+            id: f.id,
+            status: 'sealed',
+            remaining_ml: null,
+            concentration_mcg_ml: null,
+            usable_until: '2027-01-01',
+            expiry_date: '2027-01-01',
+            opened_at: null,
+            label_mass_mg: '10.12345678901234567890123456789',
+            sealed_bud_days: 28,
+          }),
+        ]);
         expect(
           snapshot.medications.find((m) => m.id === f.med)!.stock_limitations
-        ).toContain('sealed_stock_excluded');
+        ).not.toContain('sealed_stock_excluded');
         await c.query('COMMIT');
       } finally {
         c.release();

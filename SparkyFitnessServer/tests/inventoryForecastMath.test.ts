@@ -726,3 +726,114 @@ describe('forecast pending boundaries', () => {
     );
   });
 });
+
+const sealed = (
+  patch: Partial<InventoryPreparedContainer> = {}
+): InventoryPreparedContainer => ({
+  id: '10000000-0000-4000-a000-0000000000a1',
+  status: 'sealed',
+  remaining_ml: null,
+  concentration_mcg_ml: null,
+  usable_until: null,
+  opened_at: null,
+  expiry_date: null,
+  created_at: '2026-11-01T12:00:00Z',
+  label_mass_mg: '10',
+  sealed_bud_days: 28,
+  ...patch,
+});
+
+describe('sealed vials counted by label mass', () => {
+  it('covers a finite plan from sealed stock alone and reports how many doses a vial holds', () => {
+    const result = validate(
+      buildInventoryForecast(input(context(finite()), [sealed()]))
+    );
+    expect(result).toMatchObject({ status: 'covered', served_slots: 3 });
+    expect(result.limitations).not.toContain('unknown_stock');
+    expect(result.containers[0]?.remaining_doses).toBe(10);
+  });
+  it('charges each dose its nominal mass and runs out when the label mass is spent', () => {
+    const result = validate(
+      buildInventoryForecast(
+        input(context(finite()), [sealed({ label_mass_mg: '2' })])
+      )
+    );
+    expect(result).toMatchObject({
+      status: 'reorder_now',
+      basis: 'depleted',
+      served_slots: 2,
+      depletion_date: '2026-11-17',
+    });
+  });
+  it('starts the use-by clock at the first dose the walk draws', () => {
+    const result = validate(
+      buildInventoryForecast(
+        input(context(), [
+          sealed({ label_mass_mg: '1000', sealed_bud_days: 3 }),
+        ])
+      )
+    );
+    expect(result.served_slots).toBe(4);
+    expect(result.depletion_date).toBe('2026-11-19');
+  });
+  it('uses 28 use-by days when the medication sets none', () => {
+    const result = validate(
+      buildInventoryForecast(
+        input(context(), [
+          sealed({ label_mass_mg: '1000', sealed_bud_days: null }),
+        ])
+      )
+    );
+    expect(result.served_slots).toBe(29);
+    expect(result.depletion_date).toBe('2026-12-14');
+  });
+  it('stops at a stamped expiry that falls before the use-by', () => {
+    const result = validate(
+      buildInventoryForecast(
+        input(context(), [
+          sealed({
+            label_mass_mg: '1000',
+            usable_until: '2026-11-17',
+            expiry_date: '2026-11-17',
+          }),
+        ])
+      )
+    );
+    expect(result.served_slots).toBe(2);
+    expect(result.depletion_date).toBe('2026-11-17');
+  });
+  it('opens a sealed vial only after the prepared one is spent', () => {
+    const result = validate(
+      buildInventoryForecast(
+        input(context(finite()), [
+          prepared({ remaining_ml: '1' }),
+          sealed({ label_mass_mg: '2' }),
+        ])
+      )
+    );
+    expect(result).toMatchObject({ status: 'covered', served_slots: 3 });
+    // Alone, the 2 mg vial serves only two of the three doses; the prepared vial gives the third.
+    expect(
+      result.containers.find((c) => c.container_id === sealed().id)?.coverage
+        .served_slots
+    ).toBe(2);
+  });
+  it('cannot size a dose in ml or units against a sealed vial', () => {
+    const c = finite(),
+      r = c.revisions[0]!;
+    r.target_dose = '0.5';
+    r.dose_unit = 'ml';
+    const result = validate(
+      buildInventoryForecast(input(context(c), [sealed()]))
+    );
+    expect(result.status).toBe('unknown');
+  });
+  it('does not count a sealed vial that has no label mass', () => {
+    const result = validate(
+      buildInventoryForecast(
+        input(context(finite()), [sealed({ label_mass_mg: null })])
+      )
+    );
+    expect(result.status).toBe('unknown');
+  });
+});
