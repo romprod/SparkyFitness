@@ -51,10 +51,15 @@ const mockScope = {
 const mockListInjections = jest.fn(async (_id: string) => [] as unknown[]);
 let mockSlots: MedicationCourseExpectedSlot[] = [];
 let mockFulfilled: MedicationCourseDue['fulfilled_slots'] = [];
+let mockCourses: unknown[] = [];
 jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
   useMedicationCourseDue: () => ({
     scope: mockScope,
-    data: { slots: mockSlots, fulfilled_slots: mockFulfilled },
+    data: {
+      slots: mockSlots,
+      fulfilled_slots: mockFulfilled,
+      courses: mockCourses,
+    },
     query: {},
   }),
   useMedicationCourseScope: () => mockScope,
@@ -101,6 +106,7 @@ const mockDeleteInjection = jest.fn();
 beforeEach(() => {
   mockSlots = [];
   mockFulfilled = [];
+  mockCourses = [];
   mockScope.canWrite = true;
   mockScope.key = 'scope-1';
   mockCreateEntry.mockReset();
@@ -825,5 +831,88 @@ describe('minimum interval and missed-dose policy', () => {
   it('shows no reminder with the default ask policy', () => {
     renderToday({});
     expect(screen.queryByText(/Overdue by/)).not.toBeInTheDocument();
+  });
+});
+
+describe('as-needed list and running plans', () => {
+  const unscheduled = (): MedicationDetail => ({
+    ...medWithDose('09:00'),
+    schedules: [],
+  });
+  const plan = (patch: Record<string, unknown> = {}) => ({
+    medication_id: 'med-1',
+    deleted_at: null,
+    current_revision_id: 'revision-1',
+    revisions: [
+      {
+        id: 'revision-1',
+        deleted_at: null,
+        status: 'active',
+        start_date: '2026-11-01',
+        end_date: null,
+        ...patch,
+      },
+    ],
+  });
+  const renderDay = () =>
+    render(
+      <TodayMedications
+        selectedDate="2026-11-21"
+        today="2026-11-21"
+        meds={[unscheduled()]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+  it('lists a medication with no schedule and no plan as needed', () => {
+    renderDay();
+    expect(
+      screen.getByRole('button', { name: 'Log Intake' })
+    ).toBeInTheDocument();
+  });
+  it('does not list a medication as needed while a running plan covers the day', () => {
+    mockCourses = [plan()];
+    renderDay();
+    expect(
+      screen.queryByRole('button', { name: 'Log Intake' })
+    ).not.toBeInTheDocument();
+  });
+  it('keeps listing it as needed when the plan is not running that day', () => {
+    for (const patch of [
+      { status: 'paused' },
+      { start_date: '2026-12-01' },
+      { end_date: '2026-11-20' },
+      { deleted_at: '2026-11-10T00:00:00.000Z' },
+    ]) {
+      mockCourses = [plan(patch)];
+      const { unmount } = renderDay();
+      expect(
+        screen.getByRole('button', { name: 'Log Intake' })
+      ).toBeInTheDocument();
+      unmount();
+    }
+  });
+  it('ignores a plan that belongs to another profile', () => {
+    mockCourses = [plan()];
+    const med = unscheduled();
+    med.user_id = 'other-owner';
+    render(
+      <TodayMedications
+        selectedDate="2026-11-21"
+        today="2026-11-21"
+        meds={[med]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: 'Log Intake' })
+    ).toBeInTheDocument();
   });
 });

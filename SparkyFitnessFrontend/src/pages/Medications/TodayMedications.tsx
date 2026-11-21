@@ -313,17 +313,44 @@ export default function TodayMedications({
     [entries, fulfilledEntries]
   );
 
+  // A running plan is a schedule even when the medication has no old-style schedule rows, so a
+  // plan-managed medication is not "as needed" on the days it simply is not due.
+  const plannedMedicationIds = useMemo(
+    () =>
+      new Set(
+        (courseDue.data?.courses ?? []).flatMap((course) => {
+          const tip = course.revisions.find(
+            (revision) => revision.id === course.current_revision_id
+          );
+          return course.deleted_at === null &&
+            course.medication_id !== null &&
+            tip &&
+            tip.deleted_at === null &&
+            tip.status === 'active' &&
+            tip.start_date <= selectedDate &&
+            (tip.end_date === null || tip.end_date >= selectedDate)
+            ? [course.medication_id]
+            : [];
+        })
+      ),
+    [courseDue.data?.courses, selectedDate]
+  );
   const prnMeds = useMemo(() => {
     return meds.filter((m) => {
       if (!m.is_active) return false;
       // Exclude if it's currently due today to prevent showing it twice
       if (dueDoses.some((d) => d.medication.id === m.id)) return false;
+      if (
+        m.user_id === courseDue.scope.ownerId &&
+        plannedMedicationIds.has(m.id)
+      )
+        return false;
       if (!m.schedules || m.schedules.length === 0) return true;
       return m.schedules.some(
         (s: MedicationSchedule) => s.schedule_type_id === 'prn'
       );
     });
-  }, [meds, dueDoses]);
+  }, [meds, dueDoses, plannedMedicationIds, courseDue.scope.ownerId]);
 
   // Split the ALREADY subtype-filtered lists for the two Log cards. Partitioning at
   // render time rather than re-deriving keeps the adherence overview, the progress
