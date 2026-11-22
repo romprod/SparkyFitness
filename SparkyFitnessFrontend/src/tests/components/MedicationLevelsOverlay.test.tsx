@@ -215,3 +215,86 @@ it('shows nothing and reads nothing when no injectable has a modeled profile', (
   expect(container).toBeEmptyDOMElement();
   expect(mockWeek).not.toHaveBeenCalledWith(expect.anything(), true);
 });
+
+describe('a medication with its own half-life', () => {
+  const bpc = med('bpc', 'BPC-157', { custom_fields: { half_life_hours: 4 } });
+
+  it('is drawn like a catalogue medication, once it has doses', () => {
+    mockInjections = {
+      bpc: [injection(-3, 0.25), injection(-2, 0.25), injection(-1, 0.25)],
+    };
+    renderCard([bpc]);
+    const keys = screen
+      .getAllByTestId('levels-line')
+      .map((line) => line.getAttribute('data-key'));
+    expect(new Set(keys)).toEqual(new Set(['bpc_taken', 'bpc_ahead']));
+    expect(screen.getByText('BPC-157')).toBeInTheDocument();
+    expect(screen.queryByText(/No curve for/)).not.toBeInTheDocument();
+    expect(mockInjectionHook).toHaveBeenLastCalledWith(['bpc']);
+  });
+
+  it('is sampled finely enough to show each daily peak of a short half-life', () => {
+    mockInjections = {
+      bpc: [injection(-3, 0.25), injection(-2, 0.25), injection(-1, 0.25)],
+    };
+    renderCard([bpc]);
+    const rows = JSON.parse(
+      screen.getByTestId('levels-chart').getAttribute('data-rows') ?? '[]'
+    ) as { t: number }[];
+    const gaps = rows.slice(1).map((row, i) => row.t - rows[i]!.t);
+    // Hourly for a 4-hour half-life, against six-hourly for a half-life of days.
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(3_600_000);
+  });
+});
+
+describe('injectables with no half-life', () => {
+  it('are named as having no curve, beneath the chart of the ones that do', () => {
+    renderCard([
+      reta,
+      med('mystery', 'Mystery peptide'),
+      med('other', 'Other peptide'),
+    ]);
+    expect(screen.getAllByText(/% of peak now/)).toHaveLength(1);
+    expect(
+      screen.getByText(
+        'No curve for Mystery peptide, Other peptide: add its half-life when editing the medication to draw it.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('keep the card on screen with just that note when nothing else can be drawn', () => {
+    renderCard([med('mystery', 'Mystery peptide')]);
+    expect(screen.getByText('Modeled levels')).toBeInTheDocument();
+    expect(screen.queryByTestId('levels-chart')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No curve for Mystery peptide/)
+    ).toBeInTheDocument();
+    expect(mockWeek).not.toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  it('use the display name when there is one', () => {
+    renderCard([med('mystery', 'mp-1', { display_name: 'Mystery peptide' })]);
+    expect(
+      screen.getByText(/No curve for Mystery peptide:/)
+    ).toBeInTheDocument();
+  });
+
+  it('are not listed when stopped, a supplement or not an injection', () => {
+    const { container } = renderCard([
+      med('a', 'Old peptide', { is_active: false }),
+      med('b', 'Peptide supplement', { is_supplement: true }),
+      med('c', 'Sertraline', { type_id: 'pill' }),
+    ]);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('are not asked for one when flagged GLP-1, which takes its figures from the drug', () => {
+    const { container } = renderCard([
+      med('g', 'Odd GLP-1', {
+        is_glp1: true,
+        custom_fields: { glp1_drug: 'nonesuch' },
+      }),
+    ]);
+    expect(container).toBeEmptyDOMElement();
+  });
+});

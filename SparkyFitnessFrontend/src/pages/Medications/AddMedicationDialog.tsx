@@ -11,6 +11,8 @@ import {
   readDosePolicy,
   readDefaultBudDays,
   MAX_DEFAULT_BUD_DAYS,
+  MAX_HALF_LIFE_HOURS,
+  readHalfLifeHours,
   type MissedDosePolicy,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
@@ -253,6 +255,10 @@ export default function AddMedicationDialog({
   const [defaultBudDays, setDefaultBudDays] = useState(
     savedBudDays ? String(savedBudDays) : ''
   );
+  const savedHalfLife = readHalfLifeHours(editMed?.custom_fields);
+  const [halfLifeHours, setHalfLifeHours] = useState(
+    savedHalfLife ? String(savedHalfLife) : ''
+  );
   const [effectiveness, setEffectiveness] = useState<number>(
     editMed?.effectiveness_rating ?? 0
   );
@@ -260,7 +266,8 @@ export default function AddMedicationDialog({
   // Open when guardrails are already set, so an edit shows what is in force.
   const [showAdvanced, setShowAdvanced] = useState(
     savedPolicy.min_interval_hours !== null ||
-      savedPolicy.missed_policy !== 'prompt'
+      savedPolicy.missed_policy !== 'prompt' ||
+      savedHalfLife !== null
   );
 
   const createMutation = useCreateMedicationMutation();
@@ -522,11 +529,18 @@ export default function AddMedicationDialog({
 
   // The dosing guardrails live beside the medication's other custom fields; an empty interval
   // and the default policy store nothing.
+  // A half-life is kept for any injectable that is not in the GLP-1 catalogue flow, where the
+  // drug (or its custom figures) already sets the model.
+  const takesOwnHalfLife = typeId === 'injection' && !isSupplement && !isGlp1;
   const withDosePolicy = (fields: Record<string, unknown>) => {
     const hours = Number(minIntervalHours);
     const budDays = Math.floor(Number(defaultBudDays));
+    const halfLife = Number(halfLifeHours);
     return {
       ...fields,
+      ...(takesOwnHalfLife && Number.isFinite(halfLife) && halfLife > 0
+        ? { half_life_hours: Math.min(halfLife, MAX_HALF_LIFE_HOURS) }
+        : {}),
       ...(!isSupplement && budDays > 0
         ? { default_bud_days: Math.min(budDays, MAX_DEFAULT_BUD_DAYS) }
         : {}),
@@ -1395,6 +1409,34 @@ export default function AddMedicationDialog({
                         )}
                       </p>
                     </div>
+                  </div>
+                )}
+
+                {takesOwnHalfLife && (
+                  <div className="space-y-2">
+                    <Label htmlFor="med-half-life">
+                      {t(
+                        'medications.cabinet.halfLifeHours',
+                        'Half-life in hours (optional)'
+                      )}
+                    </Label>
+                    <Input
+                      id="med-half-life"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      max={MAX_HALF_LIFE_HOURS}
+                      step="any"
+                      value={halfLifeHours}
+                      onChange={(e) => setHalfLifeHours(e.target.value)}
+                      placeholder="4"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'medications.cabinet.halfLifeHint',
+                        'Draws this medication on the Modeled levels chart. Use a published figure for the compound; the curve is an estimate, never a measured level.'
+                      )}
+                    </p>
                   </div>
                 )}
 

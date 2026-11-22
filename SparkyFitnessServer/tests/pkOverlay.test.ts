@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPkOverlay,
+  GENERIC_ABSORPTION_HOURS,
+  MAX_HALF_LIFE_HOURS,
+  readHalfLifeHours,
   resolveMedicationPkProfile,
   type PkOverlaySeries,
 } from '@workspace/shared';
@@ -57,6 +60,77 @@ describe('modeled profile of a medication', () => {
       resolveMedicationPkProfile({
         name: 'Custom',
         custom_fields: { glp1_drug: 'custom', custom_half_life_days: -2 },
+      })
+    ).toBeNull();
+  });
+});
+
+describe('a half-life entered for any medication', () => {
+  it('reads a positive number of hours, from a number or from text', () => {
+    expect(readHalfLifeHours({ half_life_hours: 4 })).toBe(4);
+    expect(readHalfLifeHours({ half_life_hours: '5.5' })).toBe(5.5);
+    expect(readHalfLifeHours({ half_life_hours: 99999 })).toBe(
+      MAX_HALF_LIFE_HOURS
+    );
+  });
+  it('is none when it is missing, blank, zero, negative or not a number', () => {
+    for (const fields of [
+      undefined,
+      null,
+      'text',
+      {},
+      { half_life_hours: '' },
+      { half_life_hours: '  ' },
+      { half_life_hours: 0 },
+      { half_life_hours: -3 },
+      { half_life_hours: 'abc' },
+      { half_life_hours: null },
+      { half_life_hours: Number.NaN },
+    ])
+      expect(readHalfLifeHours(fields)).toBeNull();
+  });
+  it('models a medication with no catalogue entry from its own half-life, absorbed in about an hour', () => {
+    const profile = resolveMedicationPkProfile({
+      name: 'BPC-157',
+      custom_fields: { half_life_hours: 4 },
+    });
+    expect(profile).not.toBeNull();
+    expect(profile!.halfLifeDays).toBeCloseTo(4 / 24, 12);
+    expect(profile!.tMaxDays).toBeCloseTo(GENERIC_ABSORPTION_HOURS / 24, 12);
+  });
+  it('caps the time to peak at half the half-life for a compound that clears within two hours', () => {
+    const profile = resolveMedicationPkProfile({
+      name: 'Quick',
+      custom_fields: { half_life_hours: 1 },
+    });
+    expect(profile!.halfLifeDays).toBeCloseTo(1 / 24, 12);
+    expect(profile!.tMaxDays).toBeCloseTo(1 / 48, 12);
+  });
+  it('wins over the catalogue, since it is the person’s own figure', () => {
+    expect(
+      resolveMedicationPkProfile({
+        name: 'Retatrutide',
+        custom_fields: { half_life_hours: 144 },
+      })
+    ).toMatchObject({ halfLifeDays: 6 });
+    expect(
+      resolveMedicationPkProfile({
+        name: 'Retatrutide',
+        custom_fields: { half_life_hours: 48 },
+      })!.halfLifeDays
+    ).toBeCloseTo(2, 12);
+  });
+  it('falls back to the catalogue or the custom GLP-1 figures when the entry is invalid', () => {
+    expect(
+      resolveMedicationPkProfile({
+        name: 'Retatrutide',
+        custom_fields: { half_life_hours: 'abc' },
+      })
+    ).toEqual({ halfLifeDays: 6, tMaxDays: 1.5 });
+    expect(
+      resolveMedicationPkProfile({
+        name: 'Unknown',
+        custom_fields: { half_life_hours: -1 },
       })
     ).toBeNull();
   });
@@ -156,5 +230,53 @@ describe('overlay lines', () => {
     expect(
       buildPkOverlay({ series: [series()], now: 'nope', window_days: 7 })
     ).toEqual([]);
+  });
+});
+
+describe('sampling a short half-life', () => {
+  const short: PkOverlaySeries = {
+    id: 'bpc',
+    name: 'BPC-157',
+    profile: { halfLifeDays: 4 / 24, tMaxDays: 1 / 24 },
+    // A dose every day at the same hour, for a week before now.
+    taken: [-7, -6, -5, -4, -3, -2, -1].map((d) => ({
+      at: at(d),
+      dose_mg: 0.25,
+    })),
+    planned: [],
+  };
+
+  it('samples a quarter of the half-life apart, so each daily peak shows', () => {
+    const [line] = build([short], 7);
+    // Hourly: 4 hours / 4, over 14 days either side of now.
+    const times = line!.historical.map((p) => p.t);
+    const gaps = new Set(times.slice(1).map((t, i) => t - times[i]!));
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(3_600_000);
+    expect(times.length).toBeGreaterThan(160);
+  });
+  it('never samples finer than half an hour', () => {
+    const [line] = build(
+      [{ ...short, profile: { halfLifeDays: 0.5 / 24, tMaxDays: 0.25 / 24 } }],
+      2
+    );
+    const times = line!.historical.map((p) => p.t);
+    const smallest = Math.min(...times.slice(1).map((t, i) => t - times[i]!));
+    expect(smallest).toBeGreaterThanOrEqual(30 * 60_000 - 1);
+  });
+  it('leaves a half-life of days at the six-hour step', () => {
+    const [line] = build([series()]);
+    const times = line!.historical.map((p) => p.t);
+    const gaps = new Set(times.slice(1).map((t, i) => t - times[i]!));
+    expect(Math.max(...gaps)).toBe(6 * 3_600_000);
+  });
+  it('leaves almost nothing of a 4-hour half-life a day after the last dose', () => {
+    const [line] = build([short], 7);
+    const level = (hoursAfterNow: number) =>
+      [...line!.historical, ...line!.forecast].find(
+        (p) => p.t === Date.parse(now) + hoursAfterNow * 3_600_000
+      )!.level;
+    // The last dose was a day before now: six half-lives, so under 2% of a peak remains.
+    expect(level(0)).toBeLessThan(0.05);
+    expect(level(24)).toBeLessThan(0.001);
   });
 });

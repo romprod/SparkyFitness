@@ -745,6 +745,8 @@
       "minInterval": "Minimum hours between doses (optional)",
       "defaultBud": "Default beyond-use days (optional)",
       "defaultBudHint": "Prefilled as the days when you record a beyond-use interval for a new preparation. Use the figure from your product or clinician guidance.",
+      "halfLifeHours": "Half-life in hours (optional)",
+      "halfLifeHint": "Draws this medication on the Modeled levels chart. Use a published figure for the compound; the curve is an estimate, never a measured level.",
       "minIntervalHint": "You are asked to confirm a dose logged sooner than this after the last one.",
       "missedPolicy": "If a dose is missed",
       "missedPrompt": "Ask me",
@@ -1828,7 +1830,8 @@
       "nowLevel": "{{percent}}% of peak now",
       "note": "A model from published half-lives, not a measured blood level. Each medication is scaled to its own peak in this window, so lines compare timing, not amounts. Solid: doses taken. Dashed: ahead of now, {{ahead}}.",
       "aheadPlanned": "from doses taken plus doses planned",
-      "aheadTaken": "from doses already taken"
+      "aheadTaken": "from doses already taken",
+      "noCurve": "No curve for {{names}}: add its half-life when editing the medication to draw it."
     },
     "lifeEvents": {
       "title": "Illness and travel windows",

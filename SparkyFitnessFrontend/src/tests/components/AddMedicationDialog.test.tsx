@@ -191,6 +191,110 @@ describe('AddMedicationDialog default beyond-use days', () => {
   });
 });
 
+describe('AddMedicationDialog half-life', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const peptide = {
+    ...mobileDoseMed,
+    id: 'med-pep',
+    name: 'BPC-157',
+    type_id: 'injection',
+    is_glp1: false,
+    is_supplement: false,
+    custom_fields: { half_life_hours: 4 },
+  } as unknown as Medication;
+  const label = 'Half-life in hours (optional)';
+
+  it('shows a saved half-life for an injectable and keeps it when other fields change', () => {
+    render(<AddMedicationDialog editMed={peptide} />);
+    openDialog();
+    expect(screen.getByLabelText(label)).toHaveValue(4);
+    setField('Name', 'Renamed');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({ half_life_hours: 4 });
+  });
+
+  it('saves an edited figure, including a fraction of an hour', () => {
+    render(<AddMedicationDialog editMed={peptide} />);
+    openDialog();
+    setField(label, '5.5');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      half_life_hours: 5.5,
+    });
+  });
+
+  it('drops it when cleared, and when it is zero, negative or not a number', () => {
+    for (const value of ['', '0', '-3']) {
+      jest.clearAllMocks();
+      const { unmount } = render(<AddMedicationDialog editMed={peptide} />);
+      openDialog();
+      setField(label, value);
+      save();
+      expect(lastUpdateArgs().body.custom_fields).toEqual({});
+      unmount();
+    }
+  });
+
+  it('keeps it beside the other guardrails', () => {
+    const both = {
+      ...peptide,
+      custom_fields: { half_life_hours: 4, min_interval_hours: 24 },
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={both} />);
+    openDialog();
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      half_life_hours: 4,
+      min_interval_hours: 24,
+    });
+  });
+
+  it('is offered for a new injectable with no figure saved, and saves nothing until one is typed', () => {
+    const bare = {
+      ...peptide,
+      id: 'med-new',
+      custom_fields: {},
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={bare} />);
+    openDialog();
+    // With nothing saved the advanced options start closed, like the other guardrails.
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Show Advanced Options'));
+    expect(screen.getByLabelText(label)).toHaveValue(null);
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({});
+  });
+
+  it('is not offered for a pill, or for a GLP-1 medication, whose drug sets the model', () => {
+    const { unmount } = render(<AddMedicationDialog editMed={mobileDoseMed} />);
+    openDialog();
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    unmount();
+    const glp1 = {
+      ...peptide,
+      is_glp1: true,
+      custom_fields: { glp1_drug: 'semaglutide' },
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={glp1} />);
+    openDialog();
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+  });
+
+  it('leaves a figure saved earlier out when the medication is saved as GLP-1', () => {
+    const stale = {
+      ...peptide,
+      is_glp1: true,
+      custom_fields: { glp1_drug: 'semaglutide', half_life_hours: 4 },
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={stale} />);
+    openDialog();
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      glp1_drug: 'semaglutide',
+    });
+  });
+});
+
 describe('AddMedicationDialog dose fields', () => {
   beforeEach(() => jest.clearAllMocks());
 

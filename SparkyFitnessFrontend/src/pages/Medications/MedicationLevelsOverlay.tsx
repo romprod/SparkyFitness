@@ -17,6 +17,7 @@ import {
   medicationWeekStart,
   resolveMedicationPkProfile,
   type PkOverlayDose,
+  type PkProfile,
 } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
 import { Button } from '@/components/ui/button';
@@ -68,25 +69,27 @@ export default function MedicationLevelsOverlay({
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  const modeled = useMemo(
-    () =>
-      medications.flatMap((med) => {
-        const profile =
-          med.is_active !== false &&
-          !med.is_supplement &&
-          med.type_id === 'injection'
-            ? resolveMedicationPkProfile({
-                name: med.name,
-                custom_fields: med.custom_fields as Record<
-                  string,
-                  unknown
-                > | null,
-              })
-            : null;
-        return profile ? [{ med, profile }] : [];
-      }),
-    [medications]
-  );
+  // Every active injectable is either drawn (it has a half-life) or listed as having no curve.
+  // One flagged as GLP-1 takes its figures from the drug it was set up with, so it is not asked for one.
+  const { modeled, unmodelled } = useMemo(() => {
+    const drawn: { med: Medication; profile: PkProfile }[] = [];
+    const missing: Medication[] = [];
+    for (const med of medications) {
+      if (
+        med.is_active === false ||
+        med.is_supplement ||
+        med.type_id !== 'injection'
+      )
+        continue;
+      const profile = resolveMedicationPkProfile({
+        name: med.name,
+        custom_fields: med.custom_fields as Record<string, unknown> | null,
+      });
+      if (profile) drawn.push({ med, profile });
+      else if (!med.is_glp1) missing.push(med);
+    }
+    return { modeled: drawn, unmodelled: missing };
+  }, [medications]);
   const injections = useMedicationInjectionsFor(modeled.map((m) => m.med.id));
   // Planned doses ahead come from the weekly plan the calendar uses, read only as far as the window.
   const first = medicationWeekStart(today);
@@ -140,7 +143,34 @@ export default function MedicationLevelsOverlay({
       }),
     })),
   });
-  if (lines.length === 0) return null;
+  const noCurve =
+    unmodelled.length > 0 ? (
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'medications.levels.noCurve',
+          'No curve for {{names}}: add its half-life when editing the medication to draw it.',
+          {
+            names: unmodelled
+              .map((med) => med.display_name || med.name)
+              .join(', '),
+          }
+        )}
+      </p>
+    ) : null;
+  if (lines.length === 0) {
+    if (!noCurve) return null;
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="h-4 w-4" />
+            {t('medications.levels.title', 'Modeled levels')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>{noCurve}</CardContent>
+      </Card>
+    );
+  }
 
   const nowMs = now.getTime();
   const colour = new Map(
@@ -316,6 +346,7 @@ export default function MedicationLevelsOverlay({
             }
           )}
         </p>
+        {noCurve}
       </CardContent>
     </Card>
   );

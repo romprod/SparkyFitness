@@ -12,12 +12,50 @@ export interface PkProfile {
   tMaxDays: number;
 }
 
-/** A medication's modeled profile, or null when none can be resolved or its parameters are invalid. */
+/** Longest half-life accepted for a medication's own figure: a year, in hours. */
+export const MAX_HALF_LIFE_HOURS = 8760;
+/**
+ * How quickly a medication with only a half-life is assumed to be absorbed after an injection:
+ * its modeled level peaks about an hour after the dose, then decays by the half-life. Capped at
+ * half the half-life for a compound that clears in under two hours.
+ */
+export const GENERIC_ABSORPTION_HOURS = 1;
+
+/**
+ * The half-life in hours the person entered for a medication, whatever the compound, or null when
+ * none is saved or it is not a positive number. Their own figure, never an assumed one.
+ */
+export function readHalfLifeHours(customFields: unknown): number | null {
+  const fields =
+    customFields && typeof customFields === 'object'
+      ? (customFields as Record<string, unknown>)
+      : {};
+  const raw = fields['half_life_hours'];
+  const hours =
+    typeof raw === 'string' && raw.trim() === '' ? NaN : Number(raw);
+  return Number.isFinite(hours) && hours > 0
+    ? Math.min(hours, MAX_HALF_LIFE_HOURS)
+    : null;
+}
+
+/**
+ * A medication's modeled profile, or null when none can be resolved or its parameters are invalid.
+ * A half-life the person entered for the medication wins; otherwise the GLP-1 catalogue or the
+ * custom GLP-1 figures are used.
+ */
 export function resolveMedicationPkProfile(med: {
   name: string;
   custom_fields?: Record<string, unknown> | null;
 }): PkProfile | null {
   const fields = med.custom_fields ?? {};
+  const ownHours = readHalfLifeHours(fields);
+  if (ownHours !== null) {
+    const halfLifeDays = ownHours / 24;
+    return {
+      halfLifeDays,
+      tMaxDays: Math.min(GENERIC_ABSORPTION_HOURS / 24, halfLifeDays / 2),
+    };
+  }
   const drug =
     typeof fields['glp1_drug'] === 'string'
       ? (fields['glp1_drug'] as string)
@@ -79,6 +117,8 @@ export interface PkOverlayLine {
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
+/** The finest step the chart is sampled at, so a short half-life still shows its peaks. */
+const MIN_STEP_MS = 30 * 60_000;
 
 const usable = (dose: PkOverlayDose): number | null => {
   const at = new Date(dose.at).getTime();
@@ -120,8 +160,13 @@ export function buildPkOverlay(input: {
     );
     if (!takenEvents.length && !plannedEvents.length) continue;
     const withPlanned = [...takenEvents, ...plannedEvents];
+    // A quarter of the half-life at most, so a compound that clears in hours is not aliased.
+    const seriesStepMs = Math.min(
+      stepMs,
+      Math.max(MIN_STEP_MS, (series.profile.halfLifeDays * DAY_MS) / 4)
+    );
     const times = new Set<number>([nowMs]);
-    for (let t = fromMs; t <= toMs; t += stepMs) times.add(t);
+    for (let t = fromMs; t <= toMs; t += seriesStepMs) times.add(t);
     const raw = [...times]
       .sort((a, b) => a - b)
       .map((t) => ({
