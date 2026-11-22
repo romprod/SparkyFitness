@@ -22,6 +22,7 @@ import {
   BarChart,
   Bar,
   Legend,
+  ReferenceArea,
 } from 'recharts';
 import {
   Activity,
@@ -49,6 +50,8 @@ import {
   compareDays,
   addDays,
   instantToDay,
+  lifeEventShades,
+  type LifeEventKind,
 } from '@workspace/shared';
 import {
   useMedicationDisplayPreferences,
@@ -60,6 +63,8 @@ import MedicationDoseHistory from './MedicationDoseHistory';
 import MedicationLogTable from './MedicationLogTable';
 import AppointmentPdfExport from './AppointmentPdfExport';
 import MedicationInsightsCard from './MedicationInsightsCard';
+import LifeEventsCard from './LifeEventsCard';
+import { useLifeEvents } from '@/hooks/Medications/useLifeEvents';
 
 import type {
   Medication,
@@ -123,6 +128,7 @@ interface MedicationReportsProps {
 
 const DEFAULT_VISIBLE_ITEMS = [
   'insights_card',
+  'life_events_card',
   'nausea_vs_dose_chart',
   'weight_vs_goal_chart',
   'adherence_chart',
@@ -139,7 +145,15 @@ const NEW_DEFAULT_CARDS = [
   'glp1_checkin_chart',
   'medication_log_table',
   'insights_card',
+  'life_events_card',
 ];
+
+/** Tints of the illness, travel and other windows shaded on the charts; faint, as context. */
+const LIFE_EVENT_FILL: Record<LifeEventKind, string> = {
+  illness: '#f59e0b',
+  travel: '#14b8a6',
+  other: '#94a3b8',
+};
 
 const MedicationReports = ({
   startDate,
@@ -396,6 +410,33 @@ const MedicationReports = ({
     timezone,
   ]);
 
+  // --- Illness and travel windows, shaded on the dated charts -----------------
+  const { data: lifeEventData } = useLifeEvents();
+  const lifeShades = useMemo(() => {
+    const labelOf = new Map(
+      alignedDailyData.map((d) => [d.date, d.displayDate])
+    );
+    return lifeEventShades(lifeEventData ?? [], startDate, endDate).flatMap(
+      (shade) => {
+        const x1 = labelOf.get(shade.from_day);
+        const x2 = labelOf.get(shade.to_day);
+        return x1 && x2 ? [{ id: shade.id, kind: shade.kind, x1, x2 }] : [];
+      }
+    );
+  }, [lifeEventData, alignedDailyData, startDate, endDate]);
+  const renderLifeShades = (yAxisId?: string) =>
+    lifeShades.map((shade) => (
+      <ReferenceArea
+        key={shade.id}
+        x1={shade.x1}
+        x2={shade.x2}
+        yAxisId={yAxisId}
+        fill={LIFE_EVENT_FILL[shade.kind]}
+        fillOpacity={0.15}
+        stroke="none"
+      />
+    ));
+
   // --- Compute Correlation Cards --------------------------------------------
   const hydrationConstipation = useMemo(() => {
     return getHydrationConstipationCorrelation(nutritionData, symptomEntries);
@@ -500,6 +541,13 @@ const MedicationReports = ({
               {
                 id: 'insights_card',
                 label: t('medications.reports.configInsights', 'Insights'),
+              },
+              {
+                id: 'life_events_card',
+                label: t(
+                  'medications.reports.configLifeEvents',
+                  'Illness and travel windows'
+                ),
               },
               {
                 id: 'nausea_vs_dose_chart',
@@ -645,7 +693,20 @@ const MedicationReports = ({
 
       {isVisible('insights_card') && <MedicationInsightsCard />}
 
+      {isVisible('life_events_card') && (
+        <LifeEventsCard startDate={startDate} endDate={endDate} />
+      )}
+
       <MedicationDoseHistory />
+
+      {lifeShades.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'medications.lifeEvents.legend',
+            'Shaded windows: illness (amber), travel (teal), other (grey).'
+          )}
+        </p>
+      )}
 
       {/* Charts Grid */}
       <div className="space-y-6">
@@ -674,6 +735,7 @@ const MedicationReports = ({
                   margin={{ top: 10, right: 30, left: 10, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
+                  {renderLifeShades('left')}
                   <XAxis dataKey="displayDate" fontSize={10} />
                   <YAxis
                     yAxisId="left"
@@ -758,6 +820,7 @@ const MedicationReports = ({
                   margin={{ top: 10, right: 30, left: 10, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
+                  {renderLifeShades()}
                   <XAxis dataKey="displayDate" fontSize={10} />
                   <YAxis domain={['auto', 'auto']} fontSize={10} />
                   <Tooltip />
@@ -826,6 +889,7 @@ const MedicationReports = ({
                   margin={{ top: 10, right: 30, left: 10, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
+                  {renderLifeShades()}
                   <XAxis dataKey="displayDate" fontSize={10} />
                   <YAxis domain={[0, 100]} fontSize={10} />
                   <Tooltip />
@@ -871,6 +935,7 @@ const MedicationReports = ({
                   margin={{ top: 10, right: 30, left: 10, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
+                  {renderLifeShades('left')}
                   <XAxis dataKey="displayDate" fontSize={10} />
                   <YAxis
                     yAxisId="left"

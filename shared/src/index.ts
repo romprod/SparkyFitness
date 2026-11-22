@@ -395,6 +395,8 @@ export * from './medications/coursePlanProgress.ts';
 export * from './medications/courseAdvance.ts';
 export * from './medications/scheduleMove.ts';
 export * from './schemas/api/MedicationStacks.api.zod.ts';
+export * from './schemas/api/LifeEvents.api.zod.ts';
+export * from './utils/lifeEvents.ts';
 export * from './schemas/api/MedicationReminders.api.zod.ts';
 export * from './utils/labComparison.ts';
 export * from './medications/administration.ts';

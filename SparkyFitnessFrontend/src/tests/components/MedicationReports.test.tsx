@@ -71,6 +71,13 @@ jest.mock('@/pages/Reports/MedicationDoseHistory', () => () => null);
 jest.mock('@/pages/Reports/MedicationInsightsCard', () => () => (
   <div>Insights card</div>
 ));
+jest.mock('@/pages/Reports/LifeEventsCard', () => () => (
+  <div>Life events card</div>
+));
+let mockLifeEvents: unknown[] = [];
+jest.mock('@/hooks/Medications/useLifeEvents', () => ({
+  useLifeEvents: () => ({ data: mockLifeEvents }),
+}));
 jest.mock('@/pages/Reports/AppointmentPdfExport', () => () => (
   <div>Owner appointment PDF controls</div>
 ));
@@ -91,6 +98,15 @@ jest.mock('recharts', () => {
     CartesianGrid: Nothing,
     Tooltip: Nothing,
     Legend: Nothing,
+    ReferenceArea: (props: Record<string, unknown>) => (
+      <div
+        data-testid="shade"
+        data-x1={String(props['x1'])}
+        data-x2={String(props['x2'])}
+        data-fill={String(props['fill'])}
+        data-axis={String(props['yAxisId'])}
+      />
+    ),
   };
 });
 
@@ -269,6 +285,7 @@ describe('Insights card on the medication reports', () => {
     localStorage.clear();
     mockSavePreference.mockClear();
     mockPreferences = [];
+    mockLifeEvents = [];
   });
   afterAll(() => {
     mockPreferences = [];
@@ -277,14 +294,17 @@ describe('Insights card on the medication reports', () => {
   it('shows the card by default', () => {
     renderReports();
     expect(screen.getByText('Insights card')).toBeInTheDocument();
+    expect(screen.getByText('Life events card')).toBeInTheDocument();
     expect(mockSavePreference).not.toHaveBeenCalled();
   });
 
   it('hides the card for a person who has switched it off', () => {
     mockPreferences = saved(everyCard);
     localStorage.setItem('migrated_insights_card_pref-1', 'true');
+    localStorage.setItem('migrated_life_events_card_pref-1', 'true');
     renderReports();
     expect(screen.queryByText('Insights card')).not.toBeInTheDocument();
+    expect(screen.queryByText('Life events card')).not.toBeInTheDocument();
     expect(mockSavePreference).not.toHaveBeenCalled();
   });
 
@@ -295,9 +315,12 @@ describe('Insights card on the medication reports', () => {
     expect(mockSavePreference).toHaveBeenCalledWith({
       viewGroup: 'reports',
       platform: 'web',
-      visibleItems: [...everyCard, 'insights_card'],
+      visibleItems: [...everyCard, 'insights_card', 'life_events_card'],
     });
     expect(localStorage.getItem('migrated_insights_card_pref-1')).toBe('true');
+    expect(localStorage.getItem('migrated_life_events_card_pref-1')).toBe(
+      'true'
+    );
   });
 
   it('adds every card saved choices lack together, so none overwrites another', () => {
@@ -315,6 +338,7 @@ describe('Insights card on the medication reports', () => {
         'glp1_checkin_chart',
         'medication_log_table',
         'insights_card',
+        'life_events_card',
       ],
     });
   });
@@ -326,5 +350,85 @@ describe('Insights card on the medication reports', () => {
     cleanup();
     renderReports();
     expect(mockSavePreference).not.toHaveBeenCalled();
+  });
+});
+
+describe('Illness and travel windows shaded on the charts', () => {
+  const renderRange = () =>
+    render(
+      <MedicationReports
+        startDate="2026-08-01"
+        endDate="2026-08-10"
+        nutritionData={[]}
+        tabularData={[]}
+        exerciseEntries={[]}
+        measurementData={[]}
+        customCategories={[]}
+        customMeasurementsData={[]}
+        sleepAnalyticsData={[]}
+        medications={[]}
+        medicationEntries={[]}
+        symptomEntries={[]}
+        injections={[]}
+        titrationSteps={[]}
+      />
+    );
+  const windowOf = (
+    id: string,
+    kind: string,
+    start_day: string,
+    end_day: string
+  ) => ({ id, kind, start_day, end_day, label: null, notes: null });
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockLifeEvents = [];
+  });
+  afterAll(() => {
+    mockLifeEvents = [];
+  });
+
+  it('draws nothing and says nothing when there are no windows', () => {
+    renderRange();
+    expect(screen.queryAllByTestId('shade')).toHaveLength(0);
+    expect(screen.queryByText(/Shaded windows/)).not.toBeInTheDocument();
+  });
+
+  it('shades each window, cut to the report’s range, on the four dated charts', () => {
+    mockLifeEvents = [
+      windowOf('flu', 'illness', '2026-07-30', '2026-08-03'),
+      windowOf('trip', 'travel', '2026-08-08', '2026-08-20'),
+      windowOf('old', 'other', '2026-05-01', '2026-05-05'),
+    ];
+    renderRange();
+    const shades = screen.getAllByTestId('shade');
+    // Two windows overlap the range; the older one does not. Four charts, two shades each.
+    expect(shades).toHaveLength(8);
+    const flu = shades.filter((el) => el.dataset['fill'] === '#f59e0b');
+    const trip = shades.filter((el) => el.dataset['fill'] === '#14b8a6');
+    expect(flu).toHaveLength(4);
+    expect(trip).toHaveLength(4);
+    for (const el of flu) {
+      expect(el.dataset['x1']).toBe('2026-08-01');
+      expect(el.dataset['x2']).toBe('2026-08-03');
+    }
+    for (const el of trip) {
+      expect(el.dataset['x1']).toBe('2026-08-08');
+      expect(el.dataset['x2']).toBe('2026-08-10');
+    }
+    expect(
+      screen.getByText(
+        'Shaded windows: illness (amber), travel (teal), other (grey).'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('ties the shade to the left axis on the charts that have two axes', () => {
+    mockLifeEvents = [windowOf('flu', 'illness', '2026-08-02', '2026-08-04')];
+    renderRange();
+    const axes = screen.getAllByTestId('shade').map((el) => el.dataset['axis']);
+    // The dose and check-in charts have a left and a right axis; the other two have one.
+    expect(axes.filter((axis) => axis === 'left')).toHaveLength(2);
+    expect(axes.filter((axis) => axis === 'undefined')).toHaveLength(2);
   });
 });
