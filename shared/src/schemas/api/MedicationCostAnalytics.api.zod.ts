@@ -36,6 +36,9 @@ export const medicationConsumableCostsSchema = z.object({
   cost_per_dose_basis: z.enum(['modelled', 'amortised', 'unavailable']),
   cost_per_dose_currency: z.string().nullable(),
   cost_per_dose_mixed_currency: z.boolean(),
+  /** Landed cost of a millilitre of bacteriostatic water, added to each vial it was mixed into. */
+  water_cost_per_ml: z.string().nullable().default(null),
+  water_currency: z.string().nullable().default(null),
   modelled_lines: z.number().int().nonnegative(),
   unmodelled_lines: z.number().int().nonnegative(),
   dose_count: z.number().int().nonnegative(),
@@ -87,6 +90,8 @@ export const medicationCostSummarySchema = z.object({
   mixed_currency: z.boolean(),
   per_dose: z.object({
     peptide: z.string().nullable(),
+    /** Bacteriostatic water per dose, through the vial each dose came from; null when none is costed. */
+    water: z.string().nullable().default(null),
     sundries: z.string().nullable(),
     total: z.string().nullable(),
     currency: z.string().nullable(),

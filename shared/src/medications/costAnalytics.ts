@@ -13,6 +13,12 @@ import {
   allocateMedicationPurchase,
   type PurchaseAllocationInput,
 } from './purchaseCosts.ts';
+import {
+  isWaterCostedThroughVials,
+  vialWaterCost,
+  waterCostPerMl,
+  type WaterCostPerMl,
+} from './waterCost.ts';
 import type {
   MedicationCostWindow,
   MedicationCostAnalytics,
@@ -32,6 +38,8 @@ export interface MedicationCostInvoice extends Omit<
     category?: string | null;
     units_per_pack?: number | null;
     units_per_dose?: string | null;
+    /** Millilitres in one bottle of bacteriostatic water, costed through the vials it is mixed into. */
+    ml_per_piece?: string | null;
   })[];
 }
 export interface MedicationCostVial {
@@ -42,6 +50,8 @@ export interface MedicationCostVial {
   status?: string | null;
   kind?: string | null;
   prescription_id?: string | null;
+  /** Water the vial was mixed with (its recorded reconstituted volume); null when unprepared or premixed. */
+  diluent_ml?: string | null;
 }
 export interface MedicationCostDose {
   /** Course the dose was logged under, via its course revision; null when unattributed. */
@@ -120,7 +130,13 @@ type InvoicePriceMap = Map<
 >;
 type VialRateMap = Map<
   string,
-  { rate: Decimal; currency: string; medication_id: string }
+  {
+    rate: Decimal;
+    /** The part of `rate` that is the vial's bacteriostatic water, per mcg. */
+    water_rate: Decimal;
+    currency: string;
+    medication_id: string;
+  }
 >;
 function invoiceLinePrices(invoices: MedicationCostInvoice[]): InvoicePriceMap {
   const prices: InvoicePriceMap = new Map();
@@ -144,7 +160,8 @@ function invoiceLinePrices(invoices: MedicationCostInvoice[]): InvoicePriceMap {
 function vialCostRates(
   vials: MedicationCostVial[],
   prices: InvoicePriceMap,
-  context?: CostResolutionContext
+  context?: CostResolutionContext,
+  water: WaterCostPerMl | null = null
 ): VialRateMap {
   const rates: VialRateMap = new Map();
   for (const vial of vials) {
@@ -170,8 +187,16 @@ function vialCostRates(
       price.medication_id !== vial.medication_id
     )
       continue;
+    // The water a vial was mixed with is part of what its doses cost, priced at the average
+    // cost of a millilitre of bacteriostatic water, in the same currency as the vial.
+    const waterCost =
+      water !== null && water.currency === price.currency
+        ? vialWaterCost(vial.diluent_ml, water)
+        : null;
+    const perMcg = mass.times(1000);
     rates.set(vial.id, {
-      rate: price.value.div(mass.times(1000)),
+      rate: price.value.plus(waterCost ?? 0).div(perMcg),
+      water_rate: (waterCost ?? new D(0)).div(perMcg),
       currency: price.currency,
       medication_id: vial.medication_id,
     });
@@ -183,7 +208,7 @@ function costDose(
   dose: MedicationCostDose,
   rates: VialRateMap,
   context?: CostResolutionContext
-): { cost: Decimal; mcg: Decimal; currency: string } | null {
+): { cost: Decimal; water: Decimal; mcg: Decimal; currency: string } | null {
   const rate = dose.pen_id ? rates.get(dose.pen_id) : undefined;
   const mass = finite(dose.dose_mg);
   const recordedVolume = finite(dose.volume_ml);
@@ -205,7 +230,12 @@ function costDose(
   )
     return null;
   const mcg = mass.times(1000);
-  return { cost: rate.rate.times(mcg), mcg, currency: rate.currency };
+  return {
+    cost: rate.rate.times(mcg),
+    water: rate.water_rate.times(mcg),
+    mcg,
+    currency: rate.currency,
+  };
 }
 export { invoiceLinePrices, vialCostRates, costDose };
 /**
@@ -282,8 +312,10 @@ function buildCostAnalytics(
       )
         touch(vial.medication_id);
     }
-  const rates = vialCostRates(input.vials, prices, context);
+  const water = waterCostPerMl(input.invoices);
+  const rates = vialCostRates(input.vials, prices, context, water);
   let runCost = new D(0);
+  let runWater = new D(0);
   let runDoses = 0;
   let dosesInWindow = 0;
   const runCurrencies = new Set<string>();
@@ -319,6 +351,7 @@ function buildCostAnalytics(
     }
     row.usageCurrencies.add(costed.currency);
     runCost = runCost.plus(costed.cost);
+    runWater = runWater.plus(costed.water);
     runDoses++;
     runCurrencies.add(costed.currency);
     if (firstCostedDay === null || dose.entry_date < firstCostedDay)
@@ -377,7 +410,7 @@ function buildCostAnalytics(
     windowMonths,
   });
   const runCurrency = runCurrencies.size === 1 ? [...runCurrencies][0]! : null;
-  const breakdown = buildCostBreakdown(input, window, prices, context);
+  const breakdown = buildCostBreakdown(input, window, prices, context, water);
   const monthly = breakdown.monthly_spend;
   const monthlyCurrencies = new Set(
     monthly.map((m) => m.currency).filter((x): x is string => x !== null)
@@ -392,9 +425,14 @@ function buildCostAnalytics(
       : monthly
           .reduce((sum, m) => sum.plus(pick(m) ?? 0), new D(0))
           .toFixed(2, D.ROUND_HALF_UP);
+  // Medication and water are reported apart; the total below is their sum plus sundries.
   const peptidePerDose =
     runCurrency !== null && runDoses > 0
-      ? runCost.div(runDoses).toString()
+      ? runCost.minus(runWater).div(runDoses).toString()
+      : null;
+  const waterPerDose =
+    runCurrency !== null && runDoses > 0 && runWater.gt(0)
+      ? runWater.div(runDoses).toString()
       : null;
   const sundries = breakdown.consumables;
   const sundriesPerDose =
@@ -412,6 +450,7 @@ function buildCostAnalytics(
     perDoseCurrency === null || peptidePerDose === null
       ? null
       : new D(peptidePerDose)
+          .plus(waterPerDose ?? 0)
           .plus(sundriesPerDose !== null ? sundriesPerDose : 0)
           .toString();
   const invoiceCount = input.invoices.filter(
@@ -441,6 +480,7 @@ function buildCostAnalytics(
         monthlyCurrencies.size > 1 || monthly.some((m) => m.mixed_currency),
       per_dose: {
         peptide: perDoseCurrency !== null ? peptidePerDose : null,
+        water: perDoseCurrency !== null ? waterPerDose : null,
         sundries:
           perDoseCurrency !== null && sundriesPerDose !== null
             ? sundriesPerDose
@@ -471,7 +511,8 @@ function buildCostBreakdown(
     string,
     { value: Decimal; currency: string; medication_id: string }
   >,
-  context?: CostResolutionContext
+  context?: CostResolutionContext,
+  water: WaterCostPerMl | null = null
 ): Pick<MedicationCostAnalytics, 'consumables' | 'waste' | 'monthly_spend'> {
   const within = (day: string) =>
     day >= window.from_date && day <= window.to_date;
@@ -497,9 +538,13 @@ function buildCostBreakdown(
     }
   >();
   let spend = new D(0),
+    // Cash spent on water that is costed through vials instead of as a per-dose sundry.
+    waterSpend = new D(0),
     modelled = new D(0),
     modelledLines = 0,
-    unmodelledLines = 0;
+    unmodelledLines = 0,
+    // Consumable lines that a per-dose rate (modelled or amortised) can describe.
+    perDoseLines = 0;
   const spendCurrencies = new Set<string>(),
     modelledCurrencies = new Set<string>();
   const doseCount = input.doses.filter((dose) =>
@@ -554,6 +599,12 @@ function buildCostBreakdown(
       groups.set(category, group);
       spend = spend.plus(landed);
       spendCurrencies.add(invoice.currency);
+      if (isWaterCostedThroughVials(line)) {
+        // Costed through the vials it is mixed into, so neither a per-dose sundry nor a gap.
+        waterSpend = waterSpend.plus(landed);
+        continue;
+      }
+      perDoseLines++;
       const units = finite(line.units_per_dose ?? null);
       if (units !== null && units.gt(0) && pieces.gt(0)) {
         modelled = modelled.plus(landed.div(pieces).times(units));
@@ -570,7 +621,7 @@ function buildCostBreakdown(
   const doseBasis =
     modelledLines > 0
       ? 'modelled'
-      : doseCount > 0 && groups.size > 0
+      : doseCount > 0 && perDoseLines > 0
         ? 'amortised'
         : 'unavailable';
   const consumables: MedicationCostAnalytics['consumables'] = {
@@ -597,11 +648,16 @@ function buildCostBreakdown(
     spend_mixed_currency: spendCurrencies.size > 1,
     cost_per_dose:
       doseCurrency && doseBasis !== 'unavailable'
-        ? (modelledLines > 0 ? modelled : spend.div(doseCount)).toString()
+        ? (modelledLines > 0
+            ? modelled
+            : spend.minus(waterSpend).div(doseCount)
+          ).toString()
         : null,
     cost_per_dose_basis: doseBasis,
     cost_per_dose_currency: doseCurrency,
     cost_per_dose_mixed_currency: doseCurrencies.size > 1,
+    water_cost_per_ml: water?.rate ?? null,
+    water_currency: water?.currency ?? null,
     modelled_lines: modelledLines,
     unmodelled_lines: unmodelledLines,
     dose_count: doseCount,

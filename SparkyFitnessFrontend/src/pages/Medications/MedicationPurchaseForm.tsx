@@ -56,6 +56,7 @@ export default function MedicationPurchaseForm({
     unit_cost: '',
     units_per_pack: '',
     units_per_dose: '',
+    ml_per_piece: '',
     vial_ids: [],
     pack_ids: [],
   });
@@ -95,6 +96,7 @@ export default function MedicationPurchaseForm({
         unit_cost: line.unit_cost,
         units_per_pack: line.units_per_pack,
         units_per_dose: line.units_per_dose,
+        ml_per_piece: line.ml_per_piece,
         vial_ids: line.vial_ids,
         pack_ids: line.pack_ids,
       })) ?? [blankLine('medication')]
@@ -390,7 +392,8 @@ export default function MedicationPurchaseForm({
             | 'quantity'
             | 'unit_cost'
             | 'units_per_pack'
-            | 'units_per_dose',
+            | 'units_per_dose'
+            | 'ml_per_piece',
           label: string
         ) => (
           <div className="min-w-0 space-y-1">
@@ -537,13 +540,30 @@ export default function MedicationPurchaseForm({
                       'units_per_pack',
                       t('medications.costs.perPack', 'Per pack')
                     )}
-                    {lineField(
-                      'units_per_dose',
-                      t('medications.costs.perDose', 'Used per dose')
-                    )}
+                    {line.category === 'bac_water' &&
+                      lineField(
+                        'ml_per_piece',
+                        t('medications.costs.mlPerBottle', 'mL per bottle')
+                      )}
+                    {/* Water priced through its vials replaces a per-dose figure; keep an old one visible. */}
+                    {(line.category !== 'bac_water' ||
+                      (!!line.units_per_dose?.trim() &&
+                        !line.ml_per_piece?.trim())) &&
+                      lineField(
+                        'units_per_dose',
+                        t('medications.costs.perDose', 'Used per dose')
+                      )}
                   </>
                 )}
               </div>
+              {line.kind === 'consumable' && line.category === 'bac_water' && (
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'medications.costs.mlPerBottleHint',
+                    'With a bottle size, each vial’s cost includes the water it was mixed with, priced from this line. Leave it blank to cost the water another way.'
+                  )}
+                </p>
+              )}
               {preview && (
                 <dl className="grid grid-cols-1 gap-2 rounded-md bg-muted/30 p-3 text-sm sm:grid-cols-3">
                   <div>

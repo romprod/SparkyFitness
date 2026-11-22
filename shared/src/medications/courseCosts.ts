@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { waterCostPerMl } from './waterCost.ts';
 import {
   costDose,
   invoiceLinePrices,
@@ -78,7 +79,8 @@ export function buildMedicationCourseCosts(
   const rates = vialCostRates(
     input.vials,
     invoiceLinePrices(input.invoices),
-    context
+    context,
+    waterCostPerMl(input.invoices)
   );
   const known = new Set(input.courses.map((course) => course.course_id));
   const byCourse = new Map<string, Tally>();

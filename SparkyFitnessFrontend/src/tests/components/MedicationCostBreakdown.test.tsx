@@ -38,6 +38,8 @@ const report = (): MedicationCostAnalytics => ({
     cost_per_dose: '0.2',
     cost_per_dose_currency: 'GBP',
     cost_per_dose_mixed_currency: false,
+    water_cost_per_ml: null,
+    water_currency: null,
     cost_per_dose_basis: 'modelled',
     modelled_lines: 1,
     unmodelled_lines: 2,
@@ -228,5 +230,30 @@ it('labels estimate-valued waste while keeping monthly cash invoice-only', () =>
     within(
       screen.getByRole('list', { name: 'Monthly invoice spend' })
     ).getByText('GBP 115.00')
+  ).toBeInTheDocument();
+});
+
+it('says where water priced through vials went instead of listing it as a per-injection sundry', () => {
+  const data = report();
+  const { rerender } = render(<MedicationCostBreakdown data={data} />);
+  expect(
+    screen.queryByText(/Bacteriostatic water is priced at/)
+  ).not.toBeInTheDocument();
+  rerender(
+    <MedicationCostBreakdown
+      data={{
+        ...data,
+        consumables: {
+          ...data.consumables,
+          water_cost_per_ml: '0.2322',
+          water_currency: 'GBP',
+        },
+      }}
+    />
+  );
+  expect(
+    screen.getByText(
+      /Bacteriostatic water is priced at GBP 0\.232 per mL and added to each vial it was mixed into/
+    )
   ).toBeInTheDocument();
 });

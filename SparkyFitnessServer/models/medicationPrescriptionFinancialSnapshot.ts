@@ -20,11 +20,11 @@ export async function loadMedicationPrescriptionFinancialSnapshot(
     [owner]
   );
   const lines = await client.query<Line>(
-    'SELECT id,purchase_id,kind,medication_id,category,quantity,unit_cost::text,units_per_pack,units_per_dose::text,sort_index FROM medication_purchase_items WHERE user_id=$1 ORDER BY purchase_id,sort_index,id',
+    'SELECT id,purchase_id,kind,medication_id,category,quantity,unit_cost::text,units_per_pack,units_per_dose::text,ml_per_piece::text,sort_index FROM medication_purchase_items WHERE user_id=$1 ORDER BY purchase_id,sort_index,id',
     [owner]
   );
   const vials = await client.query<MedicationCostVial>(
-    "SELECT p.id,p.medication_id,p.kind,p.label_mass_mg::text,p.status,v.purchase_item_id,p.prescription_id FROM medication_pens p LEFT JOIN medication_purchase_vials v ON v.pen_id=p.id AND v.user_id=p.user_id WHERE p.user_id=$1 AND p.kind='vial' ORDER BY p.id",
+    "SELECT p.id,p.medication_id,p.kind,p.label_mass_mg::text,p.status,v.purchase_item_id,p.prescription_id,(SELECT pr.final_volume_ml::text FROM medication_preparations pr WHERE pr.pen_id=p.id AND pr.user_id=p.user_id AND pr.mode='reconstituted' LIMIT 1) AS diluent_ml FROM medication_pens p LEFT JOIN medication_purchase_vials v ON v.pen_id=p.id AND v.user_id=p.user_id WHERE p.user_id=$1 AND p.kind='vial' ORDER BY p.id",
     [owner]
   );
   const prescriptions = await client.query<MedicationCostPrescription>(

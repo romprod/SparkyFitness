@@ -115,6 +115,7 @@ it('leads with Pitstop-style headline figures and discloses partial costing', ()
       mixed_currency: false,
       per_dose: {
         peptide: '0.927',
+        water: null,
         sundries: '0.429',
         total: '1.356',
         currency: 'GBP',
@@ -347,4 +348,43 @@ it('keeps known-zero prescription estimates without invoices and separates curre
     )
   ).toBeInTheDocument();
   expect(screen.getByText('No invoices in this window.')).toBeInTheDocument();
+});
+
+it('shows the bacteriostatic water share of each dose between medication and sundries', () => {
+  const base = data([row()]);
+  const summary = (water: string | null, sundries: string | null) => ({
+    invoice_count: 2,
+    invoice_total: '100.00',
+    overhead_total: '0.00',
+    currency: 'GBP',
+    mixed_currency: false,
+    per_dose: {
+      peptide: '0.927',
+      water,
+      sundries,
+      total: '1.4',
+      currency: 'GBP',
+      basis: 'modelled' as const,
+    },
+    coverage: {
+      vials_total: 1,
+      vials_costed: 1,
+      doses_in_window: 1,
+      doses_costed: 1,
+    },
+  });
+  ready({ ...base, summary: summary('0.044', '0.429') });
+  const { rerender } = render(<MedicationCostReport ownerId="owner" />);
+  const stat = () =>
+    within(screen.getByText('Cost per dose').parentElement as HTMLElement);
+  expect(
+    stat().getByText(
+      'medication GBP 0.927 + water GBP 0.044 + sundries GBP 0.429 (modelled)'
+    )
+  ).toBeInTheDocument();
+  ready({ ...base, summary: summary('0.044', null) });
+  rerender(<MedicationCostReport ownerId="owner" />);
+  expect(
+    stat().getByText('medication GBP 0.927 + water GBP 0.044')
+  ).toBeInTheDocument();
 });

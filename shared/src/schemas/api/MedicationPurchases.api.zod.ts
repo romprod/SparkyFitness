@@ -76,12 +76,21 @@ export const medicationPurchaseItemInputSchema = z
     unit_cost: decimal,
     units_per_pack: optionalInteger,
     units_per_dose: optionalDecimal,
+    /** Millilitres in one bottle, for bacteriostatic water lines only. */
+    ml_per_piece: optionalDecimal,
     vial_ids: z.array(z.string().uuid()).default([]),
     pack_ids: z.array(z.string().uuid()).default([]),
   })
   .refine((item) => item.kind !== 'consumable' || Boolean(item.description), {
     path: ['description'],
-  });
+  })
+  .refine(
+    (item) => item.ml_per_piece === null || Number(item.ml_per_piece) > 0,
+    {
+      path: ['ml_per_piece'],
+      message: 'A bottle holds more than zero millilitres',
+    }
+  );
 export const medicationPurchaseInputSchema = z
   .object({
     vendor: optionalText,

@@ -176,26 +176,61 @@ export default function MedicationCostReport({
                         'medications.costReport.perDoseNone',
                         'No costed doses yet'
                       )
-                    : summary.per_dose.sundries !== null
-                      ? t(
-                          'medications.costReport.perDoseSplit',
-                          'medication {{peptide}} + sundries {{sundries}} ({{basis}})',
-                          {
-                            peptide: formatPurchaseRate(
-                              summary.per_dose.peptide,
-                              summary.per_dose.currency
-                            ),
-                            sundries: formatPurchaseRate(
-                              summary.per_dose.sundries,
-                              summary.per_dose.currency
-                            ),
-                            basis: summary.per_dose.basis ?? '',
-                          }
-                        )
-                      : t(
-                          'medications.costReport.perDosePeptideOnly',
-                          'medication only — no sundries recorded'
-                        )
+                    : summary.per_dose.water !== null
+                      ? summary.per_dose.sundries !== null
+                        ? t(
+                            'medications.costReport.perDoseSplitWater',
+                            'medication {{peptide}} + water {{water}} + sundries {{sundries}} ({{basis}})',
+                            {
+                              peptide: formatPurchaseRate(
+                                summary.per_dose.peptide,
+                                summary.per_dose.currency
+                              ),
+                              water: formatPurchaseRate(
+                                summary.per_dose.water,
+                                summary.per_dose.currency
+                              ),
+                              sundries: formatPurchaseRate(
+                                summary.per_dose.sundries,
+                                summary.per_dose.currency
+                              ),
+                              basis: summary.per_dose.basis ?? '',
+                            }
+                          )
+                        : t(
+                            'medications.costReport.perDoseMedicationWater',
+                            'medication {{peptide}} + water {{water}}',
+                            {
+                              peptide: formatPurchaseRate(
+                                summary.per_dose.peptide,
+                                summary.per_dose.currency
+                              ),
+                              water: formatPurchaseRate(
+                                summary.per_dose.water,
+                                summary.per_dose.currency
+                              ),
+                            }
+                          )
+                      : summary.per_dose.sundries !== null
+                        ? t(
+                            'medications.costReport.perDoseSplit',
+                            'medication {{peptide}} + sundries {{sundries}} ({{basis}})',
+                            {
+                              peptide: formatPurchaseRate(
+                                summary.per_dose.peptide,
+                                summary.per_dose.currency
+                              ),
+                              sundries: formatPurchaseRate(
+                                summary.per_dose.sundries,
+                                summary.per_dose.currency
+                              ),
+                              basis: summary.per_dose.basis ?? '',
+                            }
+                          )
+                        : t(
+                            'medications.costReport.perDosePeptideOnly',
+                            'medication only — no sundries recorded'
+                          )
                 }
               />
               <CostStat

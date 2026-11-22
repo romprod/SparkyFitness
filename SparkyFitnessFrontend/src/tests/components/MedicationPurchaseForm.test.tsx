@@ -203,6 +203,7 @@ it('pins the original revision if the saved invoice refreshes while editing', as
         unit_cost: '20',
         units_per_pack: null,
         units_per_dose: null,
+        ml_per_piece: null,
         vial_ids: [],
         pack_ids: [],
         subtotal: '20',
@@ -478,6 +479,7 @@ describe('an imported invoice line with no medication', () => {
           unit_cost: '11.2',
           units_per_pack: null,
           units_per_dose: null,
+          ml_per_piece: null,
           vial_ids: [],
           pack_ids: [],
           subtotal: '112',
@@ -567,5 +569,100 @@ describe('an imported invoice line with no medication', () => {
         /Unmatched vials for other medications are not listed here \(2\)/
       )
     ).toBeInTheDocument();
+  });
+});
+
+describe('bacteriostatic water bottle size', () => {
+  const consumableOnly = (initial?: MedicationPurchaseView) =>
+    render(
+      <MedicationPurchaseForm
+        {...props()}
+        data={{ medications: [], vials: [], packs: [] }}
+        initial={initial}
+      />
+    );
+  const addLine = () => {
+    consumableOnly();
+    fireEvent.click(screen.getByRole('button', { name: 'Add consumable' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove line 1' }));
+  };
+  it('asks for a per-dose figure on other consumables and no bottle size', () => {
+    addLine();
+    expect(screen.getByLabelText('Used per dose')).toBeInTheDocument();
+    expect(screen.queryByLabelText('mL per bottle')).not.toBeInTheDocument();
+  });
+  it('asks for a bottle size on water instead of a per-dose figure and saves it', async () => {
+    addLine();
+    fireEvent.change(screen.getByLabelText('Category'), {
+      target: { value: 'bac_water' },
+    });
+    expect(screen.queryByLabelText('Used per dose')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/each vial’s cost includes the water it was mixed with/)
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Description'), {
+      target: { value: 'Bacteriostatic water 3 mL x10' },
+    });
+    fireEvent.change(screen.getByLabelText('Per pack'), {
+      target: { value: '10' },
+    });
+    fireEvent.change(screen.getByLabelText('mL per bottle'), {
+      target: { value: '3' },
+    });
+    save();
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    expect(mockSave.mock.calls[0][0].body.items[0]).toMatchObject({
+      category: 'bac_water',
+      units_per_pack: '10',
+      ml_per_piece: '3',
+    });
+  });
+  it('keeps an old per-dose figure on a water line that has no bottle size yet', () => {
+    consumableOnly({
+      id: '50000000-0000-4000-8000-000000000005',
+      revision: 1,
+      vendor: '',
+      reference: '',
+      ordered_date: '2026-11-15',
+      received_date: null,
+      currency: 'GBP',
+      shipping_cost: '0',
+      tax_cost: '0',
+      other_fees: '0',
+      discount: '0',
+      allocation_method: 'value',
+      notes: '',
+      items: [
+        {
+          id: '60000000-0000-4000-8000-000000000006',
+          kind: 'consumable',
+          medication_id: null,
+          medication_name: null,
+          category: 'bac_water',
+          description: 'Bacteriostatic water',
+          quantity: 1,
+          unit_cost: '15',
+          units_per_pack: 10,
+          units_per_dose: '1',
+          ml_per_piece: null,
+          vial_ids: [],
+          pack_ids: [],
+          subtotal: '15',
+          allocated: '0',
+          landed: '15',
+          landed_unit: '15',
+        },
+      ],
+      totals: allocateMedicationPurchase({
+        lines: [],
+        allocation_method: 'none',
+      }),
+      vials_expected: 0,
+      vials_linked: 0,
+      packs_linked: 0,
+      created_at: '',
+    } as unknown as MedicationPurchaseView);
+    expect(screen.getByLabelText('Used per dose')).toHaveValue('1');
+    expect(screen.getByLabelText('mL per bottle')).toHaveValue('');
   });
 });

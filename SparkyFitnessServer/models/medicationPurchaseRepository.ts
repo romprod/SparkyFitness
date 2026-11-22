@@ -73,7 +73,7 @@ interface PenRow {
 }
 const HEADER_COLS =
   'id,user_id,vendor,reference_encrypted,ordered_date::text,received_date::text,currency,shipping_cost::text,tax_cost::text,other_fees::text,discount::text,allocation_method,notes_encrypted,revision,created_at::text';
-const ITEM_COLS = `i.id,i.purchase_id,i.kind,i.medication_id,i.category,i.description,i.quantity,i.unit_cost::text,i.units_per_pack,i.units_per_dose::text,i.sort_index,m.name AS medication_name,
+const ITEM_COLS = `i.id,i.purchase_id,i.kind,i.medication_id,i.category,i.description,i.quantity,i.unit_cost::text,i.units_per_pack,i.units_per_dose::text,i.ml_per_piece::text,i.sort_index,m.name AS medication_name,
  COALESCE((SELECT array_agg(v.pen_id ORDER BY v.pen_id) FROM medication_purchase_vials v WHERE v.purchase_item_id=i.id AND v.user_id=i.user_id),ARRAY[]::uuid[]) AS vial_ids,
  COALESCE((SELECT array_agg(k.pack_id ORDER BY k.pack_id) FROM medication_purchase_packs k WHERE k.purchase_item_id=i.id AND k.user_id=i.user_id),ARRAY[]::uuid[]) AS pack_ids`;
 async function encode(value: string | null): Promise<Envelope | null> {
@@ -311,6 +311,10 @@ function normalized(input: unknown): MedicationPurchaseValues {
         item.description || (item.kind === 'medication' ? 'Medication' : ''),
       units_per_pack: item.kind === 'consumable' ? item.units_per_pack : null,
       units_per_dose: item.kind === 'consumable' ? item.units_per_dose : null,
+      ml_per_piece:
+        item.kind === 'consumable' && (item.category ?? 'other') === 'bac_water'
+          ? item.ml_per_piece
+          : null,
     })),
   };
 }
@@ -551,10 +555,11 @@ async function writePurchase(
       item.unit_cost,
       item.units_per_pack,
       item.units_per_dose,
+      item.ml_per_piece,
       index,
     ];
     await client.query(
-      'INSERT INTO medication_purchase_items(user_id,purchase_id,id,kind,medication_id,category,description,quantity,unit_cost,units_per_pack,units_per_dose,sort_index) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(id) DO UPDATE SET kind=EXCLUDED.kind,medication_id=EXCLUDED.medication_id,category=EXCLUDED.category,description=EXCLUDED.description,quantity=EXCLUDED.quantity,unit_cost=EXCLUDED.unit_cost,units_per_pack=EXCLUDED.units_per_pack,units_per_dose=EXCLUDED.units_per_dose,sort_index=EXCLUDED.sort_index WHERE medication_purchase_items.user_id=$1 AND medication_purchase_items.purchase_id=$2',
+      'INSERT INTO medication_purchase_items(user_id,purchase_id,id,kind,medication_id,category,description,quantity,unit_cost,units_per_pack,units_per_dose,ml_per_piece,sort_index) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(id) DO UPDATE SET kind=EXCLUDED.kind,medication_id=EXCLUDED.medication_id,category=EXCLUDED.category,description=EXCLUDED.description,quantity=EXCLUDED.quantity,unit_cost=EXCLUDED.unit_cost,units_per_pack=EXCLUDED.units_per_pack,units_per_dose=EXCLUDED.units_per_dose,ml_per_piece=EXCLUDED.ml_per_piece,sort_index=EXCLUDED.sort_index WHERE medication_purchase_items.user_id=$1 AND medication_purchase_items.purchase_id=$2',
       fields
     );
     for (const penId of item.vial_ids)

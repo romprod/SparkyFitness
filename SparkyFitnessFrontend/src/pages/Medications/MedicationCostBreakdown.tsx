@@ -256,6 +256,20 @@ export function MedicationSundries({
               </li>
             ))}
           </ul>
+          {consumables.water_cost_per_ml !== null && (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'medications.costReport.waterThroughVials',
+                'Bacteriostatic water is priced at {{rate}} per mL and added to each vial it was mixed into, so it sits in the medication cost per dose rather than in Per injection.',
+                {
+                  rate: formatPurchaseRate(
+                    consumables.water_cost_per_ml,
+                    consumables.water_currency
+                  ),
+                }
+              )}
+            </p>
+          )}
           <div className="space-y-1 border-t pt-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
               <span className="text-muted-foreground">

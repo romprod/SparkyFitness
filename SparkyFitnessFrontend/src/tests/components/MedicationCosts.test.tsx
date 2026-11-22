@@ -66,6 +66,7 @@ const view = (
       unit_cost: '20',
       units_per_pack: null,
       units_per_dose: null,
+      ml_per_piece: null,
       vial_ids: [],
       pack_ids: [],
       subtotal: '20.00',

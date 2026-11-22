@@ -29,6 +29,7 @@ export const medicationPurchaseItemsSchema = z.object({
   unit_cost: z.string(),
   units_per_pack: z.number().int().nullable(),
   units_per_dose: z.string().nullable(),
+  ml_per_piece: z.string().nullable(),
   sort_index: z.number().int(),
 });
 export const medicationPurchaseVialsSchema = z.object({

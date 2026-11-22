@@ -13,6 +13,8 @@ export const emptyCostBreakdown: Pick<
     cost_per_dose_basis: 'unavailable',
     cost_per_dose_currency: null,
     cost_per_dose_mixed_currency: false,
+    water_cost_per_ml: null,
+    water_currency: null,
     modelled_lines: 0,
     unmodelled_lines: 0,
     dose_count: 0,
@@ -40,6 +42,7 @@ export const emptyCostBreakdown: Pick<
     mixed_currency: false,
     per_dose: {
       peptide: null,
+      water: null,
       sundries: null,
       total: null,
       currency: null,
