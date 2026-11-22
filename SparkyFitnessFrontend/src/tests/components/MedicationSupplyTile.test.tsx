@@ -78,6 +78,10 @@ jest.mock('@/pages/Medications/MedicationScheduleMove', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/pages/Medications/MedicationNextDoses', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/pages/Medications/MedicationLogCalendar', () => ({
   __esModule: true,
   default: () => null,
@@ -509,4 +513,60 @@ it('keeps a server-unknown named forecast unknown even when a restart is overdue
   expect(
     screen.getByText('Assumes planned manual restart(s).')
   ).toBeInTheDocument();
+});
+
+describe('whole days the stock reaches', () => {
+  // The fixture's forecast day is 2026-11-16.
+  it('counts to the last covered dose when the stock covers the plan', () => {
+    renderTile();
+    expect(screen.getByRole('link')).toHaveTextContent('15 days');
+  });
+  it('counts to the day the stock runs short, for ok and reorder-now alike', () => {
+    Object.assign(
+      mockData!.forecast.medications[0]!,
+      forecastCoverage({
+        status: 'ok',
+        basis: 'depleted',
+        coverage_through: '2026-12-10',
+        depletion_date: '2026-12-10',
+        reorder_by: '2026-11-26',
+      })
+    );
+    const { unmount } = renderTile();
+    expect(screen.getByRole('link')).toHaveTextContent('24 days');
+    unmount();
+    Object.assign(
+      mockData!.forecast.medications[0]!,
+      forecastCoverage({
+        status: 'reorder_now',
+        basis: 'depleted',
+        coverage_through: '2026-11-17',
+        depletion_date: '2026-11-17',
+        reorder_by: '2026-11-16',
+      })
+    );
+    renderTile();
+    expect(screen.getByRole('link')).toHaveTextContent(/(^|\D)1 days?/);
+  });
+  it('never shows a negative figure when the stock ran short before today', () => {
+    Object.assign(
+      mockData!.forecast.medications[0]!,
+      forecastCoverage({
+        status: 'reorder_now',
+        basis: 'depleted',
+        coverage_through: '2026-11-10',
+        depletion_date: '2026-11-10',
+        reorder_by: '2026-11-16',
+      })
+    );
+    renderTile();
+    expect(screen.getByRole('link')).toHaveTextContent(/(^|\D)0 days?/);
+    expect(screen.getByRole('link')).not.toHaveTextContent('-');
+  });
+  it('shows no figure when coverage is unknown', () => {
+    Object.assign(mockData!.forecast.medications[0]!, unknownCoverage());
+    renderTile();
+    expect(screen.getByRole('link')).toHaveTextContent('Coverage unknown');
+    expect(screen.getByRole('link')).not.toHaveTextContent(/\d+ days?/);
+  });
 });

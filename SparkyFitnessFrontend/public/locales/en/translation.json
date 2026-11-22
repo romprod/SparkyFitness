@@ -1813,6 +1813,16 @@
         "dateUnavailable": "First projected administration date is unavailable."
       }
     },
+    "nextDose": {
+      "title_one": "Next injection",
+      "title_other": "Next injections",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "now": "Now",
+      "overdue": "Overdue",
+      "inHours": "in {{hours}}h {{minutes}}m",
+      "inMinutes": "in {{minutes}}m"
+    },
     "stockDashboard": {
       "supplyReorderNow": "Reorder now",
       "supplyReorderBy": "Reorder by {{date}}",
@@ -1820,6 +1830,8 @@
       "supplyCoveredHorizon": "Covers planned doses through {{date}} (forecast window)",
       "supplyCoveredLimit": "Covers planned doses through {{date}} (forecast limit)",
       "supplyUnknown": "Coverage unknown",
+      "supplyDaysUnit_one": "day",
+      "supplyDaysUnit_other": "days",
       "supplyTitle": "Supply",
       "supplyUnavailable": "Supply unavailable",
       "supplyLoading": "Loading supply…",

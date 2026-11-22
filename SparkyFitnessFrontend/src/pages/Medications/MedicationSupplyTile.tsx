@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Package } from 'lucide-react';
-import type { MedicationForecastPlannedCoverage } from '@workspace/shared';
+import {
+  daysBetween,
+  type MedicationForecastPlannedCoverage,
+} from '@workspace/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { MedicationForecastProjectionNotice } from './MedicationForecastProjection';
@@ -155,6 +158,18 @@ export default function MedicationSupplyTile() {
       </Card>
     );
 
+  // Whole days the stock reaches, as Pitstop's tile leads with: to the last dose it covers, or to
+  // the day it runs short. Unknown coverage has no figure.
+  const reachedDay =
+    selected.status === 'covered'
+      ? selected.coverage_through
+      : selected.status === 'ok' || selected.status === 'reorder_now'
+        ? selected.depletion_date
+        : null;
+  const coverageDays =
+    reachedDay === null
+      ? null
+      : Math.max(0, daysBetween(data.forecast.today, reachedDay));
   return (
     <Link
       to="/medications?tab=stock"
@@ -163,10 +178,24 @@ export default function MedicationSupplyTile() {
       <Card className="transition-colors hover:bg-muted/20">
         {header}
         <CardContent className="space-y-1">
-          <p className="break-words text-sm font-medium">{selected.name}</p>
-          <p className="text-sm text-muted-foreground">
-            {supplyLine(selected)}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <p className="break-words text-sm font-medium">{selected.name}</p>
+              <p className="text-sm text-muted-foreground">
+                {supplyLine(selected)}
+              </p>
+            </div>
+            {coverageDays !== null && (
+              <p className="shrink-0 text-right tabular-nums">
+                <span className="text-2xl font-semibold">{coverageDays}</span>{' '}
+                <span className="text-sm text-muted-foreground">
+                  {t('medications.stockDashboard.supplyDaysUnit', 'days', {
+                    count: coverageDays,
+                  })}
+                </span>
+              </p>
+            )}
+          </div>
           <MedicationForecastProjectionNotice
             projection={selected.projection}
           />
