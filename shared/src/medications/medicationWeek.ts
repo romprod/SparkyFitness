@@ -499,3 +499,31 @@ export function medicationWeekCellItems(
   };
   return items.sort((a, b) => clock(a) - clock(b));
 }
+
+export interface MedicationWeekOffSchedule {
+  /** The planned dose on another day that this dose was counted toward; null when it was counted toward none. */
+  credited_to: MedicationLogWeekPlannedSlot | null;
+}
+/**
+ * Whether a recorded dose was taken off its plan, as Pitstop's calendar marks it: a scheduled dose
+ * (not an as-needed one) that was not counted toward a planned dose on its own day, where its
+ * medication has planned doses that week. A medication with nothing planned that week has nothing
+ * to be off, and past weeks without plan history show no flag. Never changes the plan.
+ */
+export function medicationWeekOffSchedule(
+  week: MedicationLogWeekResponse,
+  actual: MedicationLogWeekActual
+): MedicationWeekOffSchedule | null {
+  if (actual.status !== 'taken') return null;
+  const link = week.fulfilled_slots.find(
+    (item) => item.actual.key === actual.key
+  );
+  const slot = link
+    ? week.planned_slots.find((item) => item.id === link.planned_id)
+    : undefined;
+  if (slot && slot.scheduled_day === actual.entry_date) return null;
+  if (link) return { credited_to: slot ?? null };
+  return week.planned_slots.some((item) => item.lane_id === actual.lane_id)
+    ? { credited_to: null }
+    : null;
+}

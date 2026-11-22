@@ -5,6 +5,7 @@ import {
   utcToLocalDateTimeInput,
   INJECTION_SITES,
   type MedicationLogWeekActual,
+  medicationWeekOffSchedule,
   type MedicationLogWeekPlannedSlot,
   type MedSubtype,
 } from '@workspace/shared';
@@ -450,50 +451,73 @@ export default function MedicationCalendarDayDetail({
                 {t('medications.week.actuals', 'Recorded doses')}
               </h3>
               <ul className="space-y-2">
-                {actuals.map((actual) => (
-                  <li key={actual.key} className="rounded border p-3 text-sm">
-                    <p className="font-medium">
-                      {actual.medication_name ||
-                        t(
-                          'medications.week.unknownItem',
-                          'Unknown recorded medication'
+                {actuals.map((actual) => {
+                  const off = medicationWeekOffSchedule(data, actual);
+                  return (
+                    <li key={actual.key} className="rounded border p-3 text-sm">
+                      <p className="font-medium">
+                        {actual.medication_name ||
+                          t(
+                            'medications.week.unknownItem',
+                            'Unknown recorded medication'
+                          )}
+                      </p>
+                      <p>
+                        {dose(actual.dose_amount, actual.dose_unit)} ·{' '}
+                        {t(
+                          `medications.week.status.${actual.status}`,
+                          actual.status
                         )}
-                    </p>
-                    <p>
-                      {dose(actual.dose_amount, actual.dose_unit)} ·{' '}
-                      {t(
-                        `medications.week.status.${actual.status}`,
-                        actual.status
+                      </p>
+                      <p>
+                        {actual.occurred_at
+                          ? `${formatTimeInZone(actual.occurred_at, { kind: 'tz', tz: data.timezone }, timeFormat)} (${data.timezone})`
+                          : t('medications.week.timeUnknown', 'Time unknown')}
+                      </p>
+                      {off && (
+                        <p className="text-amber-800 dark:text-amber-300">
+                          {off.credited_to
+                            ? t(
+                                'medications.week.offScheduleCredited',
+                                'Off schedule: counted toward the dose planned for {{date}}',
+                                {
+                                  date: formatDate(
+                                    off.credited_to.scheduled_day
+                                  ),
+                                }
+                              )
+                            : t(
+                                'medications.week.offScheduleExtra',
+                                'Off schedule: no dose was planned for this'
+                              )}
+                        </p>
                       )}
-                    </p>
-                    <p>
-                      {actual.occurred_at
-                        ? `${formatTimeInZone(actual.occurred_at, { kind: 'tz', tz: data.timezone }, timeFormat)} (${data.timezone})`
-                        : t('medications.week.timeUnknown', 'Time unknown')}
-                    </p>
-                    {actual.notes && (
-                      <p className="break-words">{actual.notes}</p>
-                    )}
-                    {canWrite(actual) && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAction({ kind: 'edit', actual })}
-                        >
-                          {t('common.edit', 'Edit')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAction({ kind: 'delete', actual })}
-                        >
-                          {t('common.delete', 'Delete')}
-                        </Button>
-                      </div>
-                    )}
-                  </li>
-                ))}
+                      {actual.notes && (
+                        <p className="break-words">{actual.notes}</p>
+                      )}
+                      {canWrite(actual) && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setAction({ kind: 'edit', actual })}
+                          >
+                            {t('common.edit', 'Edit')}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setAction({ kind: 'delete', actual })
+                            }
+                          >
+                            {t('common.delete', 'Delete')}
+                          </Button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
               {!planned.length && !actuals.length && (
                 <p>{t('medications.week.noDoses', 'No doses on this date.')}</p>

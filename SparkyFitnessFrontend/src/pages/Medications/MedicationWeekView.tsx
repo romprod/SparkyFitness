@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import {
   medicationWeekCellItems,
+  medicationWeekOffSchedule,
   type MedicationLogWeekResponse,
   type MedicationLogWeekActual,
   type MedicationLogWeekPlannedSlot,
@@ -44,25 +45,29 @@ export default function MedicationWeekView({
   const status = (value: string) =>
     t(`medications.week.status.${value}`, value);
   const glyph = (value: string) =>
-    value === 'taken' || value === 'prn_taken'
-      ? '✓'
-      : value === 'missed'
-        ? '×'
-        : value === 'skipped'
-          ? '−'
-          : value === 'snoozed'
-            ? '◷'
-            : '○';
-  const tone = (value: string) =>
-    value === 'taken' || value === 'prn_taken'
-      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-      : value === 'missed'
-        ? 'border-destructive/50 bg-destructive/10 text-red-700 dark:text-red-300'
-        : value === 'snoozed'
-          ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    value === 'off_schedule'
+      ? '!'
+      : value === 'taken' || value === 'prn_taken'
+        ? '✓'
+        : value === 'missed'
+          ? '×'
           : value === 'skipped'
-            ? 'border-border bg-muted text-muted-foreground'
-            : 'border-primary/40 bg-transparent text-primary';
+            ? '−'
+            : value === 'snoozed'
+              ? '◷'
+              : '○';
+  const tone = (value: string) =>
+    value === 'off_schedule'
+      ? 'border-amber-500/50 bg-amber-500/15 text-amber-800 dark:text-amber-300'
+      : value === 'taken' || value === 'prn_taken'
+        ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+        : value === 'missed'
+          ? 'border-destructive/50 bg-destructive/10 text-red-700 dark:text-red-300'
+          : value === 'snoozed'
+            ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+            : value === 'skipped'
+              ? 'border-border bg-muted text-muted-foreground'
+              : 'border-primary/40 bg-transparent text-primary';
   const weekday = (day: string) =>
     new Intl.DateTimeFormat(undefined, {
       weekday: 'short',
@@ -109,6 +114,7 @@ export default function MedicationWeekView({
         {[
           'taken',
           'prn_taken',
+          'off_schedule',
           'planned',
           'pending',
           'missed',
@@ -235,11 +241,34 @@ export default function MedicationWeekView({
                             if (item.kind === 'actual') {
                               const actual = item.actual;
                               const slot = item.planned;
-                              const description = `${status(actual.status)} · ${amount(actual.dose_amount, actual.dose_unit)} · ${actualTime(actual)} (${data.timezone})${slot ? ` · ${t('medications.week.plannedTime', 'Planned')}: ${plannedTime(slot)} (${slot.timezone})` : ''}`;
+                              const off = medicationWeekOffSchedule(
+                                data,
+                                actual
+                              );
+                              const offLabel = off
+                                ? off.credited_to
+                                  ? t(
+                                      'medications.week.offScheduleCredited',
+                                      'Off schedule: counted toward the dose planned for {{date}}',
+                                      {
+                                        date: formatDate(
+                                          off.credited_to.scheduled_day
+                                        ),
+                                      }
+                                    )
+                                  : t(
+                                      'medications.week.offScheduleExtra',
+                                      'Off schedule: no dose was planned for this'
+                                    )
+                                : null;
+                              const description = `${status(actual.status)}${offLabel ? ` · ${offLabel}` : ''} · ${amount(actual.dose_amount, actual.dose_unit)} · ${actualTime(actual)} (${data.timezone})${slot ? ` · ${t('medications.week.plannedTime', 'Planned')}: ${plannedTime(slot)} (${slot.timezone})` : ''}`;
+                              const shown = off
+                                ? 'off_schedule'
+                                : actual.status;
                               return chip(
                                 actual.key,
-                                glyph(actual.status),
-                                tone(actual.status),
+                                glyph(shown),
+                                tone(shown),
                                 actual.occurred_at ? actualTime(actual) : '',
                                 `${lane.name} · ${day} · ${description}`,
                                 false
@@ -308,6 +337,18 @@ export default function MedicationWeekView({
             'Future plans show the recurrence currently configured; unknown future dose targets remain unknown. No hypothetical restarts are included.'
           )}
         </p>
+        {data.actuals.some(
+          (actual) =>
+            lanes.some((lane) => lane.id === actual.lane_id) &&
+            medicationWeekOffSchedule(data, actual) !== null
+        ) && (
+          <p>
+            {t(
+              'medications.week.offScheduleHint',
+              'Off schedule: taken where no dose was planned for it. Your plan is unchanged.'
+            )}
+          </p>
+        )}
         {[...coverageSeen].map((value) => (
           <p key={value}>{t(`medications.week.coverage.${value}`, value)}</p>
         ))}

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import MedicationCalendarDayDetail from '@/pages/Medications/MedicationCalendarDayDetail';
 import {
   calendarWeek,
@@ -318,4 +318,33 @@ describe('adding a dose for a past day', () => {
       screen.queryByRole('region', { name: 'Add a dose for this day' })
     ).toBeNull();
   });
+});
+it('says a recorded dose was taken off schedule, and not for one counted toward its own planned dose', () => {
+  const actual = calendarActual();
+  // Planned for another day, so the dose taken today has no slot of its own.
+  renderDetail(
+    props(
+      calendarWeek({
+        planned_slots: [
+          calendarSlot({ id: 'later', scheduled_day: '2026-11-20' }),
+        ],
+        actuals: [actual],
+      })
+    )
+  );
+  expect(
+    screen.getByText('Off schedule: no dose was planned for this')
+  ).toBeInTheDocument();
+  cleanup();
+  const own = calendarSlot();
+  renderDetail(
+    props(
+      calendarWeek({
+        planned_slots: [own],
+        actuals: [actual],
+        fulfilled_slots: [{ planned_id: own.id, actual }],
+      })
+    )
+  );
+  expect(screen.queryByText(/Off schedule/)).not.toBeInTheDocument();
 });

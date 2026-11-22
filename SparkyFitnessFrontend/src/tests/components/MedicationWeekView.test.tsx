@@ -151,3 +151,103 @@ it('opens a day from its column heading when asked to', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Open 2026-11-17' }));
   expect(onOpenDay).toHaveBeenCalledWith('2026-11-17', expect.anything());
 });
+
+describe('doses taken off the plan', () => {
+  const offLabel = /Off schedule: no dose was planned for this/;
+  it('marks an extra dose on a day with nothing planned, and says the plan is unchanged', () => {
+    // Planned for the 20th; an unlinked dose is taken on the 17th.
+    render(
+      <MedicationWeekView
+        subtype="all"
+        data={calendarWeek({
+          actuals: [calendarActual()],
+          planned_slots: [
+            calendarSlot({
+              id: 'later',
+              scheduled_day: '2026-11-20',
+              status: 'planned',
+            }),
+          ],
+        })}
+      />
+    );
+    const mark = screen.getByRole('img', { name: offLabel });
+    expect(mark).toHaveTextContent('!');
+    expect(mark).not.toHaveTextContent('✓');
+    expect(
+      screen.getByText(/taken where no dose was planned for it/)
+    ).toBeInTheDocument();
+  });
+  it('leaves a dose counted toward its own day’s planned dose as an ordinary tick', () => {
+    const actual = calendarActual(),
+      slot = calendarSlot();
+    render(
+      <MedicationWeekView
+        subtype="all"
+        data={calendarWeek({
+          actuals: [actual],
+          planned_slots: [slot],
+          fulfilled_slots: [{ planned_id: slot.id, actual }],
+        })}
+      />
+    );
+    expect(screen.getByRole('img')).toHaveTextContent('✓');
+    expect(
+      screen.queryByRole('img', { name: offLabel })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/taken where no dose was planned for it/)
+    ).not.toBeInTheDocument();
+  });
+  it('names the planned day a dose on another day was counted toward', () => {
+    const actual = calendarActual({ entry_date: '2026-11-19' }),
+      slot = calendarSlot({ scheduled_day: '2026-11-17' });
+    render(
+      <MedicationWeekView
+        subtype="all"
+        data={calendarWeek({
+          actuals: [actual],
+          planned_slots: [slot],
+          fulfilled_slots: [{ planned_id: slot.id, actual }],
+        })}
+      />
+    );
+    expect(
+      screen.getByRole('img', {
+        name: /Off schedule: counted toward the dose planned for 2026-11-17/,
+      })
+    ).toHaveTextContent('!');
+  });
+  it('never marks an as-needed dose, or a medication with nothing planned that week', () => {
+    render(
+      <MedicationWeekView
+        subtype="all"
+        data={calendarWeek({
+          actuals: [calendarActual({ status: 'prn_taken' })],
+          planned_slots: [
+            calendarSlot({ scheduled_day: '2026-11-20', status: 'planned' }),
+          ],
+        })}
+      />
+    );
+    expect(
+      screen.queryByRole('img', { name: offLabel })
+    ).not.toBeInTheDocument();
+    render(
+      <MedicationWeekView
+        subtype="all"
+        data={calendarWeek({ actuals: [calendarActual()] })}
+      />
+    );
+    expect(
+      screen.queryByRole('img', { name: offLabel })
+    ).not.toBeInTheDocument();
+  });
+  it('lists Off schedule in the legend', () => {
+    render(<MedicationWeekView subtype="all" data={calendarWeek()} />);
+    // Without translations loaded the legend shows each status key, as the others do.
+    expect(screen.getByLabelText('Dose status legend')).toHaveTextContent(
+      '!off_schedule'
+    );
+  });
+});

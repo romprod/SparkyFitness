@@ -4,6 +4,7 @@ import {
   courseSlotKey,
   medicationLogWeekResponseSchema,
   medicationWeekCellItems,
+  medicationWeekOffSchedule,
   medicationWeekStart,
   type MedicationLogWeekInput,
   type MedicationWeekActualFacts,
@@ -643,5 +644,55 @@ describe('explicit current legacy intent, never inferred historical expectations
     expect(out.planned_slots).toEqual([]);
     expect(out.actuals).toEqual([]);
     expect(out).not.toHaveProperty('adherence');
+  });
+});
+
+describe('doses taken off the plan', () => {
+  const offSchedule = (rows: MedicationWeekActualFacts[], i = input()) => {
+    attach(i, rows);
+    const week = result(i);
+    return week.actuals.map((actual) => ({
+      id: actual.id,
+      off: medicationWeekOffSchedule(week, actual),
+    }));
+  };
+  it('leaves a dose counted toward its own day’s planned dose alone', () => {
+    expect(offSchedule([matched()])).toEqual([{ id: uid(1), off: null }]);
+  });
+  it('flags an extra dose where the plan has no slot for it', () => {
+    const [row] = offSchedule([fact()]);
+    expect(row?.off).toEqual({ credited_to: null });
+  });
+  it('flags a second dose on a day with one planned dose', () => {
+    const rows = offSchedule([
+      matched(),
+      fact({ id: uid(2), occurred_at: today + 'T20:00:00Z' }),
+    ]);
+    expect(rows.find((r) => r.id === uid(1))?.off).toBeNull();
+    expect(rows.find((r) => r.id === uid(2))?.off).toEqual({
+      credited_to: null,
+    });
+  });
+  it('names the planned day a dose taken on another day was counted toward', () => {
+    const [row] = offSchedule([
+      matched('2026-11-16', {
+        entry_date: today,
+        occurred_at: today + 'T09:00:00Z',
+      }),
+    ]);
+    expect(row?.off?.credited_to?.scheduled_day).toBe('2026-11-16');
+  });
+  it('never flags an as-needed or skipped dose', () => {
+    expect(
+      offSchedule([
+        fact({ status: 'prn_taken' }),
+        fact({ id: uid(2), status: 'skipped' }),
+      ]).map((r) => r.off)
+    ).toEqual([null, null]);
+  });
+  it('has nothing to be off when no dose is planned for that medication that week', () => {
+    const i = input();
+    i.courses = [];
+    expect(offSchedule([fact()], i)).toEqual([{ id: uid(1), off: null }]);
   });
 });

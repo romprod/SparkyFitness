@@ -1481,8 +1481,12 @@
         "snoozed": "Snoozed",
         "planned": "Planned",
         "pending": "Pending",
-        "missed": "Missed"
+        "missed": "Missed",
+        "off_schedule": "Off schedule"
       },
+      "offScheduleCredited": "Off schedule: counted toward the dose planned for {{date}}",
+      "offScheduleExtra": "Off schedule: no dose was planned for this",
+      "offScheduleHint": "Off schedule: taken where no dose was planned for it. Your plan is unchanged.",
       "coverage": {
         "partial": "Plan history partly available",
         "unavailable": "Plan history unavailable",
