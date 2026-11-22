@@ -15,6 +15,10 @@ jest.mock('react-i18next', () =>
   jest.requireActual('@/tests/mocks/reactI18next')
 );
 jest.mock('@/api/Labs/labResultsApi');
+jest.mock('@/pages/Labs/MetabolicTestsCard', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 let mockActiveUserId = 'u1';
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'u1', activeUserId: mockActiveUserId } }),

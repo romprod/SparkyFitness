@@ -103,7 +103,7 @@ export const DataManagementSettings = () => {
       const blob = await exportMedicationData(kind);
       saveBlobAs(
         blob,
-        `${kind === 'doses' ? 'doses' : 'lab-results'}-${todayInZone(timezone)}.csv`
+        `${kind === 'doses' ? 'doses' : kind === 'labs' ? 'lab-results' : 'rmr-tests'}-${todayInZone(timezone)}.csv`
       );
       toast({
         title: t('settings.dataManagement.exportSuccess', 'Export successful'),
@@ -113,10 +113,15 @@ export const DataManagementSettings = () => {
                 'settings.dataManagement.medication.dosesDone',
                 'Your doses have been exported.'
               )
-            : t(
-                'settings.dataManagement.medication.labsDone',
-                'Your lab results have been exported.'
-              ),
+            : kind === 'labs'
+              ? t(
+                  'settings.dataManagement.medication.labsDone',
+                  'Your lab results have been exported.'
+                )
+              : t(
+                  'settings.dataManagement.medication.rmrDone',
+                  'Your RMR tests have been exported.'
+                ),
       });
     } catch (error) {
       console.error('Error exporting medication data:', error);
@@ -202,11 +207,11 @@ export const DataManagementSettings = () => {
         <p className="text-sm text-muted-foreground">
           {t(
             'settings.dataManagement.medication.description',
-            'Download every recorded dose and injection, or every lab result, as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule.'
+            'Download every recorded dose and injection, every lab result, or every resting metabolic rate test as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule.'
           )}
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          {(['doses', 'labs'] as const).map((kind) => (
+          {(['doses', 'labs', 'rmr'] as const).map((kind) => (
             <Button
               key={kind}
               variant="outline"
@@ -226,10 +231,15 @@ export const DataManagementSettings = () => {
                       'settings.dataManagement.medication.dosesButton',
                       'Export my doses (CSV)'
                     )
-                  : t(
-                      'settings.dataManagement.medication.labsButton',
-                      'Export my lab results (CSV)'
-                    )}
+                  : kind === 'labs'
+                    ? t(
+                        'settings.dataManagement.medication.labsButton',
+                        'Export my lab results (CSV)'
+                      )
+                    : t(
+                        'settings.dataManagement.medication.rmrButton',
+                        'Export my RMR tests (CSV)'
+                      )}
             </Button>
           ))}
         </div>

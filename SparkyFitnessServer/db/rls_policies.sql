@@ -30,6 +30,7 @@ BEGIN
     'lab_markers',
     'lab_results',
     'lab_reports',
+    'metabolic_tests',
     'exercise_entries',
     'exercise_entry_sets',
     'exercise_entry_activity_details',
@@ -876,6 +877,7 @@ SELECT create_checkin_policy('oral_care_sessions');
 -- user's own markers and their results are stored, both under the check-in policy.
 SELECT create_checkin_policy('lab_markers');
 SELECT create_checkin_policy('lab_results');
+SELECT create_checkin_policy('metabolic_tests');
 SELECT create_checkin_policy('lab_reports');
 
 -- Mood display preferences: personal picker config, owner-only.

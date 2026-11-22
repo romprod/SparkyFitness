@@ -44,6 +44,7 @@ afterEach(() => jest.useRealTimers());
 it.each([
   ['Export my doses (CSV)', 'doses', 'doses-2026-11-22.csv'],
   ['Export my lab results (CSV)', 'labs', 'lab-results-2026-11-22.csv'],
+  ['Export my RMR tests (CSV)', 'rmr', 'rmr-tests-2026-11-22.csv'],
 ] as const)(
   '%s downloads the CSV under a dated name',
   async (label, kind, file) => {
