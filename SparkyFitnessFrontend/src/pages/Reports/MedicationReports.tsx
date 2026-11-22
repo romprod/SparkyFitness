@@ -59,6 +59,7 @@ import Papa from 'papaparse';
 import MedicationDoseHistory from './MedicationDoseHistory';
 import MedicationLogTable from './MedicationLogTable';
 import AppointmentPdfExport from './AppointmentPdfExport';
+import MedicationInsightsCard from './MedicationInsightsCard';
 
 import type {
   Medication,
@@ -121,6 +122,7 @@ interface MedicationReportsProps {
 }
 
 const DEFAULT_VISIBLE_ITEMS = [
+  'insights_card',
   'nausea_vs_dose_chart',
   'weight_vs_goal_chart',
   'adherence_chart',
@@ -130,6 +132,13 @@ const DEFAULT_VISIBLE_ITEMS = [
   'protein_nausea_card',
   'sleep_fatigue_card',
   'dose_nausea_card',
+];
+
+/** Cards added to the page after others had been saved; each is switched on once for them. */
+const NEW_DEFAULT_CARDS = [
+  'glp1_checkin_chart',
+  'medication_log_table',
+  'insights_card',
 ];
 
 const MedicationReports = ({
@@ -187,40 +196,23 @@ const MedicationReports = ({
 
   const [showConfig, setShowConfig] = useState(false);
 
-  // Migrate existing database preferences to include the new GLP-1 daily check-in chart by default
+  // Cards added after a person saved their own choices appear once, switched on, then stay as the
+  // person sets them. One write carries every card still to be added, so none overwrites another.
   useEffect(() => {
-    if (
-      activePref &&
-      !activePref.visible_items.includes('glp1_checkin_chart')
-    ) {
-      const migratedKey = `migrated_glp1_checkin_chart_${activePref.id}`;
-      if (!localStorage.getItem(migratedKey)) {
-        localStorage.setItem(migratedKey, 'true');
-        upsertPrefMutation.mutate({
-          viewGroup: 'reports',
-          platform: 'web',
-          visibleItems: [...activePref.visible_items, 'glp1_checkin_chart'],
-        });
-      }
-    }
-  }, [activePref, upsertPrefMutation]);
-
-  // Migrate existing database preferences to include the new medication log table by default
-  useEffect(() => {
-    if (
-      activePref &&
-      !activePref.visible_items.includes('medication_log_table')
-    ) {
-      const migratedKey = `migrated_medication_log_table_${activePref.id}`;
-      if (!localStorage.getItem(migratedKey)) {
-        localStorage.setItem(migratedKey, 'true');
-        upsertPrefMutation.mutate({
-          viewGroup: 'reports',
-          platform: 'web',
-          visibleItems: [...activePref.visible_items, 'medication_log_table'],
-        });
-      }
-    }
+    if (!activePref) return;
+    const added = NEW_DEFAULT_CARDS.filter(
+      (id) =>
+        !activePref.visible_items.includes(id) &&
+        !localStorage.getItem(`migrated_${id}_${activePref.id}`)
+    );
+    if (added.length === 0) return;
+    for (const id of added)
+      localStorage.setItem(`migrated_${id}_${activePref.id}`, 'true');
+    upsertPrefMutation.mutate({
+      viewGroup: 'reports',
+      platform: 'web',
+      visibleItems: [...activePref.visible_items, ...added],
+    });
   }, [activePref, upsertPrefMutation]);
 
   // Parse patient profile target weight
@@ -506,6 +498,10 @@ const MedicationReports = ({
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               {
+                id: 'insights_card',
+                label: t('medications.reports.configInsights', 'Insights'),
+              },
+              {
                 id: 'nausea_vs_dose_chart',
                 label: t(
                   'medications.reports.configNauseaDose',
@@ -646,6 +642,8 @@ const MedicationReports = ({
           </CardContent>
         </Card>
       </div>
+
+      {isVisible('insights_card') && <MedicationInsightsCard />}
 
       <MedicationDoseHistory />
 

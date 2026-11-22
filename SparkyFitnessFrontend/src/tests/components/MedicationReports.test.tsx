@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import MedicationReports from '@/pages/Reports/MedicationReports';
 
@@ -57,13 +57,20 @@ jest.mock('@/hooks/Settings/useProfile', () => ({
   useProfileQuery: () => ({ data: null }),
 }));
 
+let mockPreferences: unknown[] = [];
+const mockSavePreference = jest.fn();
 jest.mock('@/hooks/useMedicationDisplayPreferences', () => ({
-  useMedicationDisplayPreferences: () => ({ data: [] }),
-  useUpsertMedicationDisplayPreferenceMutation: () => ({ mutate: jest.fn() }),
+  useMedicationDisplayPreferences: () => ({ data: mockPreferences }),
+  useUpsertMedicationDisplayPreferenceMutation: () => ({
+    mutate: mockSavePreference,
+  }),
 }));
 
 jest.mock('@/pages/Reports/MedicationLogTable', () => () => null);
 jest.mock('@/pages/Reports/MedicationDoseHistory', () => () => null);
+jest.mock('@/pages/Reports/MedicationInsightsCard', () => () => (
+  <div>Insights card</div>
+));
 jest.mock('@/pages/Reports/AppointmentPdfExport', () => () => (
   <div>Owner appointment PDF controls</div>
 ));
@@ -216,4 +223,108 @@ it('keeps existing Print and CSV formats distinct from owner-only appointment PD
   );
   expect(print).toHaveBeenCalledTimes(1);
   print.mockRestore();
+});
+
+describe('Insights card on the medication reports', () => {
+  const renderReports = () =>
+    render(
+      <MedicationReports
+        startDate="2026-08-01"
+        endDate="2026-08-01"
+        nutritionData={[]}
+        tabularData={[]}
+        exerciseEntries={[]}
+        measurementData={[]}
+        customCategories={[]}
+        customMeasurementsData={[]}
+        sleepAnalyticsData={[]}
+        medications={[]}
+        medicationEntries={[]}
+        symptomEntries={[]}
+        injections={[]}
+        titrationSteps={[]}
+      />
+    );
+  const saved = (items: string[]) => [
+    {
+      id: 'pref-1',
+      view_group: 'reports',
+      platform: 'web',
+      visible_items: items,
+    },
+  ];
+  const everyCard = [
+    'nausea_vs_dose_chart',
+    'weight_vs_goal_chart',
+    'adherence_chart',
+    'medication_log_table',
+    'glp1_checkin_chart',
+    'hydration_constipation_card',
+    'protein_nausea_card',
+    'sleep_fatigue_card',
+    'dose_nausea_card',
+  ];
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockSavePreference.mockClear();
+    mockPreferences = [];
+  });
+  afterAll(() => {
+    mockPreferences = [];
+  });
+
+  it('shows the card by default', () => {
+    renderReports();
+    expect(screen.getByText('Insights card')).toBeInTheDocument();
+    expect(mockSavePreference).not.toHaveBeenCalled();
+  });
+
+  it('hides the card for a person who has switched it off', () => {
+    mockPreferences = saved(everyCard);
+    localStorage.setItem('migrated_insights_card_pref-1', 'true');
+    renderReports();
+    expect(screen.queryByText('Insights card')).not.toBeInTheDocument();
+    expect(mockSavePreference).not.toHaveBeenCalled();
+  });
+
+  it('adds the card once for a person with saved choices, in one write', () => {
+    mockPreferences = saved(everyCard);
+    renderReports();
+    expect(mockSavePreference).toHaveBeenCalledTimes(1);
+    expect(mockSavePreference).toHaveBeenCalledWith({
+      viewGroup: 'reports',
+      platform: 'web',
+      visibleItems: [...everyCard, 'insights_card'],
+    });
+    expect(localStorage.getItem('migrated_insights_card_pref-1')).toBe('true');
+  });
+
+  it('adds every card saved choices lack together, so none overwrites another', () => {
+    const old = everyCard.filter(
+      (id) => id !== 'glp1_checkin_chart' && id !== 'medication_log_table'
+    );
+    mockPreferences = saved(old);
+    renderReports();
+    expect(mockSavePreference).toHaveBeenCalledTimes(1);
+    expect(mockSavePreference).toHaveBeenCalledWith({
+      viewGroup: 'reports',
+      platform: 'web',
+      visibleItems: [
+        ...old,
+        'glp1_checkin_chart',
+        'medication_log_table',
+        'insights_card',
+      ],
+    });
+  });
+
+  it('does not add a card again after it was added once', () => {
+    mockPreferences = saved(everyCard);
+    renderReports();
+    mockSavePreference.mockClear();
+    cleanup();
+    renderReports();
+    expect(mockSavePreference).not.toHaveBeenCalled();
+  });
 });

@@ -25,6 +25,8 @@ export const reportKeys = {
       endDate,
       { userId, equipment, muscle, exercise },
     ] as const,
+  medicationInsights: (userId?: string) =>
+    ['reports', 'medicationInsights', { userId }] as const,
   trainingConsistency: (userId?: string) =>
     ['reports', 'trainingConsistency', { userId }] as const,
   fitnessFatigue: (userId?: string) =>
