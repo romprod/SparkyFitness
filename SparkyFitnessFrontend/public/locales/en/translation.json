@@ -1817,6 +1817,17 @@
         "dateUnavailable": "First projected administration date is unavailable."
       }
     },
+    "levels": {
+      "title": "Modeled levels",
+      "window": "Time window",
+      "days": "{{count}} days",
+      "now": "Now",
+      "chartLabel": "Modeled levels of {{names}} over {{count}} days either side of today, each as a percentage of its own peak",
+      "nowLevel": "{{percent}}% of peak now",
+      "note": "A model from published half-lives, not a measured blood level. Each medication is scaled to its own peak in this window, so lines compare timing, not amounts. Solid: doses taken. Dashed: ahead of now, {{ahead}}.",
+      "aheadPlanned": "from doses taken plus doses planned",
+      "aheadTaken": "from doses already taken"
+    },
     "nextDose": {
       "title_one": "Next injection",
       "title_other": "Next injections",

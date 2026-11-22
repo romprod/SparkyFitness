@@ -1,5 +1,6 @@
 import {
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -161,6 +162,21 @@ export const useMedicationInjections = (medId: string, enabled = true) =>
         'Failed to load injections.'
       ),
     },
+  });
+
+/** Several medications' injection lists at once, sharing each one's cache with `useMedicationInjections`. */
+export const useMedicationInjectionsFor = (medIds: string[]) =>
+  useQueries({
+    queries: medIds.map((medId) => ({
+      queryKey: medKeys.injections(medId),
+      queryFn: () => medicationService.listInjections(medId),
+    })),
+    combine: (results) => ({
+      data: Object.fromEntries(
+        medIds.map((medId, index) => [medId, results[index]?.data])
+      ),
+      isPending: results.some((result) => result.isPending),
+    }),
   });
 
 /** Reads a medication's injections on demand, for checks made at the moment of a tap. */
