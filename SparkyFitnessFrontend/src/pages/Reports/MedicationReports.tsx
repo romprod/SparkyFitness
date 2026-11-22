@@ -802,8 +802,9 @@ const MedicationReports = ({
               <CardTitle className="flex items-center text-md">
                 <Scale className="w-4 h-4 mr-2 text-emerald-500" />
                 {t('medications.reports.weightVsGoal', {
-                  defaultValue: 'Weight Trend vs. Target Weight ({{unit}})',
-                  unit: weightUnit,
+                  defaultValue:
+                    'Weight Trend vs. Target Weight ({{weightUnit}})',
+                  weightUnit,
                 })}
               </CardTitle>
               <CardDescription>

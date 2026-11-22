@@ -29,7 +29,18 @@ jest.mock('react-i18next', () => ({
         return defaultValueOrOptions;
       }
 
-      const defaultValue = defaultValueOrOptions?.['defaultValue'];
+      // As i18next does, the English resource wins over the default in the code, so a
+      // placeholder the page fails to fill shows up here as it does on the screen.
+      const resource = key
+        .split('.')
+        .reduce<unknown>(
+          (node, part) => (node as Record<string, unknown> | undefined)?.[part],
+          jest.requireActual('../../../public/locales/en/translation.json')
+        );
+      const defaultValue =
+        typeof resource === 'string'
+          ? resource
+          : defaultValueOrOptions?.['defaultValue'];
       if (typeof defaultValue !== 'string') return key;
 
       return defaultValue.replace(/{{(\w+)}}/g, (_match, name: string) =>
