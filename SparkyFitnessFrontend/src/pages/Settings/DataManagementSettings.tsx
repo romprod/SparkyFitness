@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { todayInZone } from '@workspace/shared';
+import { usePreferences } from '@/contexts/PreferencesContext';
 import { useDownloadDiaryExport } from '@/hooks/Diary/useFoodEntries';
+import {
+  useDownloadMedicationExport,
+  type MedicationExportKind,
+} from '@/hooks/Medications/useMedicationExports';
+import { saveBlobAs } from '@/utils/saveBlob';
 import {
   useSyncedSources,
   useDeleteSyncedSource,
@@ -25,6 +32,10 @@ export const DataManagementSettings = () => {
   const { toast } = useToast();
   const { mutateAsync: exportDiary, isPending: isExporting } =
     useDownloadDiaryExport();
+  const { mutateAsync: exportMedicationData } = useDownloadMedicationExport();
+  const { timezone } = usePreferences();
+  const [exportingKind, setExportingKind] =
+    useState<MedicationExportKind | null>(null);
 
   const { data: syncedSources = [], isLoading: isLoadingSources } =
     useSyncedSources();
@@ -86,6 +97,42 @@ export const DataManagementSettings = () => {
     }
   };
 
+  const handleExportMedicationData = async (kind: MedicationExportKind) => {
+    setExportingKind(kind);
+    try {
+      const blob = await exportMedicationData(kind);
+      saveBlobAs(
+        blob,
+        `${kind === 'doses' ? 'doses' : 'lab-results'}-${todayInZone(timezone)}.csv`
+      );
+      toast({
+        title: t('settings.dataManagement.exportSuccess', 'Export successful'),
+        description:
+          kind === 'doses'
+            ? t(
+                'settings.dataManagement.medication.dosesDone',
+                'Your doses have been exported.'
+              )
+            : t(
+                'settings.dataManagement.medication.labsDone',
+                'Your lab results have been exported.'
+              ),
+      });
+    } catch (error) {
+      console.error('Error exporting medication data:', error);
+      toast({
+        title: t('settings.dataManagement.exportError', 'Export error'),
+        description: t(
+          'settings.dataManagement.exportErrorDescription',
+          'Could not export your data. Please try again.'
+        ),
+        variant: 'destructive',
+      });
+    } finally {
+      setExportingKind(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2">
@@ -142,6 +189,49 @@ export const DataManagementSettings = () => {
                   'Export my diary (CSV)'
                 )}
           </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t pt-6">
+        <h3 className="text-lg font-medium">
+          {t(
+            'settings.dataManagement.medication.title',
+            'Medication and lab records'
+          )}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {t(
+            'settings.dataManagement.medication.description',
+            'Download every recorded dose and injection, or every lab result, as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule.'
+          )}
+        </p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          {(['doses', 'labs'] as const).map((kind) => (
+            <Button
+              key={kind}
+              variant="outline"
+              onClick={() => handleExportMedicationData(kind)}
+              disabled={exportingKind !== null}
+              className="flex items-center gap-2"
+            >
+              {exportingKind === kind ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {exportingKind === kind
+                ? t('settings.dataManagement.exporting', 'Preparing...')
+                : kind === 'doses'
+                  ? t(
+                      'settings.dataManagement.medication.dosesButton',
+                      'Export my doses (CSV)'
+                    )
+                  : t(
+                      'settings.dataManagement.medication.labsButton',
+                      'Export my lab results (CSV)'
+                    )}
+            </Button>
+          ))}
         </div>
       </div>
 

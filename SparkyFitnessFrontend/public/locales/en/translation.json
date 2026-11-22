@@ -3257,6 +3257,14 @@
       "delimiterPlaceholder": "Delimiter",
       "semicolon": "Semicolon (;)",
       "comma": "Comma (,)",
+      "medication": {
+        "title": "Medication and lab records",
+        "description": "Download every recorded dose and injection, or every lab result, as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule.",
+        "dosesButton": "Export my doses (CSV)",
+        "labsButton": "Export my lab results (CSV)",
+        "dosesDone": "Your doses have been exported.",
+        "labsDone": "Your lab results have been exported."
+      },
       "exportButton": "Export my diary (CSV)",
       "exporting": "Preparing...",
       "exportSuccess": "Export successful",

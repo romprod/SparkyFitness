@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import {
   createManualLabPanelBodySchema,
   parseLabValue,
+  type LabExportRecord,
 } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
 import type {
@@ -201,6 +202,32 @@ export async function listLabResults(
       params
     );
     return result.rows.map(mapRowToResult);
+  } finally {
+    client.release();
+  }
+}
+
+/** Every lab result with its marker named, newest first, for the CSV download. */
+export async function listLabExportRecords(
+  userId: string,
+  authenticatedUserId?: string
+): Promise<LabExportRecord[]> {
+  const client = await getClient(userId, authenticatedUserId);
+  try {
+    const result = await client.query(
+      `SELECT r.entry_date::text AS entry_date,
+              COALESCE(r.lab_name, rep.lab_name) AS lab_name,
+              r.marker_key, mk.name AS custom_marker_name,
+              r.value_numeric, r.value_text, r.unit,
+              r.ref_range_low, r.ref_range_high, r.source, r.notes
+         FROM lab_results r
+         LEFT JOIN lab_markers mk ON mk.id=r.custom_marker_id AND mk.user_id=r.user_id
+         LEFT JOIN lab_reports rep ON rep.id=r.report_id AND rep.user_id=r.user_id
+        WHERE r.user_id=$1
+        ORDER BY r.entry_date DESC, r.created_at DESC`,
+      [userId]
+    );
+    return result.rows as LabExportRecord[];
   } finally {
     client.release();
   }

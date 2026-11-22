@@ -17,6 +17,7 @@ vi.mock('../models/labResultRepository.js', () => ({
   updateLabMarker: vi.fn(),
   deleteLabMarker: vi.fn(),
   listLabResults: vi.fn(),
+  listLabExportRecords: vi.fn(),
   listLatestLabResults: vi.fn(),
   getLabResultById: vi.fn(),
   createLabResult: vi.fn(),
@@ -49,6 +50,10 @@ vi.mock('../middleware/checkPermissionMiddleware.js', () => ({
       ) =>
         next()
   ),
+}));
+
+vi.mock('../utils/timezoneLoader.js', () => ({
+  loadUserTimezone: vi.fn(async () => 'Europe/London'),
 }));
 
 vi.mock('../middleware/onBehalfOfMiddleware.js', () => ({
@@ -325,6 +330,41 @@ describe('Lab result routes (v2)', () => {
         `/api/v2/lab-results/entries/${ID}`
       );
       expect(res.statusCode).toBe(200);
+    });
+  });
+
+  describe('CSV download', () => {
+    it('serves every result as a private CSV with the marker named', async () => {
+      vi.mocked(labRepo.listLabExportRecords).mockResolvedValue([
+        {
+          entry_date: '2026-11-01',
+          lab_name: 'Synthetic Lab',
+          marker_key: 'hba1c',
+          custom_marker_name: null,
+          value_numeric: 6.1,
+          value_text: null,
+          unit: '%',
+          ref_range_low: 4,
+          ref_range_high: 5.6,
+          source: 'report',
+          notes: null,
+        },
+      ]);
+      const response = await request(app).get('/api/v2/lab-results/export');
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toContain('text/csv');
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['content-disposition']).toMatch(
+        /^attachment; filename="lab-results-\d{4}-\d{2}-\d{2}\.csv"$/
+      );
+      expect(response.text).toBe(
+        'collected_date,lab,marker,value,unit,reference_low,reference_high,flag,source,notes\r\n' +
+          '2026-11-01,Synthetic Lab,HbA1c,6.1,%,4,5.6,high,report,\r\n'
+      );
+      expect(labRepo.listLabExportRecords).toHaveBeenCalledWith(
+        'test-user-id',
+        'test-user-id'
+      );
     });
   });
 

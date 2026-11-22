@@ -2,18 +2,23 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
+  LAB_EXPORT_HEADERS,
   LAB_MARKER_PRESETS,
   createLabMarkerBodySchema,
   createManualLabPanelBodySchema,
   createLabResultBodySchema,
   importLabReportBodySchema,
+  labExportRows,
   labResultListQuerySchema,
+  toCsv,
   updateLabMarkerBodySchema,
   updateLabResultBodySchema,
 } from '@workspace/shared';
 import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
+import { loadUserTimezone } from '../../utils/timezoneLoader.js';
+import { sendCsvDownload } from '../../utils/csvResponse.js';
 import {
   createLabMarker,
   createManualLabPanel,
@@ -26,6 +31,7 @@ import {
   deleteResultsForMarkerKey,
   getLabResultById,
   importLabReport,
+  listLabExportRecords,
   listLabMarkers,
   listLatestLabPanels,
   listLabResults,
@@ -813,6 +819,43 @@ router.delete('/entries', async (req, res, next) => {
       authenticatedUserId
     );
     res.json({ results });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /v2/lab-results/export:
+ *   get:
+ *     summary: Download every lab result as CSV
+ *     tags: [Wellness & Metrics]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: A CSV file, newest result first
+ *         content:
+ *           text/csv:
+ *             schema:
+ *               type: string
+ *       403:
+ *         description: Missing check-in permission
+ */
+router.get('/export', async (req, res, next) => {
+  try {
+    const { targetUserId, authenticatedUserId } = actingUsers(req);
+    const timezone = await loadUserTimezone(targetUserId);
+    const records = await listLabExportRecords(
+      targetUserId,
+      authenticatedUserId
+    );
+    sendCsvDownload(
+      res,
+      'lab-results',
+      timezone,
+      toCsv(LAB_EXPORT_HEADERS, labExportRows(records))
+    );
   } catch (error) {
     next(error);
   }
