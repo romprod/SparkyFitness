@@ -237,6 +237,7 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     lab_markers: 'checkin',
     lab_reports: 'checkin',
     lab_results: 'checkin',
+    body_comp_scans: 'checkin',
     mindfulness_sessions: 'checkin',
     mood_entries: 'checkin',
     oral_care_sessions: 'checkin',

@@ -47,6 +47,11 @@ it.each([
   ['Export my RMR tests (CSV)', 'rmr', 'rmr-tests-2026-11-22.csv'],
   ['Export my wearable data (CSV)', 'wearable', 'wearable-2026-11-22.csv'],
   ['Export my journal (CSV)', 'journal', 'journal-2026-11-22.csv'],
+  [
+    'Export my body composition (CSV)',
+    'bodycomp',
+    'body-composition-2026-11-22.csv',
+  ],
 ] as const)(
   '%s downloads the CSV under a dated name',
   async (label, kind, file) => {

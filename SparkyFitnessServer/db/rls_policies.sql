@@ -31,6 +31,7 @@ BEGIN
     'lab_results',
     'lab_reports',
     'metabolic_tests',
+    'body_comp_scans',
     'exercise_entries',
     'exercise_entry_sets',
     'exercise_entry_activity_details',
@@ -879,6 +880,7 @@ SELECT create_checkin_policy('oral_care_sessions');
 SELECT create_checkin_policy('lab_markers');
 SELECT create_checkin_policy('lab_results');
 SELECT create_checkin_policy('metabolic_tests');
+SELECT create_checkin_policy('body_comp_scans');
 SELECT create_checkin_policy('lab_reports');
 
 -- Mood display preferences: personal picker config, owner-only.

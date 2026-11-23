@@ -36,6 +36,7 @@ const HEALTH_EXPORTS: {
   { kind: 'rmr', file: 'rmr-tests' },
   { kind: 'wearable', file: 'wearable' },
   { kind: 'journal', file: 'journal' },
+  { kind: 'bodycomp', file: 'body-composition' },
 ];
 
 export const DataManagementSettings = () => {
@@ -140,10 +141,15 @@ export const DataManagementSettings = () => {
                       'settings.dataManagement.medication.wearableDone',
                       'Your wearable data has been exported.'
                     )
-                  : t(
-                      'settings.dataManagement.medication.journalDone',
-                      'Your journal has been exported.'
-                    ),
+                  : kind === 'journal'
+                    ? t(
+                        'settings.dataManagement.medication.journalDone',
+                        'Your journal has been exported.'
+                      )
+                    : t(
+                        'settings.dataManagement.medication.bodycompDone',
+                        'Your body composition scans have been exported.'
+                      ),
       });
     } catch (error) {
       console.error('Error exporting medication data:', error);
@@ -229,7 +235,7 @@ export const DataManagementSettings = () => {
         <p className="text-sm text-muted-foreground">
           {t(
             'settings.dataManagement.medication.description',
-            "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, or your daily journal as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule; a dose of a blend is followed by a derived row for each compound in it. The journal holds weight, mood, energy, focus, sleep, water and notes."
+            "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, your daily journal, or your DEXA body composition scans as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule; a dose of a blend is followed by a derived row for each compound in it. The journal holds weight, mood, energy, focus, sleep, water and notes."
           )}
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -268,10 +274,15 @@ export const DataManagementSettings = () => {
                             'settings.dataManagement.medication.wearableButton',
                             'Export my wearable data (CSV)'
                           )
-                        : t(
-                            'settings.dataManagement.medication.journalButton',
-                            'Export my journal (CSV)'
-                          )}
+                        : kind === 'journal'
+                          ? t(
+                              'settings.dataManagement.medication.journalButton',
+                              'Export my journal (CSV)'
+                            )
+                          : t(
+                              'settings.dataManagement.medication.bodycompButton',
+                              'Export my body composition (CSV)'
+                            )}
             </Button>
           ))}
         </div>

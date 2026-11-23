@@ -11,7 +11,18 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
-  usePreferences: () => ({ timezone: 'Europe/London' }),
+  usePreferences: () => ({
+    timezone: 'Europe/London',
+    formatDate: (day: string) => `UK:${day}`,
+  }),
+}));
+let mockScans: {
+  scanned_day: string;
+  total_lean_g: number;
+  total_bmc_g: number;
+}[] = [];
+jest.mock('@/hooks/Labs/useBodyCompScans', () => ({
+  useBodyCompScans: () => ({ data: mockScans }),
 }));
 const mockAdd = jest.fn();
 let mockPending = false;
@@ -40,6 +51,7 @@ const fillRequired = () => {
 };
 
 beforeEach(() => {
+  mockScans = [];
   jest.useFakeTimers({
     doNotFake: [
       'setTimeout',
@@ -268,4 +280,41 @@ it('disables saving while a save is under way', () => {
   mockPending = true;
   render(<MetabolicTestForm onSaved={onSaved} />);
   expect(screen.getByRole('button', { name: /Saving/ })).toBeDisabled();
+});
+
+describe('fat-free mass from a scan', () => {
+  it('offers the fat-free mass of the scan closest to the test day, and fills it in', () => {
+    mockScans = [
+      { scanned_day: '2026-01-05', total_lean_g: 50000, total_bmc_g: 2500 },
+      { scanned_day: '2026-11-02', total_lean_g: 60000, total_bmc_g: 3000 },
+    ];
+    render(<MetabolicTestForm onSaved={onSaved} />);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Use the fat-free mass from the UK:2026-11-02 scan (63.0 kg)',
+      })
+    );
+    expect(screen.getByLabelText(/Fat-free mass/)).toHaveValue('63');
+  });
+
+  it('follows the test date when it is changed', () => {
+    mockScans = [
+      { scanned_day: '2026-01-05', total_lean_g: 50000, total_bmc_g: 2500 },
+      { scanned_day: '2026-11-02', total_lean_g: 60000, total_bmc_g: 3000 },
+    ];
+    render(<MetabolicTestForm onSaved={onSaved} />);
+    fill(/Test date/, '2026-01-20');
+    expect(
+      screen.getByRole('button', {
+        name: 'Use the fat-free mass from the UK:2026-01-05 scan (52.5 kg)',
+      })
+    ).toBeInTheDocument();
+  });
+
+  it('offers nothing without a scan', () => {
+    render(<MetabolicTestForm onSaved={onSaved} />);
+    expect(
+      screen.queryByRole('button', { name: /Use the fat-free mass/ })
+    ).not.toBeInTheDocument();
+  });
 });

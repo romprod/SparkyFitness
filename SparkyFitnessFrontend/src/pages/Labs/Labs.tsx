@@ -47,6 +47,7 @@ import LabComparison from './LabComparison';
 import LabPanelForm from './LabPanelForm';
 import LabPanelHistory from './LabPanelHistory';
 import MetabolicTestsCard from './MetabolicTestsCard';
+import BodyCompScansCard from './BodyCompScansCard';
 import LabMarkerChart from './LabMarkerChart';
 import LabResultDialog from './LabResultDialog';
 import { formatLabRange, labResultText } from './labFormat';
@@ -444,6 +445,8 @@ const Labs = () => {
         isLoading={panels.isLoading || customMarkers.isLoading}
         isError={panels.isError || customMarkers.isError}
       />
+
+      <BodyCompScansCard />
 
       <MetabolicTestsCard />
 

@@ -19,6 +19,10 @@ jest.mock('@/pages/Labs/MetabolicTestsCard', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/pages/Labs/BodyCompScansCard', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 let mockActiveUserId = 'u1';
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'u1', activeUserId: mockActiveUserId } }),

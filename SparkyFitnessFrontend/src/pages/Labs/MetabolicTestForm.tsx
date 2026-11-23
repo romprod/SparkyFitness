@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useAddMetabolicTestMutation } from '@/hooks/Labs/useMetabolicTests';
+import { useBodyCompScans } from '@/hooks/Labs/useBodyCompScans';
 
 type Answer = '' | 'yes' | 'no';
 const SELECT_CLASS =
@@ -36,8 +37,9 @@ export default function MetabolicTestForm({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
-  const { timezone } = usePreferences();
+  const { timezone, formatDate } = usePreferences();
   const add = useAddMetabolicTestMutation();
+  const scans = useBodyCompScans().data;
   const [method, setMethod] = useState<MetabolicTestMethod>('ic_vo2_only');
   const [sex, setSex] = useState('');
   const [day, setDay] = useState(() => todayInZone(timezone));
@@ -50,6 +52,12 @@ export default function MetabolicTestForm({
   const setField = (key: string, value: string) =>
     setText((current) => ({ ...current, [key]: value }));
   const answer = (key: string): Answer => prep[key] ?? '';
+  // The scan taken closest to the test, to fill in the fat-free mass the equations built on it need.
+  const nearestScan = [...(scans ?? [])].sort(
+    (x, y) =>
+      Math.abs(Date.parse(x.scanned_day) - Date.parse(day)) -
+      Math.abs(Date.parse(y.scanned_day) - Date.parse(day))
+  )[0];
 
   const onMethod = (next: MetabolicTestMethod) => {
     setMethod(next);
@@ -389,6 +397,38 @@ export default function MetabolicTestForm({
           'Fat-free mass is optional, from a body scan; the equations that use it are shown only when it is entered.'
         )}
       </p>
+      {nearestScan && (
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="-mt-3 h-auto p-0 text-xs"
+          onClick={() =>
+            setField(
+              'fatFreeMassKg',
+              String(
+                Math.round(
+                  ((nearestScan.total_lean_g + nearestScan.total_bmc_g) /
+                    1000) *
+                    10
+                ) / 10
+              )
+            )
+          }
+        >
+          {t(
+            'labs.metabolic.useScanFfm',
+            'Use the fat-free mass from the {{date}} scan ({{kg}} kg)',
+            {
+              date: formatDate(nearestScan.scanned_day),
+              kg: (
+                (nearestScan.total_lean_g + nearestScan.total_bmc_g) /
+                1000
+              ).toFixed(1),
+            }
+          )}
+        </Button>
+      )}
 
       {section(
         t('labs.metabolic.sectionPrinted', 'Clinic-printed prediction'),
