@@ -402,6 +402,7 @@ export * from './schemas/api/LifeEvents.api.zod.ts';
 export * from './utils/lifeEvents.ts';
 export * from './schemas/api/MetabolicTests.api.zod.ts';
 export * from './utils/rmr.ts';
+export * from './utils/healthExports.ts';
 export * from './schemas/api/MedicationReminders.api.zod.ts';
 export * from './utils/labComparison.ts';
 export * from './medications/administration.ts';

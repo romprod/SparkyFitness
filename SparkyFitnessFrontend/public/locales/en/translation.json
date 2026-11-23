@@ -3395,14 +3395,18 @@
       "semicolon": "Semicolon (;)",
       "comma": "Comma (,)",
       "medication": {
-        "title": "Medication and lab records",
-        "description": "Download every recorded dose and injection, every lab result, or every resting metabolic rate test as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule.",
+        "title": "Medication, lab and daily records",
+        "description": "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, or your daily journal as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule. The journal holds weight, mood, energy, focus, sleep, water and notes.",
         "dosesButton": "Export my doses (CSV)",
         "labsButton": "Export my lab results (CSV)",
         "rmrButton": "Export my RMR tests (CSV)",
         "dosesDone": "Your doses have been exported.",
         "labsDone": "Your lab results have been exported.",
-        "rmrDone": "Your RMR tests have been exported."
+        "rmrDone": "Your RMR tests have been exported.",
+        "wearableButton": "Export my wearable data (CSV)",
+        "wearableDone": "Your wearable data has been exported.",
+        "journalButton": "Export my journal (CSV)",
+        "journalDone": "Your journal has been exported."
       },
       "exportButton": "Export my diary (CSV)",
       "exporting": "Preparing...",

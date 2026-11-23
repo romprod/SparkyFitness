@@ -45,6 +45,8 @@ it.each([
   ['Export my doses (CSV)', 'doses', 'doses-2026-11-22.csv'],
   ['Export my lab results (CSV)', 'labs', 'lab-results-2026-11-22.csv'],
   ['Export my RMR tests (CSV)', 'rmr', 'rmr-tests-2026-11-22.csv'],
+  ['Export my wearable data (CSV)', 'wearable', 'wearable-2026-11-22.csv'],
+  ['Export my journal (CSV)', 'journal', 'journal-2026-11-22.csv'],
 ] as const)(
   '%s downloads the CSV under a dated name',
   async (label, kind, file) => {
@@ -90,4 +92,29 @@ it('blocks a second download while one is being prepared', async () => {
   expect(labs).toBeDisabled();
   release(new Blob(['x']));
   await waitFor(() => expect(labs).toBeEnabled());
+});
+
+it('says what was exported in the message', async () => {
+  mockExport.mockResolvedValue(new Blob(['x']));
+  render(<DataManagementSettings />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Export my wearable data (CSV)' })
+  );
+  await waitFor(() =>
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'Your wearable data has been exported.',
+      })
+    )
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Export my journal (CSV)' })
+  );
+  await waitFor(() =>
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'Your journal has been exported.',
+      })
+    )
+  );
 });

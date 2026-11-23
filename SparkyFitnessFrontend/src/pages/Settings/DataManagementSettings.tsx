@@ -26,6 +26,18 @@ import {
 
 import { prettifySource } from '@/utils/sourceLabels';
 
+/** The CSV downloads of health records: the file's name, the button and the message when saved. */
+const HEALTH_EXPORTS: {
+  kind: MedicationExportKind;
+  file: string;
+}[] = [
+  { kind: 'doses', file: 'doses' },
+  { kind: 'labs', file: 'lab-results' },
+  { kind: 'rmr', file: 'rmr-tests' },
+  { kind: 'wearable', file: 'wearable' },
+  { kind: 'journal', file: 'journal' },
+];
+
 export const DataManagementSettings = () => {
   const { t, i18n } = useTranslation();
   const [delimiter, setDelimiter] = useState<string>(';');
@@ -103,7 +115,7 @@ export const DataManagementSettings = () => {
       const blob = await exportMedicationData(kind);
       saveBlobAs(
         blob,
-        `${kind === 'doses' ? 'doses' : kind === 'labs' ? 'lab-results' : 'rmr-tests'}-${todayInZone(timezone)}.csv`
+        `${HEALTH_EXPORTS.find((item) => item.kind === kind)?.file ?? kind}-${todayInZone(timezone)}.csv`
       );
       toast({
         title: t('settings.dataManagement.exportSuccess', 'Export successful'),
@@ -118,10 +130,20 @@ export const DataManagementSettings = () => {
                   'settings.dataManagement.medication.labsDone',
                   'Your lab results have been exported.'
                 )
-              : t(
-                  'settings.dataManagement.medication.rmrDone',
-                  'Your RMR tests have been exported.'
-                ),
+              : kind === 'rmr'
+                ? t(
+                    'settings.dataManagement.medication.rmrDone',
+                    'Your RMR tests have been exported.'
+                  )
+                : kind === 'wearable'
+                  ? t(
+                      'settings.dataManagement.medication.wearableDone',
+                      'Your wearable data has been exported.'
+                    )
+                  : t(
+                      'settings.dataManagement.medication.journalDone',
+                      'Your journal has been exported.'
+                    ),
       });
     } catch (error) {
       console.error('Error exporting medication data:', error);
@@ -201,17 +223,17 @@ export const DataManagementSettings = () => {
         <h3 className="text-lg font-medium">
           {t(
             'settings.dataManagement.medication.title',
-            'Medication and lab records'
+            'Medication, lab and daily records'
           )}
         </h3>
         <p className="text-sm text-muted-foreground">
           {t(
             'settings.dataManagement.medication.description',
-            'Download every recorded dose and injection, every lab result, or every resting metabolic rate test as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule.'
+            "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, or your daily journal as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule. The journal holds weight, mood, energy, focus, sleep, water and notes."
           )}
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          {(['doses', 'labs', 'rmr'] as const).map((kind) => (
+          {HEALTH_EXPORTS.map(({ kind }) => (
             <Button
               key={kind}
               variant="outline"
@@ -236,10 +258,20 @@ export const DataManagementSettings = () => {
                         'settings.dataManagement.medication.labsButton',
                         'Export my lab results (CSV)'
                       )
-                    : t(
-                        'settings.dataManagement.medication.rmrButton',
-                        'Export my RMR tests (CSV)'
-                      )}
+                    : kind === 'rmr'
+                      ? t(
+                          'settings.dataManagement.medication.rmrButton',
+                          'Export my RMR tests (CSV)'
+                        )
+                      : kind === 'wearable'
+                        ? t(
+                            'settings.dataManagement.medication.wearableButton',
+                            'Export my wearable data (CSV)'
+                          )
+                        : t(
+                            'settings.dataManagement.medication.journalButton',
+                            'Export my journal (CSV)'
+                          )}
             </Button>
           ))}
         </div>

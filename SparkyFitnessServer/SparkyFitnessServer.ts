@@ -108,6 +108,7 @@ import medicationReminderRoutesV2 from './routes/v2/medicationReminderRoutes.js'
 import medicationStackRoutesV2 from './routes/v2/medicationStackRoutes.js';
 import medicationBlendRoutesV2 from './routes/v2/medicationBlendRoutes.js';
 import medicationExportRoutesV2 from './routes/v2/medicationExportRoutes.js';
+import healthExportRoutesV2 from './routes/v2/healthExportRoutes.js';
 import medicationInsightRoutesV2 from './routes/v2/medicationInsightRoutes.js';
 import medicationWellnessRoutesV2 from './routes/v2/medicationWellnessRoutes.js';
 import lifeEventRoutesV2 from './routes/v2/lifeEventRoutes.js';
@@ -885,6 +886,7 @@ app.use('/api/v2/medication-reminders', medicationReminderRoutesV2);
 app.use('/api/v2/medication-stacks', medicationStackRoutesV2);
 app.use('/api/v2/medication-blends', medicationBlendRoutesV2);
 app.use('/api/v2/medication-exports', medicationExportRoutesV2);
+app.use('/api/v2/health-exports', healthExportRoutesV2);
 app.use('/api/v2/medication-insights', medicationInsightRoutesV2);
 app.use('/api/v2/medication-wellness', medicationWellnessRoutesV2);
 app.use('/api/v2/life-events', lifeEventRoutesV2);
