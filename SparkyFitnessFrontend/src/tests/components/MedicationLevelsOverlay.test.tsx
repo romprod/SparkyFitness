@@ -5,10 +5,27 @@ import type { Medication } from '@/types/medications';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
-      fallback.replace(/{{(\w+)}}/g, (_m, key: string) =>
-        String(values?.[key] ?? '')
-      ),
+    t: (
+      _key: string,
+      fallbackOrOptions: string | Record<string, unknown>,
+      values?: Record<string, unknown>
+    ) => {
+      // Either t(key, fallback, values) or t(key, { defaultValue, defaultValue_other, count }).
+      const options =
+        typeof fallbackOrOptions === 'string' ? values : fallbackOrOptions;
+      const text =
+        typeof fallbackOrOptions === 'string'
+          ? fallbackOrOptions
+          : String(
+              (options?.['count'] === 1
+                ? options['defaultValue']
+                : (options?.['defaultValue_other'] ??
+                  options?.['defaultValue'])) ?? ''
+            );
+      return text.replace(/{{(\w+)}}/g, (_m, key: string) =>
+        String(options?.[key] ?? '')
+      );
+    },
     i18n: { language: 'en' },
   }),
   initReactI18next: { type: '3rdParty', init: jest.fn() },
@@ -50,7 +67,18 @@ jest.mock('recharts', () => ({
   XAxis: () => null,
   YAxis: () => null,
   Tooltip: () => null,
-  ReferenceLine: () => <i data-testid="levels-now" />,
+  ReferenceLine: ({
+    x,
+    strokeDasharray,
+  }: {
+    x: number;
+    strokeDasharray?: string;
+  }) => (
+    <i
+      data-testid={strokeDasharray ? 'levels-missed' : 'levels-now'}
+      data-x={x}
+    />
+  ),
 }));
 let mockInjections: Record<string, unknown[] | undefined> = {};
 const mockInjectionHook = jest.fn();
@@ -296,5 +324,57 @@ describe('injectables with no half-life', () => {
       }),
     ]);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('missed dose markers', () => {
+  const missedSlot = (id: string, days: number) =>
+    plannedSlot(id, days, { status: 'missed' });
+
+  it('marks planned doses of a drawn medication that were missed, once each, and says how many', () => {
+    mockWeeks = {
+      '2026-11-09': [missedSlot('reta', -12)],
+      '2026-11-16': [
+        missedSlot('reta', -2),
+        missedSlot('reta', -2),
+        plannedSlot('reta', -1, { status: 'taken' }),
+        missedSlot('other', -3),
+      ],
+    };
+    renderCard([reta, cagri]);
+    const marks = screen.getAllByTestId('levels-missed');
+    expect(marks.map((m) => Number(m.getAttribute('data-x')))).toEqual([
+      now - 12 * DAY,
+      now - 2 * DAY,
+    ]);
+    expect(
+      screen.getByText(
+        'Red dotted lines mark 2 planned doses that were missed in this window.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing when none was missed or the missed dose is outside the window', () => {
+    mockWeeks = { '2026-11-02': [missedSlot('reta', -20)] };
+    renderCard([reta]);
+    expect(screen.queryByTestId('levels-missed')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Red dotted lines/)).not.toBeInTheDocument();
+  });
+
+  it('reads earlier weeks only as far back as the window reaches', () => {
+    renderCard([reta]);
+    // Today is Sunday 22 Nov, in the week of 16 Nov: a 14-day window reaches 8 Nov, so two weeks back.
+    expect(mockWeek).toHaveBeenCalledWith('2026-11-09', true);
+    expect(mockWeek).toHaveBeenCalledWith('2026-11-02', true);
+    expect(mockWeek).toHaveBeenCalledWith('2026-10-26', false);
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+    expect(mockWeek).toHaveBeenCalledWith('2026-11-09', true);
+    fireEvent.click(screen.getByRole('button', { name: '30 days' }));
+    expect(mockWeek).toHaveBeenCalledWith('2026-10-19', true);
+  });
+
+  it('reads no earlier weeks when nothing is drawn', () => {
+    renderCard([med('x', 'Unknown peptide')]);
+    expect(mockWeek).not.toHaveBeenCalledWith(expect.anything(), true);
   });
 });

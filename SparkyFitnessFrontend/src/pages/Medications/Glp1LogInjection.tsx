@@ -14,6 +14,8 @@ import {
   isDeviceEligibleForRoute,
   todayInZone,
   intervalWarning,
+  lastDoseDecay,
+  medicationHalfLifeHours,
   readDosePolicy,
 } from '@workspace/shared';
 import { usePreferences } from '@/contexts/PreferencesContext';
@@ -127,11 +129,21 @@ export default function Glp1LogInjection({
   const logMutation = useLogInjectionMutation(medId);
   // Warn, as Pitstop does, when the last logged injection is inside the minimum interval.
   const recentInjections = useMedicationInjections(medId);
+  const lastTaken = (recentInjections.data ?? [])
+    .map((entry) => entry.injected_at)
+    .filter((value): value is string => !!value);
   const tooSoon = intervalWarning({
-    takenAt: (recentInjections.data ?? [])
-      .map((entry) => entry.injected_at)
-      .filter((value): value is string => !!value),
+    takenAt: lastTaken,
     minHours: readDosePolicy(med.custom_fields).min_interval_hours,
+    now: new Date(),
+  });
+  // How much of the last dose is probably still active, from the medication's half-life.
+  const stillActive = lastDoseDecay({
+    takenAt: lastTaken,
+    halfLifeHours: medicationHalfLifeHours({
+      name: med.name,
+      custom_fields: med.custom_fields as Record<string, unknown> | null,
+    }),
     now: new Date(),
   });
 
@@ -817,6 +829,31 @@ export default function Glp1LogInjection({
               'Last dose {{hours}} h ago. Your minimum interval is {{min}} h. You can still log it.',
               { hours: tooSoon.hours_since, min: tooSoon.min_hours }
             )}
+          </p>
+        )}
+        {stillActive && (
+          <p className="text-xs text-muted-foreground">
+            {(() => {
+              const since =
+                stillActive.hours_since < 48
+                  ? t('medications.glp1.hoursShort', '{{count}} h', {
+                      count: Math.round(stillActive.hours_since),
+                    })
+                  : t('medications.glp1.daysShort', '{{count}} days', {
+                      count: Math.round(stillActive.hours_since / 2.4) / 10,
+                    });
+              return stillActive.percent < 1
+                ? t(
+                    'medications.glp1.stillActiveTiny',
+                    'Last dose {{since}} ago · under 1% still active, estimated from the half-life.',
+                    { since }
+                  )
+                : t(
+                    'medications.glp1.stillActive',
+                    'Last dose {{since}} ago · about {{percent}}% still active, estimated from the half-life.',
+                    { since, percent: stillActive.percent }
+                  );
+            })()}
           </p>
         )}
         <Button

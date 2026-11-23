@@ -635,7 +635,11 @@
       "modelParametersUnavailable": "{{medication}} has no available model parameters.",
       "modelEmpty": "No modelled curve is available for {{medication}}.",
       "modelSettingsHint": "Review the medication’s GLP-1 model settings in Medications → Cabinet.",
-      "modelHistoryLoadError": "Could not load logged doses for this model. Try again later."
+      "modelHistoryLoadError": "Could not load logged doses for this model. Try again later.",
+      "stillActive": "Last dose {{since}} ago · about {{percent}}% still active, estimated from the half-life.",
+      "hoursShort": "{{count}} h",
+      "daysShort": "{{count}} days",
+      "stillActiveTiny": "Last dose {{since}} ago · under 1% still active, estimated from the half-life."
     },
     "types": {
       "pill": "pill",
@@ -1833,7 +1837,9 @@
       "note": "A model from published half-lives, not a measured blood level. Each medication is scaled to its own peak in this window, so lines compare timing, not amounts. Solid: doses taken. Dashed: ahead of now, {{ahead}}.",
       "aheadPlanned": "from doses taken plus doses planned",
       "aheadTaken": "from doses already taken",
-      "noCurve": "No curve for {{names}}: add its half-life when editing the medication to draw it."
+      "noCurve": "No curve for {{names}}: add its half-life when editing the medication to draw it.",
+      "missedNote_other": "Red dotted lines mark {{count}} planned doses that were missed in this window.",
+      "missedNote_one": "Red dotted lines mark {{count}} planned dose that was missed in this window."
     },
     "lifeEvents": {
       "title": "Illness and travel windows",
@@ -2146,7 +2152,8 @@
     "minInterval": {
       "title": "Log {{name}} sooner than planned?",
       "body": "The last dose was {{hours}} h ago and the minimum interval is {{min}} h. It is up at {{time}}.",
-      "confirm": "Log anyway"
+      "confirm": "Log anyway",
+      "stillActive": "About {{percent}}% of it is probably still active."
     },
     "missedPolicy": {
       "skip": "Overdue by {{hours}} h. You set this medication to skip a missed dose.",

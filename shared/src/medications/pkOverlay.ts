@@ -80,6 +80,15 @@ export function resolveMedicationPkProfile(med: {
   return { halfLifeDays: profile.halfLifeDays, tMaxDays: profile.tMaxDays };
 }
 
+/** A medication's half-life in hours, from its own figure or its GLP-1 profile; null when none. */
+export function medicationHalfLifeHours(med: {
+  name: string;
+  custom_fields?: Record<string, unknown> | null;
+}): number | null {
+  const profile = resolveMedicationPkProfile(med);
+  return profile ? profile.halfLifeDays * 24 : null;
+}
+
 export interface PkOverlayDose {
   at: Date | string;
   dose_mg: number;
@@ -195,4 +204,40 @@ export function buildPkOverlay(input: {
   return lines.sort(
     (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
   );
+}
+
+/** The slice of a planned dose the missed-dose markers read. */
+export interface PkMissedSlot {
+  medication_id: string | null;
+  status: string;
+  scheduled_for: string | null;
+}
+
+/**
+ * When planned doses of the given medications were missed within `window_days` before now, as
+ * epoch milliseconds, earliest first, one per instant. These mark where a level fell because a dose
+ * was not taken, as Pitstop's chart marks them. Doses still ahead are never missed.
+ */
+export function missedDoseTimes(input: {
+  slots: readonly PkMissedSlot[];
+  medication_ids: ReadonlySet<string>;
+  now: Date | string;
+  window_days: number;
+}): number[] {
+  const nowMs = new Date(input.now).getTime();
+  if (!Number.isFinite(nowMs) || !(input.window_days > 0)) return [];
+  const from = nowMs - input.window_days * DAY_MS;
+  const times = new Set<number>();
+  for (const slot of input.slots) {
+    if (
+      slot.status !== 'missed' ||
+      !slot.medication_id ||
+      !input.medication_ids.has(slot.medication_id) ||
+      !slot.scheduled_for
+    )
+      continue;
+    const at = Date.parse(slot.scheduled_for);
+    if (Number.isFinite(at) && at >= from && at <= nowMs) times.add(at);
+  }
+  return [...times].sort((a, b) => a - b);
 }

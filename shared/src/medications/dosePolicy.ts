@@ -85,6 +85,38 @@ export function intervalWarning(input: {
   };
 }
 
+export interface LastDoseDecay {
+  hours_since: number;
+  /** About how much of that dose is still active, 0 to 100, from a single half-life. */
+  percent: number;
+}
+
+/**
+ * About how much of the latest taken dose before `now` is still active, as Pitstop's log form
+ * estimates it: one exponential decay, 0.5 to the power of the hours since over the half-life. It
+ * is a rough guide from a published or typed half-life, not a measured level. Null with no
+ * half-life or no earlier dose.
+ */
+export function lastDoseDecay(input: {
+  takenAt: readonly string[];
+  halfLifeHours: number | null;
+  now: Date;
+}): LastDoseDecay | null {
+  if (!input.halfLifeHours || !(input.halfLifeHours > 0)) return null;
+  const nowMs = input.now.getTime();
+  let latest = -Infinity;
+  for (const iso of input.takenAt) {
+    const ms = Date.parse(iso);
+    if (Number.isFinite(ms) && ms <= nowMs && ms > latest) latest = ms;
+  }
+  if (latest === -Infinity) return null;
+  const hours = (nowMs - latest) / 3_600_000;
+  return {
+    hours_since: Math.round(hours * 10) / 10,
+    percent: Math.round(100 * 0.5 ** (hours / input.halfLifeHours)),
+  };
+}
+
 /** Whole hours a planned dose is overdue, or null when it is not yet due. */
 export function overdueHours(scheduledFor: string | null, now: Date) {
   if (!scheduledFor) return null;

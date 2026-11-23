@@ -42,6 +42,8 @@ import {
   type MedicationCourseAttributionInput,
   addDays,
   intervalWarning,
+  lastDoseDecay,
+  medicationHalfLifeHours,
   overdueHours,
   readDosePolicy,
   type IntervalWarning,
@@ -196,6 +198,8 @@ export default function TodayMedications({
   const [intervalGuard, setIntervalGuard] = useState<{
     name: string;
     warning: IntervalWarning;
+    /** About how much of the last dose is still active, when the half-life is known. */
+    activePercent: number | null;
     proceed: () => void;
   } | null>(null);
   const fetchInjections = useFetchMedicationInjections();
@@ -203,24 +207,38 @@ export default function TodayMedications({
     const { min_interval_hours } = readDosePolicy(med.custom_fields);
     if (!min_interval_hours || selectedDate !== today) return proceed();
     const check = (injected: string[]) => {
+      const takenAt = [
+        ...(intervalEntries.data ?? [])
+          .filter(
+            (e) =>
+              e.medication_id === med.id &&
+              (e.status === 'taken' || e.status === 'prn_taken')
+          )
+          .map((e) => e.taken_at),
+        ...injected,
+      ];
+      const now = new Date();
       const warning = intervalWarning({
-        takenAt: [
-          ...(intervalEntries.data ?? [])
-            .filter(
-              (e) =>
-                e.medication_id === med.id &&
-                (e.status === 'taken' || e.status === 'prn_taken')
-            )
-            .map((e) => e.taken_at),
-          ...injected,
-        ],
+        takenAt,
         minHours: min_interval_hours,
-        now: new Date(),
+        now,
       });
       if (!warning) return proceed();
       setIntervalGuard({
         name: med.display_name || med.name,
         warning,
+        activePercent:
+          lastDoseDecay({
+            takenAt,
+            halfLifeHours: medicationHalfLifeHours({
+              name: med.name,
+              custom_fields: med.custom_fields as Record<
+                string,
+                unknown
+              > | null,
+            }),
+            now,
+          })?.percent ?? null,
         proceed,
       });
     };
@@ -724,15 +742,27 @@ export default function TodayMedications({
           'Log {{name}} sooner than planned?',
           { name: intervalGuard?.name ?? '' }
         )}
-        description={t(
-          'medications.minInterval.body',
-          'The last dose was {{hours}} h ago and the minimum interval is {{min}} h. It is up at {{time}}.',
-          {
-            hours: intervalGuard?.warning.hours_since ?? 0,
-            min: intervalGuard?.warning.min_hours ?? 0,
-            time: intervalGuard ? formatTime(intervalGuard.warning.ok_at) : '',
-          }
-        )}
+        description={
+          t(
+            'medications.minInterval.body',
+            'The last dose was {{hours}} h ago and the minimum interval is {{min}} h. It is up at {{time}}.',
+            {
+              hours: intervalGuard?.warning.hours_since ?? 0,
+              min: intervalGuard?.warning.min_hours ?? 0,
+              time: intervalGuard
+                ? formatTime(intervalGuard.warning.ok_at)
+                : '',
+            }
+          ) +
+          (intervalGuard?.activePercent != null
+            ? ' ' +
+              t(
+                'medications.minInterval.stillActive',
+                'About {{percent}}% of it is probably still active.',
+                { percent: intervalGuard.activePercent }
+              )
+            : '')
+        }
         confirmLabel={t('medications.minInterval.confirm', 'Log anyway')}
         onConfirm={() => {
           const proceed = intervalGuard?.proceed;

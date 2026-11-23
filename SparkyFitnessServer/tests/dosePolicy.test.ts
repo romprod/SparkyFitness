@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   intervalWarning,
+  lastDoseDecay,
   overdueHours,
   readDosePolicy,
   readDefaultBudDays,
@@ -83,5 +84,55 @@ describe('readDefaultBudDays', () => {
     expect(readDefaultBudDays({})).toBeNull();
     expect(readDefaultBudDays({ default_bud_days: 0 })).toBeNull();
     expect(readDefaultBudDays({ default_bud_days: 'x' })).toBeNull();
+  });
+});
+
+describe('lastDoseDecay', () => {
+  const now = new Date('2026-11-23T12:00:00Z');
+  const ago = (hours: number) =>
+    new Date(now.getTime() - hours * 3_600_000).toISOString();
+
+  it('halves for each half-life since the latest taken dose', () => {
+    expect(
+      lastDoseDecay({ takenAt: [ago(168)], halfLifeHours: 168, now })
+    ).toEqual({ hours_since: 168, percent: 50 });
+    expect(
+      lastDoseDecay({ takenAt: [ago(84)], halfLifeHours: 168, now })
+    ).toEqual({ hours_since: 84, percent: 71 });
+    expect(
+      lastDoseDecay({ takenAt: [ago(0)], halfLifeHours: 168, now })
+    ).toEqual({ hours_since: 0, percent: 100 });
+  });
+
+  it('reads the latest dose, not an older one, and rounds the hours to a tenth', () => {
+    const out = lastDoseDecay({
+      takenAt: [ago(400), ago(25.04), ago(300)],
+      halfLifeHours: 24,
+      now,
+    });
+    expect(out).toEqual({ hours_since: 25, percent: 49 });
+  });
+
+  it('leaves almost nothing of a short half-life after days', () => {
+    expect(
+      lastDoseDecay({ takenAt: [ago(96)], halfLifeHours: 4, now })!.percent
+    ).toBe(0);
+  });
+
+  it('is null without a half-life, without an earlier dose, or with only future or invalid ones', () => {
+    expect(
+      lastDoseDecay({ takenAt: [ago(5)], halfLifeHours: null, now })
+    ).toBeNull();
+    expect(
+      lastDoseDecay({ takenAt: [ago(5)], halfLifeHours: 0, now })
+    ).toBeNull();
+    expect(lastDoseDecay({ takenAt: [], halfLifeHours: 24, now })).toBeNull();
+    expect(
+      lastDoseDecay({
+        takenAt: [ago(-3), 'not a date'],
+        halfLifeHours: 24,
+        now,
+      })
+    ).toBeNull();
   });
 });

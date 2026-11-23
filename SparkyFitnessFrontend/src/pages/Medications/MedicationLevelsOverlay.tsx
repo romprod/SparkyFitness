@@ -14,7 +14,9 @@ import {
 import {
   addDays,
   buildPkOverlay,
+  daysBetween,
   medicationWeekStart,
+  missedDoseTimes,
   resolveMedicationPkProfile,
   type PkOverlayDose,
   type PkProfile,
@@ -112,7 +114,33 @@ export default function MedicationLevelsOverlay({
     addDays(first, 28),
     enabled && weeksNeeded > 4
   );
+  // Planned doses already past in the window say which were missed. A week is read back only as
+  // far as the window reaches into it.
+  const weeksBack = Math.ceil((windowDays - daysBetween(first, today)) / 7);
+  const p1 = useMedicationLogWeek(
+    addDays(first, -7),
+    enabled && weeksBack >= 1
+  );
+  const p2 = useMedicationLogWeek(
+    addDays(first, -14),
+    enabled && weeksBack >= 2
+  );
+  const p3 = useMedicationLogWeek(
+    addDays(first, -21),
+    enabled && weeksBack >= 3
+  );
+  const p4 = useMedicationLogWeek(
+    addDays(first, -28),
+    enabled && weeksBack >= 4
+  );
+  const p5 = useMedicationLogWeek(
+    addDays(first, -35),
+    enabled && weeksBack >= 5
+  );
   const plannedSlots = [w0, w1, w2, w3, w4].flatMap(
+    (week) => week.data?.planned_slots ?? []
+  );
+  const pastSlots = [w0, p1, p2, p3, p4, p5].flatMap(
     (week) => week.data?.planned_slots ?? []
   );
 
@@ -142,6 +170,13 @@ export default function MedicationLevelsOverlay({
           : [];
       }),
     })),
+  });
+  // Where a planned dose of a drawn medication was missed, so a fall in a line has its reason.
+  const missed = missedDoseTimes({
+    slots: pastSlots,
+    medication_ids: new Set(lines.map((line) => line.id)),
+    now,
+    window_days: windowDays,
   });
   const noCurve =
     unmodelled.length > 0 ? (
@@ -286,6 +321,15 @@ export default function MedicationLevelsOverlay({
                   fontSize: 11,
                 }}
               />
+              {missed.map((time) => (
+                <ReferenceLine
+                  key={`missed-${time}`}
+                  x={time}
+                  stroke="#dc2626"
+                  strokeOpacity={0.7}
+                  strokeDasharray="2 3"
+                />
+              ))}
               {lines.map((line) => (
                 <Line
                   key={`${line.id}_taken`}
@@ -346,6 +390,17 @@ export default function MedicationLevelsOverlay({
             }
           )}
         </p>
+        {missed.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {t('medications.levels.missedNote', {
+              defaultValue:
+                'Red dotted lines mark {{count}} planned dose that was missed in this window.',
+              defaultValue_other:
+                'Red dotted lines mark {{count}} planned doses that were missed in this window.',
+              count: missed.length,
+            })}
+          </p>
+        )}
         {noCurve}
       </CardContent>
     </Card>

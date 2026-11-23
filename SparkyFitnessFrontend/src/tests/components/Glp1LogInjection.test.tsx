@@ -95,6 +95,7 @@ const syringe = {
 };
 const medication = {
   id: 'med',
+  name: 'Synthetic peptide',
   type_id: 'injection',
   dose_amount: 0.6,
   dose_unit: 'mg',
@@ -797,5 +798,53 @@ describe('a blend', () => {
     mockBlends = [{ ...blend, blend_medication_id: 'another' }];
     render(<Glp1LogInjection med={medication} />);
     expect(screen.queryByText(/↳/)).not.toBeInTheDocument();
+  });
+});
+
+describe('how much of the last dose is probably still active', () => {
+  const hoursAgo = (hours: number) => ({
+    injected_at: new Date(Date.now() - hours * 3_600_000).toISOString(),
+  });
+  const withHalfLife = (hours: number) => ({
+    ...medication,
+    custom_fields: { half_life_hours: hours },
+  });
+
+  it('says so in hours for a recent dose, from the half-life, whether or not it is too soon', () => {
+    mockInjections = [hoursAgo(24)];
+    render(<Glp1LogInjection med={withHalfLife(24)} />);
+    expect(
+      screen.getByText(
+        'Last dose 24 h ago · about 50% still active, estimated from the half-life.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('says so in days for an older dose', () => {
+    mockInjections = [hoursAgo(120)];
+    render(<Glp1LogInjection med={withHalfLife(168)} />);
+    expect(
+      screen.getByText(
+        'Last dose 5 days ago · about 61% still active, estimated from the half-life.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('reads under 1% instead of a bare zero', () => {
+    mockInjections = [hoursAgo(96)];
+    render(<Glp1LogInjection med={withHalfLife(4)} />);
+    expect(
+      screen.getByText(/Last dose 4 days ago · under 1% still active/)
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing without a half-life or without an earlier dose', () => {
+    mockInjections = [hoursAgo(24)];
+    const { unmount } = render(<Glp1LogInjection med={medication} />);
+    expect(screen.queryByText(/still active/)).not.toBeInTheDocument();
+    unmount();
+    mockInjections = [];
+    render(<Glp1LogInjection med={withHalfLife(24)} />);
+    expect(screen.queryByText(/still active/)).not.toBeInTheDocument();
   });
 });

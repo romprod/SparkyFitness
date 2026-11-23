@@ -3,6 +3,8 @@ import {
   buildPkOverlay,
   GENERIC_ABSORPTION_HOURS,
   MAX_HALF_LIFE_HOURS,
+  medicationHalfLifeHours,
+  missedDoseTimes,
   readHalfLifeHours,
   resolveMedicationPkProfile,
   type PkOverlaySeries,
@@ -278,5 +280,80 @@ describe('sampling a short half-life', () => {
     // The last dose was a day before now: six half-lives, so under 2% of a peak remains.
     expect(level(0)).toBeLessThan(0.05);
     expect(level(24)).toBeLessThan(0.001);
+  });
+});
+
+describe('medicationHalfLifeHours', () => {
+  it('reads the person’s own figure, a GLP-1 profile, or nothing', () => {
+    expect(
+      medicationHalfLifeHours({
+        name: 'BPC-157',
+        custom_fields: { half_life_hours: 4 },
+      })
+    ).toBe(4);
+    expect(medicationHalfLifeHours({ name: 'Semaglutide' })).toBe(168);
+    expect(medicationHalfLifeHours({ name: 'BPC-157' })).toBeNull();
+  });
+});
+
+describe('missed dose markers', () => {
+  const nowIso = '2026-11-23T12:00:00Z';
+  const ids = new Set(['reta']);
+  const slot = (over: Record<string, unknown> = {}) => ({
+    medication_id: 'reta',
+    status: 'missed',
+    scheduled_for: '2026-11-20T09:00:00Z',
+    ...over,
+  });
+  const marks = (slots: ReturnType<typeof slot>[], days = 14) =>
+    missedDoseTimes({
+      slots,
+      medication_ids: ids,
+      now: nowIso,
+      window_days: days,
+    });
+
+  it('lists missed planned doses of the drawn medications in the window, earliest first, once each', () => {
+    expect(
+      marks([
+        slot({ scheduled_for: '2026-11-20T09:00:00Z' }),
+        slot({ scheduled_for: '2026-11-13T09:00:00Z' }),
+        slot({ scheduled_for: '2026-11-20T09:00:00Z' }),
+      ])
+    ).toEqual([
+      Date.parse('2026-11-13T09:00:00Z'),
+      Date.parse('2026-11-20T09:00:00Z'),
+    ]);
+  });
+
+  it('leaves out other statuses, other medications, doses outside the window and ahead of now', () => {
+    expect(
+      marks([
+        slot({ status: 'taken' }),
+        slot({ status: 'planned' }),
+        slot({ status: 'skipped' }),
+        slot({ medication_id: 'other' }),
+        slot({ medication_id: null }),
+        slot({ scheduled_for: null }),
+        slot({ scheduled_for: '2026-11-01T09:00:00Z' }),
+        slot({ scheduled_for: '2026-11-24T09:00:00Z' }),
+        slot({ scheduled_for: 'soon' }),
+      ])
+    ).toEqual([]);
+    expect(
+      marks([slot({ scheduled_for: '2026-11-01T09:00:00Z' })], 30)
+    ).toHaveLength(1);
+  });
+
+  it('marks nothing for a bad clock or window', () => {
+    expect(
+      missedDoseTimes({
+        slots: [slot()],
+        medication_ids: ids,
+        now: 'x',
+        window_days: 14,
+      })
+    ).toEqual([]);
+    expect(marks([slot()], 0)).toEqual([]);
   });
 });

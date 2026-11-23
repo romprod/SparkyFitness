@@ -770,6 +770,25 @@ describe('minimum interval and missed-dose policy', () => {
     );
   });
 
+  it('adds how much of the last dose is probably still active when the half-life is known', () => {
+    mockIntervalEntries = takenAt('2026-12-31T12:00:00Z');
+    // Three hours after the last dose with a 12-hour half-life: a quarter of one, so 84% remains.
+    renderToday({ min_interval_hours: 24, half_life_hours: 12 });
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(
+      screen.getByText(
+        /The last dose was 3 h ago.* About 84% of it is probably still active\./
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about activity without a half-life', () => {
+    mockIntervalEntries = takenAt('2026-12-31T12:00:00Z');
+    renderToday({ min_interval_hours: 24 });
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(screen.queryByText(/probably still active/)).not.toBeInTheDocument();
+  });
+
   it("reads an injectable's last dose from its injections, which are stored apart", async () => {
     mockListInjections.mockResolvedValue([
       { injected_at: '2026-12-31T12:00:00Z' },
