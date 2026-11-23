@@ -22,6 +22,7 @@ import {
   useMetabolicTests,
 } from '@/hooks/Labs/useMetabolicTests';
 import MetabolicTestForm from './MetabolicTestForm';
+import LinkedDocuments from './LinkedDocuments';
 
 /**
  * Measured resting metabolic rate beside the usual prediction equations, as Pitstop's RMR panel
@@ -392,6 +393,9 @@ export default function MetabolicTestsCard() {
                         <Trash2 className="mr-1 h-3.5 w-3.5" />
                         {t('labs.metabolic.delete', 'Delete')}
                       </Button>
+                      <div className="basis-full">
+                        <LinkedDocuments metabolicTestId={test.id} />
+                      </div>
                     </li>
                   ))}
                 </ul>

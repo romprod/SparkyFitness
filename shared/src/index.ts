@@ -405,6 +405,7 @@ export * from './utils/rmr.ts';
 export * from './utils/healthExports.ts';
 export * from './schemas/api/BodyCompScans.api.zod.ts';
 export * from './utils/bodyComp.ts';
+export * from './schemas/api/HealthDocuments.api.zod.ts';
 export * from './schemas/api/MedicationReminders.api.zod.ts';
 export * from './utils/labComparison.ts';
 export * from './medications/administration.ts';

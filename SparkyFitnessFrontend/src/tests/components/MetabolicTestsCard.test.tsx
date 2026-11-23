@@ -20,6 +20,20 @@ jest.mock('react-i18next', () => ({
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({ formatDate: (day: string) => `UK:${day}` }),
 }));
+jest.mock('@/pages/Labs/LinkedDocuments', () => ({
+  __esModule: true,
+  default: ({
+    bodyCompScanId,
+    metabolicTestId,
+  }: {
+    bodyCompScanId?: string;
+    metabolicTestId?: string;
+  }) => (
+    <span data-testid="linked-documents">
+      {bodyCompScanId ?? metabolicTestId}
+    </span>
+  ),
+}));
 jest.mock('@/pages/Labs/MetabolicTestForm', () => ({
   __esModule: true,
   default: ({ onSaved }: { onSaved: () => void }) => (

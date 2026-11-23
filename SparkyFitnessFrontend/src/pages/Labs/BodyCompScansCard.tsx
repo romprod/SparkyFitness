@@ -35,6 +35,7 @@ import {
 import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
 import { useMedicationEntries } from '@/hooks/useMedications';
 import BodyCompScanForm from './BodyCompScanForm';
+import LinkedDocuments from './LinkedDocuments';
 
 const kg = (grams: number) => (grams / 1000).toFixed(1);
 const one = (n: number) => n.toFixed(1);
@@ -779,6 +780,7 @@ export default function BodyCompScansCard() {
                         {scan.notes}
                       </p>
                     )}
+                    <LinkedDocuments bodyCompScanId={scan.id} />
                     <Button
                       type="button"
                       variant="ghost"

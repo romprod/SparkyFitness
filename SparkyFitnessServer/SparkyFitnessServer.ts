@@ -114,6 +114,7 @@ import medicationWellnessRoutesV2 from './routes/v2/medicationWellnessRoutes.js'
 import lifeEventRoutesV2 from './routes/v2/lifeEventRoutes.js';
 import metabolicTestRoutesV2 from './routes/v2/metabolicTestRoutes.js';
 import bodyCompScanRoutesV2 from './routes/v2/bodyCompScanRoutes.js';
+import healthDocumentRoutesV2 from './routes/v2/healthDocumentRoutes.js';
 import symptomRoutesV2 from './routes/v2/symptomRoutes.js';
 import cycleRoutesV2 from './routes/v2/cycleRoutes.js';
 import pregnancyRoutesV2 from './routes/v2/pregnancyRoutes.js';
@@ -893,6 +894,7 @@ app.use('/api/v2/medication-wellness', medicationWellnessRoutesV2);
 app.use('/api/v2/life-events', lifeEventRoutesV2);
 app.use('/api/v2/metabolic-tests', metabolicTestRoutesV2);
 app.use('/api/v2/body-comp-scans', bodyCompScanRoutesV2);
+app.use('/api/v2/health-documents', healthDocumentRoutesV2);
 app.use('/api/v2/medication-prescriptions', medicationPrescriptionRoutes);
 app.use('/api/v2/symptoms', symptomRoutesV2);
 app.use('/api/v2/cycle', cycleRoutesV2);

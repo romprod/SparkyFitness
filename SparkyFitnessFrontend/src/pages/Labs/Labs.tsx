@@ -48,6 +48,7 @@ import LabPanelForm from './LabPanelForm';
 import LabPanelHistory from './LabPanelHistory';
 import MetabolicTestsCard from './MetabolicTestsCard';
 import BodyCompScansCard from './BodyCompScansCard';
+import HealthDocumentsCard from './HealthDocumentsCard';
 import LabMarkerChart from './LabMarkerChart';
 import LabResultDialog from './LabResultDialog';
 import { formatLabRange, labResultText } from './labFormat';
@@ -449,6 +450,8 @@ const Labs = () => {
       <BodyCompScansCard />
 
       <MetabolicTestsCard />
+
+      <HealthDocumentsCard />
 
       {(addOpen || editing) && (
         <LabResultDialog

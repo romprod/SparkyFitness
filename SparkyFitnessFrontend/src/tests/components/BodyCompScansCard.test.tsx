@@ -23,6 +23,20 @@ jest.mock('@/contexts/PreferencesContext', () => ({
     timezone: 'Europe/London',
   }),
 }));
+jest.mock('@/pages/Labs/LinkedDocuments', () => ({
+  __esModule: true,
+  default: ({
+    bodyCompScanId,
+    metabolicTestId,
+  }: {
+    bodyCompScanId?: string;
+    metabolicTestId?: string;
+  }) => (
+    <span data-testid="linked-documents">
+      {bodyCompScanId ?? metabolicTestId}
+    </span>
+  ),
+}));
 jest.mock('@/pages/Labs/BodyCompScanForm', () => ({
   __esModule: true,
   default: ({ onSaved }: { onSaved: () => void }) => (
