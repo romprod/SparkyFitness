@@ -2195,6 +2195,22 @@
         "coa": "Certificate of analysis",
         "assumed": "Assumed"
       }
+    },
+    "wellness": {
+      "title": "Recovery",
+      "garmin": "Garmin",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "sleep": "Sleep",
+      "restingHr": "Resting HR",
+      "bpm": "bpm",
+      "hrv": "HRV",
+      "ms": "ms",
+      "bodyBattery": "Body Battery",
+      "exercise": "Exercise",
+      "workout": "Workout",
+      "weight": "Weight",
+      "sevenDays": "7d"
     }
   },
   "nav": {

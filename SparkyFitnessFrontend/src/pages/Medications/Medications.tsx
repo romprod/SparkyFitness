@@ -65,6 +65,7 @@ import MedicationLogCalendar from './MedicationLogCalendar';
 import MedicationSmoothWeek from './MedicationSmoothWeek';
 import MedicationScheduleMove from './MedicationScheduleMove';
 import MedicationSupplyTile from './MedicationSupplyTile';
+import MedicationWellnessTile from './MedicationWellnessTile';
 import MedicationNextDoses from './MedicationNextDoses';
 import MedicationLevelsOverlay from './MedicationLevelsOverlay';
 import MedicationBlendCard from './MedicationBlendCard';
@@ -446,6 +447,7 @@ export default function Medications() {
         <>
           <MedicationNextDoses medications={visibleMeds} today={today} />
           <MedicationSupplyTile />
+          <MedicationWellnessTile />
           <MedicationLevelsOverlay medications={visibleMeds} today={today} />
           <MedicationLogCalendar
             medications={visibleMeds}

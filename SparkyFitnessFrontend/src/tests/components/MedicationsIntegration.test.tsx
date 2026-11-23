@@ -133,6 +133,10 @@ jest.mock('recharts', () => {
       <svg>{children}</svg>
     ),
     Area: () => null,
+    LineChart: ({ children }: { children?: React.ReactNode }) => (
+      <svg>{children}</svg>
+    ),
+    Line: () => null,
     CartesianGrid: () => null,
     ReferenceLine: () => null,
     Tooltip: () => null,
@@ -193,6 +197,23 @@ beforeEach(() => {
       if (endpoint === '/v2/medication-purchases/vial-costs')
         return { vials: [] };
       if (endpoint === '/v2/medication-blends') return { blends: [] };
+      if (endpoint === '/v2/medication-wellness')
+        return {
+          today: '2026-11-16',
+          days: [
+            {
+              day: '2026-11-16',
+              resting_hr: 58,
+              hrv_ms: null,
+              body_battery: null,
+              sleep_score: 84,
+              sleep_seconds: 24600,
+              avg_stress: null,
+            },
+          ],
+          activities: [],
+          weights_kg: [],
+        };
       if (endpoint === '/v2/medication-purchases/analytics')
         return {
           window: {
@@ -349,6 +370,15 @@ it('offers blend components on a selected injectable, as a plain medication unti
   expect(
     screen.getByRole('button', { name: 'Add components' })
   ).toBeInTheDocument();
+});
+it('shows the recovery tile on the Today tab from the records the server sends', async () => {
+  open('/medications?tab=today');
+  expect(await screen.findByText('Resting HR')).toBeInTheDocument();
+  expect(screen.getByText('Recovery')).toBeInTheDocument();
+  expect(mockApiCall).toHaveBeenCalledWith(
+    '/v2/medication-wellness',
+    expect.anything()
+  );
 });
 it('keeps Inventory inventory-only through the full Medications route', async () => {
   open('/medications?tab=stock');

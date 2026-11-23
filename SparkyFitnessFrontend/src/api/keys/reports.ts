@@ -27,6 +27,8 @@ export const reportKeys = {
     ] as const,
   medicationInsights: (userId?: string) =>
     ['reports', 'medicationInsights', { userId }] as const,
+  medicationWellness: (userId?: string) =>
+    ['reports', 'medicationWellness', { userId }] as const,
   trainingConsistency: (userId?: string) =>
     ['reports', 'trainingConsistency', { userId }] as const,
   fitnessFatigue: (userId?: string) =>

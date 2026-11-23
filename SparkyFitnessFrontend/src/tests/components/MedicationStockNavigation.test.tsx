@@ -20,6 +20,10 @@ jest.mock('@/pages/Medications/MedicationLevelsOverlay', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/pages/Medications/MedicationWellnessTile', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/pages/Medications/MedicationNextDoses', () => ({
   __esModule: true,
   default: () => null,
