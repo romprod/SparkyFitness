@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../db/poolManager.js', () => ({ getClient: mocks.getClient }));
 import { loadWellnessRecords } from '../models/medicationWellnessRepository.js';
+import { listWearableExportRecords } from '../models/healthExportRepository.js';
 
 const owner = '00000000-0000-4000-a000-000000000001';
 const window = {
@@ -127,12 +128,25 @@ describe('reading the tile records', () => {
     expect(calls[0]!.text).toContain("source_provider='garmin'");
     expect(calls[1]!.text).toContain("source='garmin'");
     expect(calls[2]!.text).toContain('duration_minutes > 0');
+    // The week's weight is asked for from the week's first day to today.
     expect(calls[3]!.params).toEqual([
       owner,
-      window.from_day,
-      window.to_day,
       window.weights_from_day,
+      window.to_day,
     ]);
-    expect(calls[3]!.text).toContain('BETWEEN $4 AND $3');
+    expect(calls[3]!.text).toContain('BETWEEN $2 AND $3');
+  });
+
+  it('gives every query exactly the parameters it uses: PostgreSQL refuses one it never uses', async () => {
+    mocks.query.mockResolvedValue(rows());
+    await listWearableExportRecords(owner, owner).catch(() => undefined);
+    await loadWellnessRecords(owner, owner, window);
+    for (const [text, params] of mocks.query.mock.calls) {
+      const used = new Set(
+        [...String(text).matchAll(/\$(\d+)/g)].map((m) => Number(m[1]))
+      );
+      const given = new Set((params as unknown[]).map((_, i) => i + 1));
+      expect(used, String(text)).toEqual(given);
+    }
   });
 });

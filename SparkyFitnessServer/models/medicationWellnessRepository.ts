@@ -82,9 +82,9 @@ export async function loadWellnessRecords(
         `SELECT entry_date::text AS day, weight
            FROM check_in_measurements
           WHERE user_id=$1 AND weight IS NOT NULL AND weight > 0
-            AND entry_date BETWEEN $4 AND $3
+            AND entry_date BETWEEN $2 AND $3
           ORDER BY entry_date`,
-        [userId, window.from_day, window.to_day, window.weights_from_day]
+        [userId, window.weights_from_day, window.to_day]
       ),
     ]);
 
