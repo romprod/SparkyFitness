@@ -44,6 +44,8 @@ import {
 } from '@/hooks/Labs/useLabResults';
 import LabImportDialog from './LabImportDialog';
 import LabComparison from './LabComparison';
+import LabOverview from './LabOverview';
+import LabTrends from './LabTrends';
 import LabPanelForm from './LabPanelForm';
 import LabPanelHistory from './LabPanelHistory';
 import MetabolicTestsCard from './MetabolicTestsCard';
@@ -165,9 +167,17 @@ const Labs = () => {
   return (
     <div className="container mx-auto max-w-5xl space-y-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">
-          {t('nav.labs', 'Lab results')}
-        </h1>
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {t('nav.labs', 'Lab results')}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {t(
+              'labs.subtitle',
+              'Log lab panels and track markers over time. Reference only — not medical advice.'
+            )}
+          </p>
+        </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Button
             variant="outline"
@@ -234,6 +244,13 @@ const Labs = () => {
         />
       )}
 
+      <LabOverview
+        panels={comparison.data?.panels ?? []}
+        customMarkers={customMarkers.data ?? []}
+        labels={labels}
+        sex={sex}
+      />
+
       <LabComparison
         panels={comparison.data?.panels ?? []}
         customMarkers={customMarkers.data ?? []}
@@ -241,6 +258,14 @@ const Labs = () => {
         sex={sex}
         isLoading={customMarkers.isLoading || comparison.isLoading}
         isError={customMarkers.isError || comparison.isError}
+      />
+
+      <LabTrends
+        key={`lab-trends:${activeOwnerId}:${panelScopeReady}`}
+        panels={panelScopeReady ? (panels.data?.panels ?? []) : []}
+        customMarkers={customMarkers.data ?? []}
+        labels={labels}
+        sex={sex}
       />
 
       {loading ? (

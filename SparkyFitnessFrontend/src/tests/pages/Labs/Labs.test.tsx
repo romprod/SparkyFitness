@@ -774,3 +774,49 @@ describe('Labs page', () => {
     });
   });
 });
+
+describe('Labs page layout', () => {
+  const panelOf = (id: string, collected_on: string, value: number) => ({
+    id,
+    collected_on,
+    lab_name: null,
+    created_at: `${collected_on}T10:00:00Z`,
+    results: [result({ id: `${id}-r`, value_numeric: value })],
+  });
+
+  it('reads top to bottom as the in-range summary, the three-panel table, the trends, then a collapsed panel history', async () => {
+    const panels = [
+      panelOf('new', '2026-03-01', 5.1),
+      panelOf('prior', '2026-02-01', 6.2),
+      panelOf('base', '2026-01-01', 6.8),
+    ];
+    api.listLabComparison.mockResolvedValue({ panels });
+    api.listLabPanels.mockResolvedValue({ panels });
+    renderPage();
+    const summary = await screen.findByTestId('lab-overview-in-range');
+    expect(summary).toHaveTextContent('1 of 1 in range');
+    const table = screen.getByRole('table');
+    const trend = (await screen.findAllByTestId('lab-trend-card'))[0];
+    const history = screen.getByText('Lab panels').closest('details');
+    if (!trend || !history) throw new Error('Missing section');
+    const before = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(summary, table)).toBe(true);
+    expect(before(table, trend)).toBe(true);
+    expect(before(trend, history)).toBe(true);
+    expect(history).not.toHaveAttribute('open');
+    expect(within(history).getByText('3')).toBeInTheDocument();
+  });
+
+  it('opens the panel history by itself only when there is nothing yet to hide', async () => {
+    api.listLabPanels.mockResolvedValue({ panels: [] });
+    renderPage();
+    // The section remounts once the active profile is known, so look it up each time.
+    await waitFor(() =>
+      expect(screen.getByText('Lab panels').closest('details')).toHaveAttribute(
+        'open'
+      )
+    );
+    expect(screen.getAllByText('No lab panels yet.').length).toBeGreaterThan(0);
+  });
+});

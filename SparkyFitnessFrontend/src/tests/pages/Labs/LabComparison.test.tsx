@@ -19,6 +19,9 @@ const panel = (
   lab_name: null,
   results,
 });
+/** A table cell whose text (value, unit, flag) contains the given text. */
+const cellWith = (text: string) =>
+  screen.getAllByRole('cell').find((cell) => cell.textContent?.includes(text));
 const show = (panels: LabComparisonPanel[]) =>
   render(
     <LabComparison
@@ -51,15 +54,17 @@ describe('Latest panel comparison', () => {
       .getAllByRole('columnheader')
       .map((node) => node.textContent);
     expect(headers.slice(3)).toEqual([
-      'LatestPanel collection date2026-03-01',
-      'PriorPanel collection date2026-02-01',
-      'EarlierPanel collection date2026-01-01',
+      'Latest: 2026-03-01',
+      'Prior: 2026-02-01',
+      'Earlier: 2026-01-01',
     ]);
     expect(
-      screen.getAllByRole('rowheader').map((node) => node.textContent)
+      screen
+        .getAllByRole('rowheader')
+        .map((node) => node.querySelector('span span')?.textContent)
     ).toEqual(['HbA1c', 'LDL cholesterol']);
     const row = screen
-      .getByRole('rowheader', { name: 'LDL cholesterol' })
+      .getByRole('rowheader', { name: /^LDL cholesterol/ })
       .closest('tr');
     if (!row) throw new Error('Missing marker row');
     expect(within(row).getAllByLabelText('No results')).toHaveLength(2);
@@ -81,8 +86,8 @@ describe('Latest panel comparison', () => {
         }),
       ]),
     ]);
-    expect(screen.getByText('5.1 %')).toBeInTheDocument();
-    expect(screen.getByText('60 mmol/mol')).toBeInTheDocument();
+    expect(cellWith('5.1 %')).toBeDefined();
+    expect(cellWith('60 mmol/mol')).toBeDefined();
     expect(screen.getByText('Reference range: 4 - 5.6 %')).toBeInTheDocument();
     expect(
       screen.getByText('Reference range: 20 - 42 mmol/mol')
@@ -105,7 +110,7 @@ describe('Latest panel comparison', () => {
       ]),
       panel('prior', '2026-02-01', [result({ value_numeric: 7 })]),
     ]);
-    expect(screen.getByText('<3 %')).toBeInTheDocument();
+    expect(cellWith('<3 %')).toBeDefined();
     expect(screen.queryByText('(Low)')).not.toBeInTheDocument();
     expect(
       screen.queryByText('Closer to the reference range than the prior panel')
@@ -119,7 +124,7 @@ describe('Latest panel comparison', () => {
       ]),
       panel('prior', '2026-02-01', [result({ value_numeric: 7 })]),
     ]);
-    expect(screen.getByText('<3 %')).toBeInTheDocument();
+    expect(cellWith('<3 %')).toBeDefined();
     expect(screen.queryByText('(Low)')).not.toBeInTheDocument();
     expect(
       screen.queryByText('Closer to the reference range than the prior panel')
@@ -138,9 +143,9 @@ describe('Latest panel comparison', () => {
         }),
       ]),
     ]);
-    expect(screen.getByText('Range unavailable')).not.toHaveClass('md:sr-only');
+    expect(screen.getByText('Range unavailable')).not.toHaveClass('sr-only');
     expect(screen.getByText('Reference range: 4 - 5.6 %')).toHaveClass(
-      'md:sr-only'
+      'sr-only'
     );
     expect(
       screen.getByRole('region', { name: 'Latest three panels' })
@@ -156,10 +161,9 @@ describe('Latest panel comparison', () => {
         collected_on: null,
       },
     ]);
-    expect(screen.getByText('Panel collection date')).toBeInTheDocument();
     expect(
-      screen.getByText('Collection date not recorded')
-    ).toBeInTheDocument();
+      screen.getAllByText('Collection date not recorded').length
+    ).toBeGreaterThan(0);
     expect(screen.getByText('Result date: 2026-03-02')).toBeInTheDocument();
   });
 
@@ -168,5 +172,56 @@ describe('Latest panel comparison', () => {
     expect(screen.getByText('Latest three panels')).toBeInTheDocument();
     expect(screen.getByText('No lab panels yet.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('lays the table out compactly: dates only in the headers, a short caption below', () => {
+    show([
+      panel('new', '2026-03-01', [result({ value_numeric: 5.1 })]),
+      panel('prior', '2026-02-01', [result({ id: 'prior', value_numeric: 7 })]),
+    ]);
+    expect(screen.queryByText('Panel collection date')).not.toBeInTheDocument();
+    expect(screen.getByText('Ref')).toBeInTheDocument();
+    expect(
+      screen.getByText('Latest 2026-03-01 · Prior 2026-02-01')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Arrows mark a reading closer to its reference range/)
+    ).toBeInTheDocument();
+  });
+
+  it('flags an out-of-range value as (H) or (L) and keeps the word for screen readers', () => {
+    show([
+      panel('new', '2026-03-01', [result({ value_numeric: 7 })]),
+      panel('prior', '2026-02-01', [result({ id: 'prior', value_numeric: 3 })]),
+    ]);
+    expect(screen.getByText('(High)')).toHaveClass('sr-only');
+    expect(screen.getByText('(Low)')).toHaveClass('sr-only');
+    expect(screen.getByText('(H)')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByText('(L)')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('drops a cell unit from view only when it matches the unit column', () => {
+    show([
+      panel('new', '2026-03-01', [result({ value_numeric: 5.1 })]),
+      panel('prior', '2026-02-01', [
+        result({ id: 'prior', value_numeric: 60, unit: 'mmol/mol' }),
+      ]),
+    ]);
+    const same = screen.getByText('%', {
+      selector: 'span.text-muted-foreground',
+    });
+    expect(same).toHaveClass('md:sr-only');
+    const other = screen.getByText('mmol/mol', {
+      selector: 'span.text-muted-foreground',
+    });
+    expect(other).not.toHaveClass('sr-only');
+  });
+
+  it('puts the row range under the marker name on phones, where the Ref column is hidden', () => {
+    show([panel('new', '2026-03-01', [result({ value_numeric: 5.1 })])]);
+    const header = screen.getByRole('rowheader', { name: /HbA1c/ });
+    const range = within(header).getByText('4 - 5.6 %');
+    expect(range).toHaveClass('md:hidden');
+    expect(screen.getByText('Ref')).toHaveClass('hidden', 'md:table-cell');
   });
 });

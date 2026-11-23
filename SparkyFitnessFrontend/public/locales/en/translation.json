@@ -11750,7 +11750,9 @@
       "unknownDate": "Collection date not recorded",
       "resultDate": "Result date: {{date}}",
       "collectionDate": "Panel collection date",
-      "rangeUnavailable": "Range unavailable"
+      "rangeUnavailable": "Range unavailable",
+      "referenceShort": "Ref",
+      "arrowsNote": "Arrows mark a reading closer to its reference range than the prior panel’s."
     },
     "add": "Add lab result",
     "changeMarker": "Change",
@@ -12209,6 +12211,21 @@
       "title": "Stored originals",
       "tooBig": "That file is too large: {{max}} MB at most.",
       "wrongType": "Choose a PDF or an image (jpeg, png, webp or gif)."
+    },
+    "subtitle": "Log lab panels and track markers over time. Reference only — not medical advice.",
+    "overview": {
+      "inRange": "{{inRange}} of {{total}} in range",
+      "improving_one": "{{count}} marker improving vs prior panel",
+      "improving_other": "{{count}} markers improving vs prior panel",
+      "noRange_one": "{{count}} result without a reference range is not counted",
+      "noRange_other": "{{count}} results without a reference range are not counted",
+      "trend": "Trend"
+    },
+    "trends": {
+      "title": "Trends",
+      "chartLabel": "{{name}} trend, {{count}} readings",
+      "showAll": "Show all {{count}} trends",
+      "showFewer": "Show fewer"
     }
   },
   "oralCare": {
