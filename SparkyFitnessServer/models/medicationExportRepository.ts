@@ -14,6 +14,7 @@ export async function listDoseExportRecords(
   try {
     const result = await client.query(
       `SELECT 'entry'::text AS entry_type, e.taken_at, e.entry_date::text AS entry_date,
+              e.medication_id,
               COALESCE(e.med_name_snapshot, NULLIF(m.display_name,''), m.name) AS medication,
               m.is_supplement, e.status, NULL::text AS administration_route,
               e.dose_amount_snapshot::text AS dose_amount, e.dose_unit_snapshot AS dose_unit,
@@ -25,6 +26,7 @@ export async function listDoseExportRecords(
         WHERE e.user_id=$1
        UNION ALL
        SELECT 'injection'::text, i.injected_at, i.entry_date::text,
+              i.medication_id,
               COALESCE(i.medication_name_snapshot, NULLIF(m.display_name,''), m.name),
               m.is_supplement, 'taken'::text, i.administration_route,
               i.dose_mg::text, 'mg'::text,

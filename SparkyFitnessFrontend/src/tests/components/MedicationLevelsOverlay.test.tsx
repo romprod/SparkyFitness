@@ -80,6 +80,10 @@ jest.mock('recharts', () => ({
     />
   ),
 }));
+let mockBlends: unknown[] | undefined = [];
+jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
+  useMedicationBlends: () => ({ data: mockBlends }),
+}));
 let mockInjections: Record<string, unknown[] | undefined> = {};
 const mockInjectionHook = jest.fn();
 jest.mock('@/hooks/useMedications', () => ({
@@ -140,6 +144,7 @@ beforeEach(() => {
     cagri: [injection(-10, 0.25), injection(-3, 0.25)],
   };
   mockWeeks = {};
+  mockBlends = [];
   mockWeek.mockClear();
   mockInjectionHook.mockClear();
 });
@@ -376,5 +381,108 @@ describe('missed dose markers', () => {
   it('reads no earlier weeks when nothing is drawn', () => {
     renderCard([med('x', 'Unknown peptide')]);
     expect(mockWeek).not.toHaveBeenCalledWith(expect.anything(), true);
+  });
+});
+
+describe('a blend', () => {
+  const half = (hours: number) => ({ half_life_hours: hours });
+  const klow = med('klow', 'KLOW');
+  const ghk = med('ghk', 'GHK-Cu', { custom_fields: half(4) });
+  const bpc = med('bpc', 'BPC-157', { custom_fields: half(6) });
+  const composition = (names: string[] = ['ghk', 'bpc']) => ({
+    blend_medication_id: 'klow',
+    components: names.map((id, sort_index) => ({
+      component_medication_id: id,
+      name: id === 'ghk' ? 'GHK-Cu' : 'BPC-157',
+      mass_mg: id === 'ghk' ? '50' : '10',
+      source: 'label',
+      sort_index,
+    })),
+  });
+  const keys = () =>
+    new Set(
+      screen
+        .getAllByTestId('levels-line')
+        .map((line) => line.getAttribute('data-key'))
+    );
+
+  it('is drawn as its components, from the blend’s doses, and not as a line of its own', () => {
+    mockBlends = [composition()];
+    mockInjections = { klow: [injection(-3, 0.8), injection(-0.5, 0.8)] };
+    renderCard([klow, ghk, bpc]);
+    expect(keys()).toEqual(
+      new Set(['ghk_taken', 'ghk_ahead', 'bpc_taken', 'bpc_ahead'])
+    );
+    expect(screen.getByText('GHK-Cu')).toBeInTheDocument();
+    expect(screen.getByText('BPC-157')).toBeInTheDocument();
+    expect(screen.queryByText('KLOW')).not.toBeInTheDocument();
+    // Doses are read for the blend and for each component, which could also be taken alone.
+    expect(new Set(mockInjectionHook.mock.lastCall![0])).toEqual(
+      new Set(['klow', 'ghk', 'bpc'])
+    );
+  });
+
+  it('joins a component’s own doses to the blend’s in one line, not two', () => {
+    mockBlends = [composition()];
+    mockInjections = {
+      klow: [injection(-3, 0.8)],
+      ghk: [injection(-1, 0.25)],
+    };
+    renderCard([klow, ghk, bpc]);
+    expect(
+      screen
+        .getAllByTestId('levels-line')
+        .filter((line) => line.getAttribute('data-key')!.startsWith('ghk'))
+    ).toHaveLength(2);
+    expect(screen.getAllByText('GHK-Cu')).toHaveLength(1);
+    expect(new Set(mockInjectionHook.mock.lastCall![0])).toEqual(
+      new Set(['klow', 'ghk', 'bpc'])
+    );
+  });
+
+  it('names a component with no half-life, beneath the lines of the rest', () => {
+    mockBlends = [composition()];
+    mockInjections = { klow: [injection(-3, 0.8)] };
+    renderCard([klow, ghk, med('bpc', 'BPC-157')]);
+    expect(keys()).toEqual(new Set(['ghk_taken', 'ghk_ahead']));
+    expect(
+      screen.getByText(/No curve for BPC-157: add its half-life/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows only the note when no component has a half-life', () => {
+    mockBlends = [composition()];
+    renderCard([klow, med('ghk', 'GHK-Cu'), med('bpc', 'BPC-157')]);
+    expect(screen.queryByTestId('levels-chart')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No curve for GHK-Cu, BPC-157: add its half-life/)
+    ).toBeInTheDocument();
+  });
+
+  it('is still drawn when a component medication is stopped', () => {
+    mockBlends = [composition(['ghk'])];
+    mockInjections = { klow: [injection(-3, 0.8)] };
+    renderCard([
+      klow,
+      med('ghk', 'GHK-Cu', { custom_fields: half(4), is_active: false }),
+    ]);
+    expect(keys()).toEqual(new Set(['ghk_taken', 'ghk_ahead']));
+  });
+
+  it('marks a missed planned dose of the blend on the chart', () => {
+    mockBlends = [composition()];
+    mockInjections = { klow: [injection(-3, 0.8)] };
+    mockWeeks = {
+      '2026-11-16': [plannedSlot('klow', -2, { status: 'missed' })],
+    };
+    renderCard([klow, ghk, bpc]);
+    expect(screen.getAllByTestId('levels-missed')).toHaveLength(1);
+  });
+
+  it('is drawn as an ordinary medication until its components are known', () => {
+    mockBlends = undefined;
+    mockInjections = { klow: [injection(-3, 0.8)] };
+    renderCard([med('klow', 'KLOW', { custom_fields: half(5) }), ghk]);
+    expect(keys()).toEqual(new Set(['klow_taken', 'klow_ahead']));
   });
 });

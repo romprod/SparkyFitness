@@ -5,6 +5,7 @@ import {
   MAX_HALF_LIFE_HOURS,
   medicationHalfLifeHours,
   missedDoseTimes,
+  planLevelTargets,
   readHalfLifeHours,
   resolveMedicationPkProfile,
   type PkOverlaySeries,
@@ -355,5 +356,124 @@ describe('missed dose markers', () => {
       })
     ).toEqual([]);
     expect(marks([slot()], 0)).toEqual([]);
+  });
+});
+
+describe('planLevelTargets', () => {
+  const med = (
+    id: string,
+    name: string,
+    over: Record<string, unknown> = {}
+  ) => ({
+    id,
+    name,
+    type_id: 'injection',
+    is_active: true,
+    is_supplement: false,
+    custom_fields: { half_life_hours: 6 } as Record<string, unknown>,
+    ...over,
+  });
+  const part = (
+    id: string,
+    name: string,
+    mass: string,
+    sort_index: number
+  ) => ({
+    component_medication_id: id,
+    name,
+    mass_mg: mass,
+    source: 'label' as const,
+    sort_index,
+  });
+  const klow = {
+    blend_medication_id: 'klow',
+    components: [
+      part('ghk', 'GHK-Cu', '50', 0),
+      part('bpc', 'BPC-157', '10', 1),
+    ],
+  };
+  const plan = (
+    medications: ReturnType<typeof med>[],
+    blends: (typeof klow)[] = []
+  ) => planLevelTargets({ medications, blends });
+
+  it('draws an active injectable with a half-life as itself, from all of its own doses', () => {
+    const { targets, missing } = plan([med('a', 'Alpha'), med('b', 'Beta')]);
+    expect(targets.map((t) => [t.id, t.name, t.sources])).toEqual([
+      ['a', 'Alpha', [{ medication_id: 'a', fraction: 1 }]],
+      ['b', 'Beta', [{ medication_id: 'b', fraction: 1 }]],
+    ]);
+    expect(missing).toEqual([]);
+  });
+
+  it('draws a blend as its components by their shares of each dose, and not as itself', () => {
+    const { targets } = plan(
+      [
+        med('klow', 'KLOW', { custom_fields: {} }),
+        med('ghk', 'GHK-Cu', { is_active: false }),
+        med('bpc', 'BPC-157', { is_active: false }),
+      ],
+      [klow]
+    );
+    expect(targets.map((t) => t.id)).toEqual(['ghk', 'bpc']);
+    expect(targets[0]!.sources).toEqual([
+      { medication_id: 'klow', fraction: 0.8333333333333334 },
+    ]);
+    expect(targets[1]!.sources[0]!.fraction).toBeCloseTo(1 / 6, 12);
+    expect(
+      targets.reduce((sum, t) => sum + t.sources[0]!.fraction, 0)
+    ).toBeCloseTo(1, 12);
+  });
+
+  it('adds a component’s own doses to the blend’s, as one line', () => {
+    const { targets } = plan(
+      [
+        med('klow', 'KLOW', { custom_fields: {} }),
+        med('ghk', 'GHK-Cu'),
+        med('bpc', 'BPC-157'),
+      ],
+      [klow]
+    );
+    const ghk = targets.find((t) => t.id === 'ghk')!;
+    expect(ghk.sources.map((s) => s.medication_id).sort()).toEqual([
+      'ghk',
+      'klow',
+    ]);
+    expect(ghk.sources.find((s) => s.medication_id === 'ghk')!.fraction).toBe(
+      1
+    );
+    expect(targets.filter((t) => t.id === 'ghk')).toHaveLength(1);
+  });
+
+  it('lists what has no half-life, but never a GLP-1 medication, a supplement or a stopped one', () => {
+    const { targets, missing } = plan(
+      [
+        med('klow', 'KLOW', { custom_fields: {} }),
+        med('ghk', 'GHK-Cu', { custom_fields: {} }),
+        med('plain', 'Plain', { custom_fields: {} }),
+        med('glp', 'GLP', { custom_fields: {}, is_glp1: true }),
+        med('stopped', 'Stopped', { custom_fields: {}, is_active: false }),
+        med('supp', 'Supp', { custom_fields: {}, is_supplement: true }),
+        med('pill', 'Pill', { custom_fields: {}, type_id: 'tablet' }),
+      ],
+      [klow]
+    );
+    // BPC-157 is not among the medications at all: it is named from the blend.
+    expect(missing.sort()).toEqual(['BPC-157', 'GHK-Cu', 'Plain']);
+    expect(targets).toEqual([]);
+  });
+
+  it('treats a blend with no components as an ordinary medication', () => {
+    const { targets } = plan(
+      [med('klow', 'KLOW')],
+      [{ blend_medication_id: 'klow', components: [] }]
+    );
+    expect(targets.map((t) => t.id)).toEqual(['klow']);
+  });
+
+  it('names a line by its display name', () => {
+    expect(
+      plan([med('a', 'alpha-raw', { display_name: 'Alpha' })]).targets[0]!.name
+    ).toBe('Alpha');
   });
 });

@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
 import { listDoseExportRecords } from '../../models/medicationExportRepository.js';
+import { listBlends } from '../../models/medicationBlendRepository.js';
 import { loadUserTimezone } from '../../utils/timezoneLoader.js';
 import { sendCsvDownload } from '../../utils/csvResponse.js';
 
@@ -26,7 +27,7 @@ router.use(checkPermissionMiddleware('medications'));
  *       - cookieAuth: []
  *     responses:
  *       200:
- *         description: A CSV file, newest dose first
+ *         description: A CSV file, newest dose first; a dose of a blend is followed by one derived row for each component
  *         content:
  *           text/csv:
  *             schema:
@@ -35,15 +36,16 @@ router.use(checkPermissionMiddleware('medications'));
 router.get('/doses', async (req, res, next) => {
   try {
     const timezone = await loadUserTimezone(req.userId);
-    const records = await listDoseExportRecords(
-      req.userId,
-      req.authenticatedUserId || req.userId
-    );
+    const actor = req.authenticatedUserId || req.userId;
+    const [records, blends] = await Promise.all([
+      listDoseExportRecords(req.userId, actor),
+      listBlends(req.userId, actor),
+    ]);
     sendCsvDownload(
       res,
       'doses',
       timezone,
-      toCsv(DOSE_EXPORT_HEADERS, doseExportRows(records, timezone))
+      toCsv(DOSE_EXPORT_HEADERS, doseExportRows(records, timezone, blends))
     );
   } catch (error) {
     next(error);

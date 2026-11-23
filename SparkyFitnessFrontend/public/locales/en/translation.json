@@ -3397,7 +3397,7 @@
       "comma": "Comma (,)",
       "medication": {
         "title": "Medication, lab and daily records",
-        "description": "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, or your daily journal as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule. The journal holds weight, mood, energy, focus, sleep, water and notes.",
+        "description": "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, or your daily journal as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule; a dose of a blend is followed by a derived row for each compound in it. The journal holds weight, mood, energy, focus, sleep, water and notes.",
         "dosesButton": "Export my doses (CSV)",
         "labsButton": "Export my lab results (CSV)",
         "rmrButton": "Export my RMR tests (CSV)",

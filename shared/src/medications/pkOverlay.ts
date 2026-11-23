@@ -1,4 +1,5 @@
 import { resolveGlp1Profile, serumLevelAt, type DoseEvent } from './glp1.ts';
+import { expandBlendDose, type BlendComponentRatio } from './blends.ts';
 
 /**
  * Modeled levels of several medications on one chart, as Pitstop's overlay does. The model is the
@@ -87,6 +88,93 @@ export function medicationHalfLifeHours(med: {
 }): number | null {
   const profile = resolveMedicationPkProfile(med);
   return profile ? profile.halfLifeDays * 24 : null;
+}
+
+/** One line on the chart: a compound, and which medications' logged doses feed it and how much of each. */
+export interface PkLevelTarget {
+  /** The compound's medication id: a blend is drawn as its components, each under its own id. */
+  id: string;
+  name: string;
+  profile: PkProfile;
+  sources: { medication_id: string; fraction: number }[];
+}
+
+/** The slice of a medication the chart reads. */
+export interface PkLevelMedication {
+  id: string;
+  name: string;
+  display_name?: string | null;
+  is_active?: boolean | null;
+  is_supplement?: boolean | null;
+  is_glp1?: boolean | null;
+  type_id: string | null;
+  custom_fields?: Record<string, unknown> | null;
+}
+
+/**
+ * What the Modeled levels chart draws: one line per compound, and which compounds have no curve.
+ * An active injectable with a half-life is drawn as itself. A blend with components is drawn as
+ * its components, as Pitstop's chart does, each by its share of every dose of the blend, added to
+ * that compound's own doses when it is also taken alone. A compound with no half-life is listed
+ * by name; one flagged as GLP-1 takes its figures from its drug, so it is never asked for one.
+ */
+export function planLevelTargets(input: {
+  medications: readonly PkLevelMedication[];
+  blends: readonly {
+    blend_medication_id: string;
+    components: readonly (BlendComponentRatio & {
+      component_medication_id: string;
+    })[];
+  }[];
+}): { targets: PkLevelTarget[]; missing: string[] } {
+  const byId = new Map(input.medications.map((med) => [med.id, med]));
+  const blendOf = new Map(
+    input.blends
+      .filter((blend) => blend.components.length > 0)
+      .map((blend) => [blend.blend_medication_id, blend.components])
+  );
+  const label = (med: PkLevelMedication) => med.display_name || med.name;
+  const targets = new Map<string, PkLevelTarget>();
+  const missing = new Set<string>();
+  const add = (
+    med: PkLevelMedication,
+    from: string,
+    fraction: number
+  ): void => {
+    const profile = resolveMedicationPkProfile(med);
+    if (!profile) {
+      if (!med.is_glp1) missing.add(label(med));
+      return;
+    }
+    const target = targets.get(med.id) ?? {
+      id: med.id,
+      name: label(med),
+      profile,
+      sources: [],
+    };
+    target.sources.push({ medication_id: from, fraction });
+    targets.set(med.id, target);
+  };
+
+  for (const med of input.medications) {
+    if (
+      med.is_active === false ||
+      med.is_supplement ||
+      med.type_id !== 'injection'
+    )
+      continue;
+    const components = blendOf.get(med.id);
+    if (!components) {
+      add(med, med.id, 1);
+      continue;
+    }
+    for (const part of expandBlendDose(1, components)) {
+      const component = byId.get(part.component_medication_id);
+      if (component) add(component, med.id, Number(part.fraction));
+      else missing.add(part.name);
+    }
+  }
+  return { targets: [...targets.values()], missing: [...missing] };
 }
 
 export interface PkOverlayDose {

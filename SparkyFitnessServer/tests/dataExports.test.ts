@@ -89,6 +89,7 @@ describe('dose export rows', () => {
       minutes_from_schedule: 19,
       plan: 'Reta weekly',
       notes: null,
+      derived_from_blend: null,
     });
   });
   it('labels a supplement entry and leaves injection-only columns empty', () => {
@@ -153,6 +154,110 @@ const lab = (patch: Partial<LabExportRecord> = {}): LabExportRecord => ({
   source: 'report',
   notes: null,
   ...patch,
+});
+
+describe('dose export rows for a blend', () => {
+  const klow = {
+    blend_medication_id: 'klow-id',
+    name: 'KLOW',
+    components: [
+      ['ghk', 'GHK-Cu', '50'],
+      ['bpc', 'BPC-157', '10'],
+      ['tb', 'TB-500', '10'],
+      ['kpv', 'KPV', '10'],
+    ].map(([id, name, mass_mg], sort_index) => ({
+      component_medication_id: id!,
+      name: name!,
+      mass_mg: mass_mg!,
+      source: 'label' as const,
+      sort_index,
+    })),
+  };
+  const blendDose = (patch: Partial<DoseExportRecord> = {}) =>
+    dose({
+      medication_id: 'klow-id',
+      medication: 'KLOW',
+      dose_amount: '800',
+      dose_unit: 'mcg',
+      ...patch,
+    });
+  const at = (name: string) => DOSE_EXPORT_HEADERS.indexOf(name as never);
+
+  it('follows a taken blend dose with one derived row for each component, in mg', () => {
+    const rows = doseExportRows([blendDose()], 'Europe/London', [klow]);
+    expect(rows).toHaveLength(5);
+    expect(rows.map((r) => r[at('medication')])).toEqual([
+      'KLOW',
+      'GHK-Cu',
+      'BPC-157',
+      'TB-500',
+      'KPV',
+    ]);
+    expect(rows[0]![at('derived_from_blend')]).toBeNull();
+    expect(rows[0]![at('dose')]).toBe('800');
+    expect(
+      rows.slice(1).map((r) => [r[at('dose')], r[at('dose_unit')]])
+    ).toEqual([
+      ['0.5', 'mg'],
+      ['0.1', 'mg'],
+      ['0.1', 'mg'],
+      ['0.1', 'mg'],
+    ]);
+    expect(rows[1]![at('derived_from_blend')]).toBe('KLOW (derived, label)');
+    // A derived row keeps when it was taken and against which plan, but not what is the blend's alone.
+    expect(rows[1]![at('taken_at')]).toBe('2026-11-16T13:19:18.510Z');
+    expect(rows[1]![at('plan')]).toBe('Reta weekly');
+    expect(rows[1]![at('volume_ml')]).toBeNull();
+    expect(rows[1]![at('injection_site')]).toBeNull();
+    expect(rows[1]![at('vial')]).toBeNull();
+    expect(rows[1]![at('notes')]).toBeNull();
+    expect(rows.every((r) => r.length === DOSE_EXPORT_HEADERS.length)).toBe(
+      true
+    );
+  });
+
+  it('claims the weakest source of the ratio', () => {
+    const assumed = {
+      ...klow,
+      components: klow.components.map((c, i) =>
+        i === 2 ? { ...c, source: 'assumed' as const } : c
+      ),
+    };
+    const rows = doseExportRows([blendDose()], 'Europe/London', [assumed]);
+    expect(rows[1]![at('derived_from_blend')]).toBe('KLOW (derived, assumed)');
+  });
+
+  it('leaves out a skipped dose, one in millilitres or tablets, another medication and a blend with no components', () => {
+    const none = (record: DoseExportRecord, blends = [klow]) =>
+      doseExportRows([record], 'Europe/London', blends);
+    expect(none(blendDose({ status: 'skipped' }))).toHaveLength(1);
+    expect(
+      none(blendDose({ dose_amount: '0.2', dose_unit: 'ml' }))
+    ).toHaveLength(1);
+    expect(
+      none(blendDose({ dose_amount: '1', dose_unit: 'tablet' }))
+    ).toHaveLength(1);
+    expect(none(blendDose({ medication_id: 'other' }))).toHaveLength(1);
+    expect(none(blendDose({ medication_id: null }))).toHaveLength(1);
+    expect(none(blendDose(), [{ ...klow, components: [] }])).toHaveLength(1);
+    expect(doseExportRows([blendDose()], 'Europe/London')).toHaveLength(1);
+  });
+
+  it('derives from as-needed doses too, and keeps each dose’s rows together', () => {
+    const rows = doseExportRows(
+      [blendDose({ status: 'prn_taken' }), dose()],
+      'Europe/London',
+      [klow]
+    );
+    expect(rows.map((r) => r[at('medication')])).toEqual([
+      'KLOW',
+      'GHK-Cu',
+      'BPC-157',
+      'TB-500',
+      'KPV',
+      'Retatrutide',
+    ]);
+  });
 });
 
 describe('lab export rows', () => {

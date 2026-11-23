@@ -6,11 +6,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const owner = '00000000-0000-4000-a000-000000000001';
 const mocks = vi.hoisted(() => ({
   doses: vi.fn(),
+  blends: vi.fn(),
   labs: vi.fn(),
   permission: vi.fn(),
 }));
 vi.mock('../models/medicationExportRepository.js', () => ({
   listDoseExportRecords: mocks.doses,
+}));
+vi.mock('../models/medicationBlendRepository.js', () => ({
+  listBlends: mocks.blends,
 }));
 vi.mock('../utils/timezoneLoader.js', () => ({
   loadUserTimezone: vi.fn(async () => 'Europe/London'),
@@ -62,6 +66,7 @@ const path = '/api/v2/medication-exports/doses';
 describe('dose CSV download', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.blends.mockResolvedValue([]);
     mocks.doses.mockResolvedValue([
       {
         entry_type: 'injection',
@@ -95,7 +100,7 @@ describe('dose CSV download', () => {
     );
     const [header, first] = response.text.split('\r\n');
     expect(header).toBe(
-      'taken_at,local_day,timezone,medication,kind,status,route,dose,dose_unit,volume_ml,syringe_units,injection_site,vial,source,scheduled_for,minutes_from_schedule,plan,notes'
+      'taken_at,local_day,timezone,medication,kind,status,route,dose,dose_unit,volume_ml,syringe_units,injection_site,vial,source,scheduled_for,minutes_from_schedule,plan,notes,derived_from_blend'
     );
     expect(first).toContain(
       '2026-11-16T13:19:18.510Z,2026-11-16,Europe/London,Retatrutide,medication,taken,injection,2,mg,0.2,20,stomach_mid_left,Rt20 #1,manual'
@@ -103,7 +108,62 @@ describe('dose CSV download', () => {
     // A note that begins like a formula is marked as text.
     expect(first).toContain('"\'=HYPERLINK(""x"")"');
     expect(mocks.doses).toHaveBeenCalledWith(owner, owner);
+    expect(mocks.blends).toHaveBeenCalledWith(owner, owner);
     expect(mocks.permission).toHaveBeenCalledWith('medications');
+  });
+  it('follows a blend dose with a derived row for each component', async () => {
+    mocks.doses.mockResolvedValue([
+      {
+        entry_type: 'injection',
+        taken_at: new Date('2026-11-16T13:19:18.510Z'),
+        entry_date: '2026-11-16',
+        medication_id: 'klow',
+        medication: 'KLOW',
+        is_supplement: false,
+        status: 'taken',
+        administration_route: null,
+        dose_amount: '0.8',
+        dose_unit: 'mg',
+        volume_ml: null,
+        syringe_units: null,
+        site: null,
+        vial: null,
+        source: 'manual',
+        scheduled_for: null,
+        plan: null,
+        notes: null,
+      },
+    ]);
+    mocks.blends.mockResolvedValue([
+      {
+        blend_medication_id: 'klow',
+        name: 'KLOW',
+        components: [
+          {
+            component_medication_id: 'a',
+            name: 'GHK-Cu',
+            mass_mg: '50',
+            source: 'label',
+            sort_index: 0,
+          },
+          {
+            component_medication_id: 'b',
+            name: 'KPV',
+            mass_mg: '30',
+            source: 'coa',
+            sort_index: 1,
+          },
+        ],
+      },
+    ]);
+    const response = await request(app).get(path);
+    const lines = response.text.split('\r\n');
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toMatch(/,KLOW,medication,taken,injection,0\.8,mg,/);
+    expect(lines[2]).toContain(',GHK-Cu,medication,taken,injection,0.5,mg,');
+    // The tag holds a comma, so the cell is quoted.
+    expect(lines[2]!.endsWith(',"KLOW (derived, coa)"')).toBe(true);
+    expect(lines[3]).toContain(',KPV,medication,taken,injection,0.3,mg,');
   });
   it('reads the profile being acted for, with the caller recorded', async () => {
     const other = '00000000-0000-4000-a000-000000000002';

@@ -1,5 +1,11 @@
 import { LAB_MARKER_PRESETS, labRangeStatus } from '../constants/labMarkers.ts';
 import type { CsvCell } from '../utils/csv.ts';
+import { doseAsMg } from './doseHistory.ts';
+import {
+  expandBlendDose,
+  weakestBlendSource,
+  type BlendComponentRatio,
+} from './blends.ts';
 
 /**
  * Rows for the medication and lab CSV downloads. Pure: the server reads the records and these
@@ -25,6 +31,7 @@ export const DOSE_EXPORT_HEADERS = [
   'minutes_from_schedule',
   'plan',
   'notes',
+  'derived_from_blend',
 ] as const;
 
 /** One recorded dose or injection, however it was stored. */
@@ -33,6 +40,8 @@ export interface DoseExportRecord {
   entry_type: 'entry' | 'injection';
   taken_at: Date | string | null;
   entry_date: string;
+  /** The medication's id, so a dose of a blend can be split into its components. */
+  medication_id?: string | null;
   medication: string | null;
   is_supplement: boolean | null;
   status: string;
@@ -64,34 +73,93 @@ const minutesFromSchedule = (
     ? null
     : Math.round((Date.parse(takenAt) - Date.parse(scheduledFor)) / 60_000);
 
+/** What the dose rows need to know about a blend: its name and what is in it. */
+export interface DoseExportBlend {
+  blend_medication_id: string;
+  name: string;
+  components: readonly BlendComponentRatio[];
+}
+
+const TAKEN = new Set(['taken', 'prn_taken']);
+
+/**
+ * One row per recorded dose. A taken dose of a blend that has components is followed by one row
+ * for each component carrying the mass it received, worked out from the blend's stated ratio and
+ * tagged in `derived_from_blend` with the blend and the source of the ratio, as Pitstop's export
+ * does. Add up the dose column only for rows where that tag is empty: the component rows divide
+ * the blend row's mass, they are not further doses.
+ */
 export function doseExportRows(
   records: readonly DoseExportRecord[],
-  timezone: string
+  timezone: string,
+  blends: readonly DoseExportBlend[] = []
 ): CsvCell[][] {
-  return records.map((record) => {
+  const blendById = new Map(
+    blends
+      .filter((blend) => blend.components.length > 0)
+      .map((blend) => [blend.blend_medication_id, blend])
+  );
+  return records.flatMap((record) => {
     const takenAt = iso(record.taken_at);
     const scheduledFor = iso(record.scheduled_for);
-    return [
-      takenAt,
-      record.entry_date,
-      timezone,
-      record.medication,
-      record.is_supplement ? 'supplement' : 'medication',
-      record.status,
+    const minutes = minutesFromSchedule(takenAt, scheduledFor);
+    const route =
       record.administration_route ??
-        (record.entry_type === 'injection' ? 'injection' : null),
-      record.dose_amount === null ? null : String(record.dose_amount),
-      record.dose_unit,
-      record.volume_ml,
-      record.syringe_units,
-      record.site,
-      record.vial,
-      record.source,
-      scheduledFor,
-      minutesFromSchedule(takenAt, scheduledFor),
-      record.plan,
-      record.notes,
+      (record.entry_type === 'injection' ? 'injection' : null);
+    const kind = record.is_supplement ? 'supplement' : 'medication';
+    const rows: CsvCell[][] = [
+      [
+        takenAt,
+        record.entry_date,
+        timezone,
+        record.medication,
+        kind,
+        record.status,
+        route,
+        record.dose_amount === null ? null : String(record.dose_amount),
+        record.dose_unit,
+        record.volume_ml,
+        record.syringe_units,
+        record.site,
+        record.vial,
+        record.source,
+        scheduledFor,
+        minutes,
+        record.plan,
+        record.notes,
+        null,
+      ],
     ];
+    const blend = record.medication_id
+      ? blendById.get(record.medication_id)
+      : undefined;
+    const mg = blend ? doseAsMg(record.dose_amount, record.dose_unit) : null;
+    if (blend && mg !== null && TAKEN.has(record.status)) {
+      const source = weakestBlendSource(blend.components);
+      for (const part of expandBlendDose(mg, blend.components))
+        rows.push([
+          takenAt,
+          record.entry_date,
+          timezone,
+          part.name,
+          kind,
+          record.status,
+          route,
+          part.dose_mg,
+          'mg',
+          null,
+          null,
+          null,
+          null,
+          record.source,
+          scheduledFor,
+          minutes,
+          record.plan,
+          null,
+          `${blend.name} (derived, ${source})`,
+        ]);
+    }
+    return rows;
   });
 }
 

@@ -17,9 +17,8 @@ import {
   daysBetween,
   medicationWeekStart,
   missedDoseTimes,
-  resolveMedicationPkProfile,
+  planLevelTargets,
   type PkOverlayDose,
-  type PkProfile,
 } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
 import { Button } from '@/components/ui/button';
@@ -27,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationInjectionsFor } from '@/hooks/useMedications';
 import { useMedicationLogWeek } from '@/hooks/Medications/useMedicationLogWeek';
+import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
 
 type WindowDays = 7 | 14 | 30;
 const WINDOWS: readonly WindowDays[] = [7, 14, 30];
@@ -71,32 +71,36 @@ export default function MedicationLevelsOverlay({
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
-  // Every active injectable is either drawn (it has a half-life) or listed as having no curve.
-  // One flagged as GLP-1 takes its figures from the drug it was set up with, so it is not asked for one.
-  const { modeled, unmodelled } = useMemo(() => {
-    const drawn: { med: Medication; profile: PkProfile }[] = [];
-    const missing: Medication[] = [];
-    for (const med of medications) {
-      if (
-        med.is_active === false ||
-        med.is_supplement ||
-        med.type_id !== 'injection'
-      )
-        continue;
-      const profile = resolveMedicationPkProfile({
-        name: med.name,
-        custom_fields: med.custom_fields as Record<string, unknown> | null,
-      });
-      if (profile) drawn.push({ med, profile });
-      else if (!med.is_glp1) missing.push(med);
-    }
-    return { modeled: drawn, unmodelled: missing };
-  }, [medications]);
-  const injections = useMedicationInjectionsFor(modeled.map((m) => m.med.id));
+  // Every active injectable is either drawn (it has a half-life) or listed as having no curve; a
+  // blend is drawn as its components. One flagged as GLP-1 takes its figures from the drug it was
+  // set up with, so it is not asked for one.
+  const blends = useMedicationBlends().data;
+  const { targets, missing } = useMemo(
+    () =>
+      planLevelTargets({
+        medications: medications.map((med) => ({
+          id: med.id,
+          name: med.name,
+          display_name: med.display_name,
+          is_active: med.is_active,
+          is_supplement: med.is_supplement,
+          is_glp1: med.is_glp1,
+          type_id: med.type_id,
+          custom_fields: med.custom_fields as Record<string, unknown> | null,
+        })),
+        blends: blends ?? [],
+      }),
+    [medications, blends]
+  );
+  const injections = useMedicationInjectionsFor([
+    ...new Set(
+      targets.flatMap((target) => target.sources.map((s) => s.medication_id))
+    ),
+  ]);
   // Planned doses ahead come from the weekly plan the calendar uses, read only as far as the window.
   const first = medicationWeekStart(today);
   const weeksNeeded = windowDays <= 7 ? 2 : windowDays <= 14 ? 3 : 5;
-  const enabled = modeled.length > 0;
+  const enabled = targets.length > 0;
   const w0 = useMedicationLogWeek(first, enabled);
   const w1 = useMedicationLogWeek(
     addDays(first, 7),
@@ -148,46 +152,56 @@ export default function MedicationLevelsOverlay({
   const lines = buildPkOverlay({
     now,
     window_days: windowDays,
-    series: modeled.map(({ med, profile }) => ({
-      id: med.id,
-      name: med.display_name || med.name,
-      profile,
-      taken: (injections.data[med.id] ?? []).flatMap(
-        (injection): PkOverlayDose[] => {
-          const dose = Number(injection.dose_mg);
-          return injection.injected_at && Number.isFinite(dose)
-            ? [{ at: injection.injected_at, dose_mg: dose }]
-            : [];
-        }
+    series: targets.map((target) => ({
+      id: target.id,
+      name: target.name,
+      profile: target.profile,
+      // Each source feeds the line by its share of the dose: all of it for a medication drawn as
+      // itself, a component's part of a blend dose otherwise.
+      taken: target.sources.flatMap(({ medication_id, fraction }) =>
+        (injections.data[medication_id] ?? []).flatMap(
+          (injection): PkOverlayDose[] => {
+            const dose = Number(injection.dose_mg);
+            return injection.injected_at && Number.isFinite(dose)
+              ? [{ at: injection.injected_at, dose_mg: dose * fraction }]
+              : [];
+          }
+        )
       ),
-      planned: plannedSlots.flatMap((slot): PkOverlayDose[] => {
-        const dose = mgOf(slot.dose_amount, slot.dose_unit);
-        return slot.medication_id === med.id &&
-          (slot.status === 'planned' || slot.status === 'pending') &&
-          slot.scheduled_for &&
-          dose !== null
-          ? [{ at: slot.scheduled_for, dose_mg: dose }]
-          : [];
-      }),
+      planned: target.sources.flatMap(({ medication_id, fraction }) =>
+        plannedSlots.flatMap((slot): PkOverlayDose[] => {
+          const dose = mgOf(slot.dose_amount, slot.dose_unit);
+          return slot.medication_id === medication_id &&
+            (slot.status === 'planned' || slot.status === 'pending') &&
+            slot.scheduled_for &&
+            dose !== null
+            ? [{ at: slot.scheduled_for, dose_mg: dose * fraction }]
+            : [];
+        })
+      ),
     })),
   });
   // Where a planned dose of a drawn medication was missed, so a fall in a line has its reason.
   const missed = missedDoseTimes({
     slots: pastSlots,
-    medication_ids: new Set(lines.map((line) => line.id)),
+    medication_ids: new Set(
+      targets
+        .filter((target) => lines.some((line) => line.id === target.id))
+        .flatMap((target) =>
+          target.sources.map((source) => source.medication_id)
+        )
+    ),
     now,
     window_days: windowDays,
   });
   const noCurve =
-    unmodelled.length > 0 ? (
+    missing.length > 0 ? (
       <p className="text-xs text-muted-foreground">
         {t(
           'medications.levels.noCurve',
           'No curve for {{names}}: add its half-life when editing the medication to draw it.',
           {
-            names: unmodelled
-              .map((med) => med.display_name || med.name)
-              .join(', '),
+            names: missing.join(', '),
           }
         )}
       </p>
