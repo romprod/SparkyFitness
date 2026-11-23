@@ -72,6 +72,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MedicationContainerForecast } from './MedicationInventoryForecast';
 
+/**
+ * A measured figure for display: at most two decimals and no trailing zeros, so a stored
+ * 3.3333333333333335 mg/mL reads 3.33 and 10 reads 10. Display only; stored values keep full precision.
+ */
+const tidyNumber = (value: number | string) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(value);
+};
+
 interface Glp1InventoryManagerProps {
   med: Medication;
   forecast?: MedicationInventoryPlannedForecast;
@@ -575,6 +584,10 @@ function InventorySession({
     const low =
       ((p.stock !== null && p.stock !== undefined) || total > 0) && pct <= 25;
     const expStatus = getExpiryStatus(p.expiry_date, today);
+    // The card header already prints the expiry date, so the Details list repeats it only to flag a problem.
+    const showExpiryRow =
+      !!p.expiry_date &&
+      (!stockView || expStatus === 'expired' || expStatus === 'near');
     // A sealed vial nobody has prepared yet has no stock figure to show.
     const awaitingPreparation =
       p.kind === 'vial' &&
@@ -606,7 +619,9 @@ function InventorySession({
                   {t(
                     'medications.glp1InventoryManager.mgML',
                     '· {{concentration_mg_ml}} mg/mL',
-                    { concentration_mg_ml: p.concentration_mg_ml }
+                    {
+                      concentration_mg_ml: tidyNumber(p.concentration_mg_ml),
+                    }
                   )}
                 </span>
               ) : null}
@@ -675,37 +690,40 @@ function InventorySession({
             </div>
           </div>
         )}
-        {p.kind === 'vial' && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {p.stock
-              ? t(
-                  'medications.preparation.remaining',
-                  '{{mass}} mg / {{volume}} mL remaining',
-                  {
-                    mass: p.stock.remainingMg.toFixed(3),
-                    volume: p.stock.remainingMl.toFixed(3),
-                  }
-                )
-              : awaitingPreparation
-                ? t(
-                    'medications.preparation.notPrepared',
-                    'Not prepared yet. Prepare this vial to track what is left.'
-                  )
-                : t(
-                    'medications.preparation.unknown',
-                    'Mass stock unavailable: check preparation details and linked dose history.'
+        {p.kind === 'vial' &&
+          (!stockView || !p.stock || p.stock.overdrawnMg > 0) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {p.stock
+                ? stockView
+                  ? null // the card's Details list already shows the balance and volume
+                  : t(
+                      'medications.preparation.remaining',
+                      '{{mass}} mg / {{volume}} mL remaining',
+                      {
+                        mass: p.stock.remainingMg.toFixed(3),
+                        volume: p.stock.remainingMl.toFixed(3),
+                      }
+                    )
+                : awaitingPreparation
+                  ? t(
+                      'medications.preparation.notPrepared',
+                      'Not prepared yet. Prepare this vial to track what is left.'
+                    )
+                  : t(
+                      'medications.preparation.unknown',
+                      'Mass stock unavailable: check preparation details and linked dose history.'
+                    )}
+              {p.stock && p.stock.overdrawnMg > 0 && (
+                <span className="text-destructive">
+                  {' '}
+                  {t(
+                    'medications.preparation.overdrawn',
+                    'Logged use exceeds the recorded vial content.'
                   )}
-            {p.stock && p.stock.overdrawnMg > 0 && (
-              <span className="text-destructive">
-                {' '}
-                {t(
-                  'medications.preparation.overdrawn',
-                  'Logged use exceeds the recorded vial content.'
-                )}
-              </span>
-            )}
-          </p>
-        )}
+                </span>
+              )}
+            </p>
+          )}
         {!awaitingPreparation && (
           <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
@@ -714,14 +732,14 @@ function InventorySession({
             />
           </div>
         )}
-        {(p.expiry_date || p.bud_date) && (
+        {(showExpiryRow || p.bud_date) && (
           <div className="mt-1.5 flex gap-3 text-xs text-muted-foreground flex-wrap items-center">
-            {p.expiry_date && (
+            {showExpiryRow && p.expiry_date && (
               <span className="flex items-center gap-1">
                 {t(
                   'medications.glp1InventoryManager.exp',
                   'Exp {{expiry_date}}',
-                  { expiry_date: p.expiry_date }
+                  { expiry_date: formatDate(p.expiry_date) }
                 )}
                 {expStatus === 'expired' && (
                   <Badge
@@ -741,7 +759,7 @@ function InventorySession({
             {p.bud_date && (
               <span className="flex items-center gap-1">
                 {t('medications.glp1InventoryManager.bud', 'BUD {{bud_date}}', {
-                  bud_date: p.bud_date,
+                  bud_date: formatDate(p.bud_date),
                 })}
                 <MedicationBudWarning date={p.bud_date} />
               </span>
@@ -859,7 +877,7 @@ function InventorySession({
                   <dt className="text-xs text-muted-foreground">
                     {t('medications.stockLayout.recordedDose', 'Recorded dose')}
                   </dt>
-                  <dd>{p.dose_mg} mg</dd>
+                  <dd className="font-medium tabular-nums">{p.dose_mg} mg</dd>
                 </div>
               ) : null}
               {p.concentration_mg_ml ? (
@@ -870,19 +888,34 @@ function InventorySession({
                       'Concentration (mg/mL)'
                     )}
                   </dt>
-                  <dd>{p.concentration_mg_ml} mg/mL</dd>
+                  <dd className="font-medium tabular-nums">
+                    {tidyNumber(p.concentration_mg_ml)} mg/mL
+                  </dd>
                 </div>
               ) : null}
               <div>
                 <dt className="text-xs text-muted-foreground">
                   {t('medications.stockLayout.balance', 'Stock balance')}
                 </dt>
-                <dd>
+                <dd className="font-medium tabular-nums">
                   {p.stock
                     ? `${p.stock.remainingMg.toFixed(3)} mg`
                     : `${left}/${total || '?'} ${t('medications.glp1InventoryManager.doses', 'doses')}`}
                 </dd>
               </div>
+              {p.stock && (
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    {t(
+                      'medications.stockLayout.remainingVolume',
+                      'Remaining volume'
+                    )}
+                  </dt>
+                  <dd className="font-medium tabular-nums">
+                    {p.stock.remainingMl.toFixed(3)} mL
+                  </dd>
+                </div>
+              )}
             </dl>
             {p.reorder_flag &&
               p.reorder_threshold != null &&

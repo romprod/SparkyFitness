@@ -806,6 +806,51 @@ it('opens a requested add dialog once and closes a write draft when permission i
   expect(mockSave).not.toHaveBeenCalled();
 });
 
+it('shows a prepared vial in stock Details with a tidy concentration, the volume left once and the expiry only in the header', () => {
+  mockPens = [
+    {
+      id: 'prepared',
+      medication_id: 'medicine',
+      kind: 'vial',
+      status: 'in_use',
+      label: 'Prepared vial',
+      label_mass_mg: '10',
+      dose_mg: 0.25,
+      concentration_mg_ml: 10 / 3,
+      expiry_date: '2999-02-19',
+      bud_date: '2999-02-18',
+      doses_total: 40,
+      doses_used: 4,
+      preparation: null,
+      stock: {
+        totalMg: 10,
+        usedMg: 1,
+        remainingMg: 9.733,
+        remainingMl: 2.92,
+        overdrawnMg: 0,
+      },
+    },
+  ];
+  const { container } = render(
+    <Glp1InventoryManager
+      med={{ ...med, name: 'Synthetic medication' }}
+      stockView="active"
+      stockCanWrite
+    />
+  );
+  const details = container.querySelector('article details')!;
+  expect(details).toHaveTextContent('Concentration (mg/mL)3.33 mg/mL');
+  expect(details).not.toHaveTextContent('3.3333');
+  expect(details).toHaveTextContent('Stock balance9.733 mg');
+  expect(details).toHaveTextContent('Remaining volume2.920 mL');
+  // The "x mg / y mL remaining" sentence repeated the two figures above.
+  expect(screen.queryByText(/mL remaining/)).not.toBeInTheDocument();
+  // The header already prints the expiry, so Details only adds the beyond-use date.
+  expect(container.querySelector('article header')).toHaveTextContent('exp');
+  expect(details).not.toHaveTextContent(/\bExp\b/);
+  expect(details).toHaveTextContent('BUD');
+});
+
 it('keeps legacy recorded dose, concentration, count and manual reorder warning accessible in stock Details', () => {
   mockPens = [
     {

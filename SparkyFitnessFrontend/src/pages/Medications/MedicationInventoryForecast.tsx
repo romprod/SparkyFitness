@@ -70,7 +70,7 @@ export function MedicationForecastCoverageDetails({
   const { t } = useTranslation();
   const { formatDate } = usePreferences();
   return (
-    <div className="space-y-2 text-sm">
+    <div className="space-y-3 text-sm">
       <p className="font-medium">
         {t(
           `medications.forecasts.basis.${coverage.basis}`,
@@ -84,68 +84,69 @@ export function MedicationForecastCoverageDetails({
       )}
       <MedicationForecastProjectionNotice projection={coverage.projection} />
       {coverage.status !== 'unknown' && (
-        <dl className="grid gap-1 sm:grid-cols-2">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
           {coverage.coverage_through && (
-            <div>
-              <dt className="inline text-muted-foreground">
-                {t('medications.forecasts.through', 'Coverage through')}:{' '}
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">
+                {t('medications.forecasts.through', 'Coverage through')}
               </dt>
-              <dd className="inline">
+              <dd className="font-medium tabular-nums">
                 {formatDate(coverage.coverage_through)}
               </dd>
             </div>
           )}
           {coverage.depletion_date && (
-            <div>
-              <dt className="inline text-muted-foreground">
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">
                 {t(
                   'medications.forecasts.projection.coverageEnd',
                   'Stock coverage ends'
                 )}
-                :{' '}
               </dt>
-              <dd className="inline">{formatDate(coverage.depletion_date)}</dd>
+              <dd className="font-medium tabular-nums">
+                {formatDate(coverage.depletion_date)}
+              </dd>
             </div>
           )}
           {!preparedOnly && coverage.reorder_by && (
-            <div>
-              <dt className="inline text-muted-foreground">
-                {t('medications.forecasts.reorderBy', 'Order by')}:{' '}
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">
+                {t('medications.forecasts.reorderBy', 'Order by')}
               </dt>
-              <dd className="inline">{formatDate(coverage.reorder_by)}</dd>
+              <dd className="font-medium tabular-nums">
+                {formatDate(coverage.reorder_by)}
+              </dd>
             </div>
           )}
           {coverage.projection.first_unserved_day && (
-            <div>
-              <dt className="inline text-muted-foreground">
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">
                 {t(
                   'medications.forecasts.projection.firstUnserved',
                   'First unserved planned administration'
                 )}
-                :{' '}
               </dt>
-              <dd className="inline">
+              <dd className="font-medium tabular-nums">
                 {formatDate(coverage.projection.first_unserved_day)}
               </dd>
             </div>
           )}
           {coverage.days_left != null && (
-            <div>
-              <dt className="inline text-muted-foreground">
-                {t('medications.forecasts.daysLeft', 'Days covered')}:{' '}
+            <div className="min-w-0">
+              <dt className="text-xs text-muted-foreground">
+                {t('medications.forecasts.daysLeft', 'Days covered')}
               </dt>
-              <dd className="inline">{coverage.days_left}</dd>
+              <dd className="font-medium tabular-nums">{coverage.days_left}</dd>
             </div>
           )}
-          <div>
-            <dt className="inline text-muted-foreground">
+          <div className="col-span-2 min-w-0">
+            <dt className="text-xs text-muted-foreground">
               {t(
                 'medications.forecasts.slots',
                 'Planned administrations covered'
               )}
-              :{' '}
             </dt>
-            <dd className="inline">
+            <dd className="font-medium tabular-nums">
               {coverage.served_slots} / {coverage.expected_slots}
             </dd>
           </div>
@@ -182,26 +183,34 @@ export function MedicationContainerForecast({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mt-3 space-y-2 rounded-md border bg-muted/10 p-3 text-sm">
-      <p className="font-medium">
+    <div className="mt-3 space-y-3 rounded-md border bg-muted/10 p-3 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {t(
           'medications.forecasts.containerTitle',
           'Prepared-container forecast'
         )}
       </p>
-      <p>
-        {t(
-          'medications.forecasts.remainingAdministrations',
-          'Remaining measurable administrations'
-        )}
-        : {container.remaining_doses ?? '—'}
-      </p>
-      {container.current_dose && (
-        <p className="text-muted-foreground">
-          {t('medications.forecasts.currentAmount', 'Current planned amount')}:{' '}
-          {container.current_dose.value} {container.current_dose.unit}
+      <div className="space-y-1">
+        <p>
+          {t(
+            'medications.forecasts.remainingAdministrations',
+            'Remaining measurable administrations'
+          )}
+          :{' '}
+          <span className="font-medium tabular-nums">
+            {container.remaining_doses ?? '—'}
+          </span>
         </p>
-      )}
+        {container.current_dose && (
+          <p className="text-muted-foreground">
+            {t('medications.forecasts.currentAmount', 'Current planned amount')}
+            :{' '}
+            <span className="tabular-nums">
+              {container.current_dose.value} {container.current_dose.unit}
+            </span>
+          </p>
+        )}
+      </div>
       <MedicationForecastCoverageDetails
         coverage={container.coverage}
         timezone={timezone}

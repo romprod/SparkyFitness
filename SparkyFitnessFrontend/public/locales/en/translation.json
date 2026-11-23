@@ -1021,6 +1021,7 @@
       "inUse": "In use",
       "recordedDose": "Recorded dose",
       "balance": "Stock balance",
+      "remainingVolume": "Remaining volume",
       "subtitle": "Vials, concentration, and how long each lasts.",
       "newStockMedication": "Medication for new stock",
       "loading": "Loading current stock…",
