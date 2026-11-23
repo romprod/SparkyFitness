@@ -277,6 +277,12 @@ function TimesForm({ state, settings }: { state: State; settings: Settings }) {
           'Doses with a set time remind at that time. Doses already logged or skipped do not remind. Notifications never show dose amounts.'
         )}
       </p>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'medications.reminders.cycleHelp',
+          'A course on an on/off cycle also sends a prompt at the no-set-time moment: a week and three days before a run ends or a break ends, on the last dose, the day after a run finishes, and on the restart day.'
+        )}
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="dose-reminder-untimed">

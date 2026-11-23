@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  cycleReminderEvent,
+  isCycleReminderTime,
+  planCycleReminders,
   planDoseReminders,
   unloggedDosesToday,
   DEFAULT_DOSE_REMINDER_SETTINGS,
@@ -190,5 +193,143 @@ describe('dose reminder planning', () => {
     expect(plan.events[0]?.body).toBe(
       '09:00 · Item 0, Item 1, Item 2, Item 3 and 2 more'
     );
+  });
+});
+
+describe('cycle prompts', () => {
+  const course = (
+    cycle: Partial<{
+      phase: 'on' | 'off' | 'ended' | 'restart_due' | 'none' | 'scheduled';
+      today: string;
+      planned_stop_date: string | null;
+      next_restart_date: string | null;
+    }>,
+    name = 'Retatrutide'
+  ) => ({
+    course_id: 'c1',
+    name,
+    cycle: {
+      phase: 'on' as const,
+      today,
+      planned_stop_date: null,
+      next_restart_date: null,
+      ...cycle,
+    },
+  });
+  const onStopping = (daysLeft: number) =>
+    course({ phase: 'on', planned_stop_date: addDays(today, daysLeft - 1) });
+
+  it('always pushes the last dose of a run, with its date and no dose amount', () => {
+    expect(cycleReminderEvent(onStopping(1))).toEqual({
+      key: 'cycle:c1:last_dose',
+      title: 'Retatrutide: last dose of the cycle',
+      body: 'Today (19 Nov) is the final day of this run.',
+      tag: 'sparky-cycle-c1',
+      url: '/medications',
+    });
+  });
+
+  it('counts down a week and three days out, and is quiet on the days between', () => {
+    expect(cycleReminderEvent(onStopping(7))).toMatchObject({
+      key: 'cycle:c1:ending_soon',
+      title: 'Retatrutide: cycle ends in 7 days',
+      body: 'Planned last dose 25 Nov.',
+    });
+    expect(cycleReminderEvent(onStopping(3))?.title).toBe(
+      'Retatrutide: cycle ends in 3 days'
+    );
+    for (const left of [6, 5, 4, 2, 8, 40])
+      expect(cycleReminderEvent(onStopping(left))).toBeNull();
+  });
+
+  it('pushes a finished run still active once, on the first day after it', () => {
+    const ended = (since: number) =>
+      course({ phase: 'ended', planned_stop_date: addDays(today, -since) });
+    expect(cycleReminderEvent(ended(1))).toMatchObject({
+      key: 'cycle:c1:stop_now',
+      title: 'Retatrutide: planned run is over',
+      body: expect.stringContaining('The run finished on 18 Nov'),
+    });
+    expect(cycleReminderEvent(ended(0))).toBeNull();
+    expect(cycleReminderEvent(ended(2))).toBeNull();
+    expect(cycleReminderEvent(ended(30))).toBeNull();
+  });
+
+  it('counts down to a restart, and pushes the restart day once', () => {
+    const resting = (until: number) =>
+      course({ phase: 'off', next_restart_date: addDays(today, until) });
+    expect(cycleReminderEvent(resting(7))).toMatchObject({
+      key: 'cycle:c1:restart_soon',
+      title: 'Retatrutide: restart in 7 days',
+      body: 'The break ends 26 Nov; the next cycle starts then.',
+    });
+    expect(cycleReminderEvent(resting(3))?.title).toBe(
+      'Retatrutide: restart in 3 days'
+    );
+    for (const until of [10, 6, 4, 2, 1])
+      expect(cycleReminderEvent(resting(until))).toBeNull();
+    expect(
+      cycleReminderEvent(
+        course({ phase: 'restart_due', next_restart_date: today })
+      )
+    ).toMatchObject({
+      key: 'cycle:c1:restart_now',
+      title: 'Retatrutide: back on today',
+    });
+    // Not started the next morning: the banner stays up, the phone is not nagged.
+    expect(
+      cycleReminderEvent(
+        course({ phase: 'restart_due', next_restart_date: addDays(today, -1) })
+      )
+    ).toBeNull();
+  });
+
+  it('says nothing for a course that is not on a plan, is mid-run or is on a long break', () => {
+    expect(cycleReminderEvent(course({ phase: 'none' }))).toBeNull();
+    expect(cycleReminderEvent(course({ phase: 'scheduled' }))).toBeNull();
+    expect(
+      cycleReminderEvent(course({ phase: 'on', planned_stop_date: null }))
+    ).toBeNull();
+    expect(cycleReminderEvent(onStopping(30))).toBeNull();
+  });
+
+  it('goes out in the morning at the time untimed doses remind, never on the first tick after midnight', () => {
+    const at = (clock: string) => new Date(`${today}T${clock}:00Z`);
+    const input = { day: today, timezone: 'Europe/London' };
+    // Default 08:00: due from five minutes before to thirty minutes after.
+    expect(isCycleReminderTime({ ...input, now: at('07:56') })).toBe(true);
+    expect(isCycleReminderTime({ ...input, now: at('08:29') })).toBe(true);
+    expect(isCycleReminderTime({ ...input, now: at('00:05') })).toBe(false);
+    expect(isCycleReminderTime({ ...input, now: at('08:40') })).toBe(false);
+    expect(
+      isCycleReminderTime({
+        ...input,
+        now: at('18:02'),
+        settings: { ...DEFAULT_DOSE_REMINDER_SETTINGS, untimed_time: '18:00' },
+      })
+    ).toBe(true);
+  });
+
+  it('plans one push per course that has one, only in the window', () => {
+    const base = {
+      day: today,
+      timezone: 'Europe/London',
+      courses: [
+        onStopping(1),
+        { ...onStopping(3), course_id: 'c2', name: 'Cagrilintide' },
+        { ...onStopping(30), course_id: 'c3' },
+      ],
+    };
+    const inWindow = planCycleReminders({
+      ...base,
+      now: new Date(`${today}T08:01:00Z`),
+    });
+    expect(inWindow.map((e) => e.key)).toEqual([
+      'cycle:c1:last_dose',
+      'cycle:c2:ending_soon',
+    ]);
+    expect(
+      planCycleReminders({ ...base, now: new Date(`${today}T13:00:00Z`) })
+    ).toEqual([]);
   });
 });

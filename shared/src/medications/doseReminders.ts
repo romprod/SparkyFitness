@@ -3,7 +3,8 @@ import {
   DEFAULT_DOSE_REMINDER_SETTINGS,
   type DoseReminderSettings,
 } from '../schemas/api/MedicationReminders.api.zod.ts';
-import { localDateTimeToUtc } from '../utils/timezone.ts';
+import { daysBetween, localDateTimeToUtc } from '../utils/timezone.ts';
+import { courseCycleAlert, type CourseCycleAlertInput } from './cycleAlert.ts';
 
 /**
  * Dose reminder planning: pure, no I/O.
@@ -154,4 +155,136 @@ export function planDoseReminders(
     }
   }
   return { day: week.today, events };
+}
+
+/**
+ * Days left before a planned stop or restart on which a countdown earns a push. Deliberately
+ * sparse, as Pitstop's: the banner is always on, a notification is an interruption, so a
+ * countdown interrupts twice before the day itself.
+ */
+export const CYCLE_PUSH_AT_DAYS: readonly number[] = [7, 3];
+
+/** A course on a weekly on/off plan, with its cycle state as the server reads it. */
+export interface CycleReminderCourse {
+  course_id: string;
+  name: string;
+  cycle: CourseCycleAlertInput;
+}
+
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+/** "29 Aug" from 'YYYY-MM-DD', on a fixed month table so it reads the same on every runtime. */
+const dayLabel = (day: string | null): string => {
+  const [, month, date] = (day ?? '').split('-').map(Number);
+  return month && date ? `${date} ${MONTHS[month - 1]}` : '';
+};
+
+/**
+ * The push a course's cycle earns today, or none. Boundary days always fire (the last dose, the
+ * first day after a finished run, the restart day); a countdown fires only at CYCLE_PUSH_AT_DAYS.
+ * Text never carries a dose amount, and nothing here ends or starts a cycle.
+ */
+export function cycleReminderEvent(
+  course: CycleReminderCourse
+): DoseReminderEvent | null {
+  const alert = courseCycleAlert(course.cycle);
+  if (!alert) return null;
+  const date = dayLabel(alert.date);
+  const make = (title: string, body: string): DoseReminderEvent => ({
+    key: `cycle:${course.course_id}:${alert.kind}`,
+    title,
+    body,
+    tag: `sparky-cycle-${course.course_id}`,
+    url: '/medications',
+  });
+  const name = course.name;
+  switch (alert.kind) {
+    case 'last_dose':
+      return make(
+        `${name}: last dose of the cycle`,
+        `Today (${date}) is the final day of this run.`
+      );
+    case 'ending_soon':
+      return CYCLE_PUSH_AT_DAYS.includes(alert.days)
+        ? make(
+            `${name}: cycle ends in ${alert.days} days`,
+            `Planned last dose ${date}.`
+          )
+        : null;
+    case 'stop_now':
+      // Once, on the first day after the run; the banner carries it after that.
+      return alert.date && daysBetween(alert.date, course.cycle.today) === 1
+        ? make(
+            `${name}: planned run is over`,
+            `The run finished on ${date} but the course is still active. Open the course to end the cycle.`
+          )
+        : null;
+    case 'restart_soon':
+      return CYCLE_PUSH_AT_DAYS.includes(alert.days)
+        ? make(
+            `${name}: restart in ${alert.days} days`,
+            `The break ends ${date}; the next cycle starts then.`
+          )
+        : null;
+    case 'restart_now':
+      // Once, on the restart day itself: the banner stays up for as long as the cycle is not started.
+      return alert.date === course.cycle.today
+        ? make(
+            `${name}: back on today`,
+            'The break is over. Open the course to start the next cycle.'
+          )
+        : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Cycle prompts are day-grain: there is no dose time to anchor them to. They ride the same moment
+ * as doses with no time (settings.untimed_time), so they go out in the morning rather than on the
+ * first tick after midnight. True when that moment is within the reminder window.
+ */
+export function isCycleReminderTime(input: {
+  day: string;
+  timezone: string;
+  now: Date;
+  settings?: DoseReminderSettings;
+}): boolean {
+  const settings = input.settings ?? DEFAULT_DOSE_REMINDER_SETTINGS;
+  const moment = localDateTimeToUtc(
+    `${input.day}T${settings.untimed_time}`,
+    input.timezone
+  ).getTime();
+  const at = input.now.getTime();
+  return (
+    moment >= at - REMINDER_GRACE_MINUTES * 60_000 &&
+    moment <= at + REMINDER_LEAD_MINUTES * 60_000
+  );
+}
+
+/** The cycle pushes due now, one at most per course; none outside the morning window. */
+export function planCycleReminders(input: {
+  courses: readonly CycleReminderCourse[];
+  day: string;
+  timezone: string;
+  now: Date;
+  settings?: DoseReminderSettings;
+}): DoseReminderEvent[] {
+  if (!isCycleReminderTime(input)) return [];
+  return input.courses.flatMap((course) => {
+    const event = cycleReminderEvent(course);
+    return event ? [event] : [];
+  });
 }

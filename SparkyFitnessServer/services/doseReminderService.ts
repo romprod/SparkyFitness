@@ -1,7 +1,15 @@
-import { addDays, planDoseReminders } from '@workspace/shared';
+import {
+  addDays,
+  isCycleReminderTime,
+  planCycleReminders,
+  planDoseReminders,
+  type CycleReminderCourse,
+} from '@workspace/shared';
 import { log } from '../config/logging.js';
 import * as repo from '../models/doseReminderRepository.js';
 import { getMedicationCalendarWeek } from './medicationCalendarService.js';
+import { listMedicationCourses } from './medicationCourseService.js';
+import { getMedicationCourseCycle } from './medicationCourseCycleService.js';
 import { scheduleJob, type ScheduledTask } from './scheduledJobs.js';
 import { sendWebPush, type VapidKeys } from './webPush.js';
 
@@ -74,6 +82,66 @@ export async function deliverToOwner(
   return { delivered, devices: targets.length };
 }
 
+/**
+ * Prompts for courses on a weekly on/off plan (the last dose, a finished run, a restart, and a
+ * countdown a week and three days out). They are secondary: whatever goes wrong reading a course
+ * must never stop the dose reminders, so a failure here yields none and is logged.
+ */
+async function cycleReminders(
+  owner: string,
+  day: string,
+  timezone: string,
+  now: Date,
+  settings: Parameters<typeof planCycleReminders>[0]['settings']
+) {
+  // Cheap check first: most ticks are nowhere near the morning moment these go out.
+  if (!isCycleReminderTime({ day, timezone, now, settings })) return [];
+  try {
+    const { courses } = await listMedicationCourses(owner, undefined, now);
+    const planned: CycleReminderCourse[] = [];
+    for (const course of courses) {
+      const revision = course.revisions.find(
+        (r) => r.id === course.current_revision_id
+      );
+      if (
+        course.deleted_at ||
+        revision?.status !== 'active' ||
+        revision.course_cycle_on_weeks === null
+      )
+        continue;
+      try {
+        const state = await getMedicationCourseCycle(owner, course.id, now);
+        planned.push({
+          course_id: course.id,
+          name: course.medication_name_snapshot,
+          cycle: {
+            phase: state.phase,
+            today: state.today,
+            planned_stop_date: state.planned_stop_date,
+            next_restart_date: state.next_restart_date,
+          },
+        });
+      } catch (error) {
+        log(
+          'warn',
+          `[REMINDERS] Cycle state unavailable for course ${course.id}:`,
+          error
+        );
+      }
+    }
+    return planCycleReminders({
+      courses: planned,
+      day,
+      timezone,
+      now,
+      settings,
+    });
+  } catch (error) {
+    log('error', `[REMINDERS] Cycle reminders failed for ${owner}:`, error);
+    return [];
+  }
+}
+
 export async function runDoseRemindersForOwner(
   owner: string,
   now: Date,
@@ -82,10 +150,14 @@ export async function runDoseRemindersForOwner(
   const settings = await repo.getSettings(owner);
   const week = await getMedicationCalendarWeek(owner, undefined, now);
   const plan = planDoseReminders(week, now, settings);
-  if (plan.events.length === 0) return 0;
+  const events = [
+    ...plan.events,
+    ...(await cycleReminders(owner, week.today, week.timezone, now, settings)),
+  ];
+  if (events.length === 0) return 0;
   const claimed = await repo.claimedKeys(owner, plan.day);
   let sent = 0;
-  for (const event of plan.events) {
+  for (const event of events) {
     if (claimed.has(event.key)) continue;
     if (!(await repo.claim(owner, plan.day, event.key))) continue;
     let outcome: Delivery;

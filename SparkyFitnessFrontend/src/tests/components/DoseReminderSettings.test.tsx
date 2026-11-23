@@ -135,6 +135,15 @@ it('tells iPhone users to add the app to the Home Screen first', async () => {
   ).not.toBeInTheDocument();
 });
 
+it('says that a course on a cycle sends its own prompts at the no-set-time moment', async () => {
+  renderCard(state());
+  expect(
+    await screen.findByText(
+      /A course on an on\/off cycle also sends a prompt at the no-set-time moment/
+    )
+  ).toBeInTheDocument();
+});
+
 it('saves reminder times and supplement choice', async () => {
   const value = state();
   renderCard(value);

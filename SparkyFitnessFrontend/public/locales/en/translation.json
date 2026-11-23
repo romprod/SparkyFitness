@@ -2098,6 +2098,7 @@
       "devices_other": "Reminders are on for {{count}} devices in total.",
       "times": "Reminder times",
       "timesHelp": "Doses with a set time remind at that time. Doses already logged or skipped do not remind. Notifications never show dose amounts.",
+      "cycleHelp": "A course on an on/off cycle also sends a prompt at the no-set-time moment: a week and three days before a run ends or a break ends, on the last dose, the day after a run finishes, and on the restart day.",
       "untimedTime": "Doses with no set time remind at",
       "nagTime": "Evening catch-up at",
       "nagEnabled": "Evening catch-up: one summary of doses still not logged",
