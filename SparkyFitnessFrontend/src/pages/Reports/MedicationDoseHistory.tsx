@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/card';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationEntries } from '@/hooks/useMedications';
+import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const LEVELS = [
@@ -56,7 +57,12 @@ export default function MedicationDoseHistory() {
     [entries.data]
   );
   const heat = useMemo(() => doseHeatmap(history, today), [history, today]);
-  const exposure = useMemo(() => cumulativeExposure(history), [history]);
+  const blends = useMedicationBlends().data;
+  const exposure = useMemo(
+    () => cumulativeExposure(history, blends ?? []),
+    [history, blends]
+  );
+  const showBlends = exposure.some((row) => Number(row.via_blends_mg) > 0);
   if (entries.isLoading || entries.isError) return null;
   if (heat.days.length === 0 && exposure.length === 0) return null;
 
@@ -156,6 +162,11 @@ export default function MedicationDoseHistory() {
                   <th className="pb-2 text-right font-medium">
                     {t('medications.reports.exposureDoses', 'Doses')}
                   </th>
+                  {showBlends && (
+                    <th className="pb-2 text-right font-medium">
+                      {t('medications.reports.exposureViaBlends', 'Via blends')}
+                    </th>
+                  )}
                   <th className="pb-2 text-right font-medium">
                     {t('medications.reports.exposureTotal', 'Total')}
                   </th>
@@ -174,6 +185,24 @@ export default function MedicationDoseHistory() {
                     <td className="py-1.5 text-right tabular-nums">
                       {row.doses}
                     </td>
+                    {showBlends && (
+                      <td className="py-1.5 text-right tabular-nums">
+                        {Number(row.via_blends_mg) > 0 ? (
+                          <>
+                            {mg(row.via_blends_mg)} mg
+                            <span className="block text-xs text-muted-foreground">
+                              {t(
+                                'medications.blends.derivedFrom',
+                                '(derived, {{source}})',
+                                { source: row.derived_source ?? 'label' }
+                              )}
+                            </span>
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    )}
                     <td className="py-1.5 text-right tabular-nums">
                       {mg(row.total_mg)} mg
                     </td>
@@ -187,6 +216,14 @@ export default function MedicationDoseHistory() {
                 'Counts only doses recorded in mass units (mcg, mg, g). Doses logged in tablets, millilitres or other units are not converted.'
               )}
             </p>
+            {showBlends && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {t(
+                  'medications.reports.exposureBlendNote',
+                  '“Via blends” is worked out from each blend’s stated ratio, not from separately measured doses. A blend with components is counted under its components; one without stays under its own name.'
+                )}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

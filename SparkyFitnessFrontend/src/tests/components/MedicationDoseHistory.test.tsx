@@ -8,6 +8,10 @@ let mockEntries: {
   isLoading: boolean;
   isError: boolean;
 } = { isLoading: false, isError: false };
+let mockBlends: unknown[] | undefined;
+jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
+  useMedicationBlends: () => ({ data: mockBlends }),
+}));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationEntries: () => mockEntries,
 }));
@@ -26,6 +30,9 @@ jest.mock('react-i18next', () => ({
       ),
   }),
 }));
+beforeEach(() => {
+  mockBlends = undefined;
+});
 jest.useFakeTimers().setSystemTime(new Date('2026-11-18T12:00:00Z'));
 
 const entry = (over: Partial<MedicationEntry> = {}) => ({
@@ -105,4 +112,74 @@ it('totals mass doses per compound and leaves other units out with a note', () =
   expect(
     screen.getByText(/Counts only doses recorded in mass units/)
   ).toBeInTheDocument();
+});
+
+const klow = {
+  blend_medication_id: 'blend',
+  name: 'KLOW',
+  components: [
+    ['ghk', 'GHK-Cu', '50'],
+    ['bpc', 'BPC-157', '10'],
+    ['tb', 'TB-500', '10'],
+    ['kpv', 'KPV', '10'],
+  ].map(([id, name, mass_mg], sort_index) => ({
+    component_medication_id: id,
+    name,
+    mass_mg,
+    source: 'label',
+    sort_index,
+  })),
+};
+
+it('counts a blend under its components and adds a derived via-blends column', () => {
+  mockBlends = [klow];
+  mockEntries = {
+    isLoading: false,
+    isError: false,
+    data: [
+      entry({
+        medication_id: 'blend',
+        med_name_snapshot: 'KLOW',
+        dose_amount_snapshot: 800,
+        dose_unit_snapshot: 'mcg',
+      }),
+      entry({
+        medication_id: 'bpc',
+        med_name_snapshot: 'BPC-157',
+        dose_amount_snapshot: 250,
+        dose_unit_snapshot: 'mcg',
+      }),
+    ],
+  };
+  render(<MedicationDoseHistory />);
+  const table = screen.getByRole('table');
+  expect(
+    within(table)
+      .getAllByRole('columnheader')
+      .map((cell) => cell.textContent)
+  ).toEqual(['Compound', 'Doses', 'Via blends', 'Total']);
+  expect(within(table).queryByText(/KLOW/)).not.toBeInTheDocument();
+  const bpc = within(table).getByRole('row', { name: /BPC-157/ });
+  expect(bpc).toHaveTextContent('0.10 mg');
+  expect(bpc).toHaveTextContent('(derived, label)');
+  expect(bpc).toHaveTextContent('0.35 mg');
+  const ghk = within(table).getByRole('row', { name: /GHK-Cu/ });
+  expect(ghk).toHaveTextContent('0.50 mg');
+  expect(
+    screen.getByText(/“Via blends” is worked out from/)
+  ).toBeInTheDocument();
+});
+
+it('shows no via-blends column when no blend delivered anything', () => {
+  mockBlends = [klow];
+  mockEntries = {
+    isLoading: false,
+    isError: false,
+    data: [entry()],
+  };
+  render(<MedicationDoseHistory />);
+  expect(screen.queryByText('Via blends')).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/“Via blends” is worked out from/)
+  ).not.toBeInTheDocument();
 });

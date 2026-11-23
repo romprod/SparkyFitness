@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   formatPurchaseMoney,
   formatPurchaseRate,
+  splitCostByComponent,
   type MedicationCostWindow,
 } from '@workspace/shared';
 import { useMedicationCostAnalytics } from '@/hooks/useMedicationPurchases';
+import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -34,6 +36,7 @@ export default function MedicationCostReport({
   const { t } = useTranslation();
   const [window, setWindow] = useState<MedicationCostWindow>('12');
   const report = useMedicationCostAnalytics(ownerId, window, true);
+  const blends = useMedicationBlends().data;
   const mismatched = !!report.data && report.data.window.key !== window;
   const data =
     !report.isFetching && !report.isError && !mismatched
@@ -60,6 +63,42 @@ export default function MedicationCostReport({
         ? { value: summary.invoice_total, currency: summary.currency }
         : null;
   const dash = '—';
+  /**
+   * A blend is bought as one vial at one price. Its spend, shared out by label mass among its
+   * components, shown under it as derived: it re-slices money already counted on the row above
+   * and is never added to it.
+   */
+  const blendCostLines = (row: NonNullable<typeof data>['rows'][number]) => {
+    const components =
+      blends?.find((blend) => blend.blend_medication_id === row.medication_id)
+        ?.components ?? [];
+    if (
+      !row.spend_present ||
+      row.spend === null ||
+      row.spend_currency === null ||
+      row.spend_mixed_currency
+    )
+      return null;
+    const currency = row.spend_currency;
+    return splitCostByComponent(row.spend, components).map((part) => (
+      <tr
+        key={`${row.medication_id}:${part.component_medication_id}`}
+        className="text-xs text-muted-foreground"
+      >
+        <td className="py-1 pl-4">↳ {part.name}</td>
+        <td className="py-1 text-right tabular-nums">
+          {formatPurchaseMoney(part.cost, currency)}{' '}
+          <span className="opacity-70">
+            {t('medications.blends.derivedFrom', '(derived, {{source}})', {
+              source: part.source,
+            })}
+          </span>
+        </td>
+        <td className="py-1 text-right">{dash}</td>
+        <td className="py-1 text-right">{dash}</td>
+      </tr>
+    ));
+  };
   const uncostedVials = summary
     ? summary.coverage.vials_total - summary.coverage.vials_costed
     : 0;
@@ -364,108 +403,111 @@ export default function MedicationCostReport({
                     </thead>
                     <tbody>
                       {data.rows.map((row) => (
-                        <tr key={row.medication_id} className="border-t">
-                          <td className="py-2 pr-2">
-                            <span className="break-words font-medium">
-                              {row.medication_name}
-                            </span>
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {t(
-                                'medications.costReport.countsShort',
-                                '{{costed}} doses',
-                                { costed: row.costed_doses }
-                              )}
-                              {row.uncosted_doses > 0 &&
-                                t(
-                                  'medications.costReport.uncostedSuffix',
-                                  ' · {{uncosted}} uncosted',
-                                  { uncosted: row.uncosted_doses }
-                                )}
-                            </span>
-                            {row.usage_sources.prescription > 0 && (
+                        <Fragment key={row.medication_id}>
+                          <tr className="border-t">
+                            <td className="py-2 pr-2">
+                              <span className="break-words font-medium">
+                                {row.medication_name}
+                              </span>
                               <span className="mt-1 block text-xs text-muted-foreground">
                                 {t(
-                                  'medications.costEstimates.usageSources',
-                                  '{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates',
-                                  {
-                                    invoice: row.usage_sources.invoice,
-                                    prescription:
-                                      row.usage_sources.prescription,
-                                  }
+                                  'medications.costReport.countsShort',
+                                  '{{costed}} doses',
+                                  { costed: row.costed_doses }
                                 )}
+                                {row.uncosted_doses > 0 &&
+                                  t(
+                                    'medications.costReport.uncostedSuffix',
+                                    ' · {{uncosted}} uncosted',
+                                    { uncosted: row.uncosted_doses }
+                                  )}
                               </span>
-                            )}
-                          </td>
-                          <td className="py-2 text-right tabular-nums">
-                            <span
-                              title={
-                                row.spend_mixed_currency
-                                  ? mixedSpend
-                                  : undefined
-                              }
-                            >
-                              {row.spend_present &&
-                              row.spend !== null &&
-                              row.spend_currency !== null &&
-                              !row.spend_mixed_currency
-                                ? formatPurchaseMoney(
-                                    row.spend,
-                                    row.spend_currency
-                                  )
-                                : dash}
-                            </span>
-                            {row.spend_mixed_currency && (
-                              <span className="sr-only">{mixedSpend}</span>
-                            )}
-                            {row.accounted.some(
-                              (bucket) => bucket.estimated_vials > 0
-                            ) && (
-                              <div className="mt-2">
-                                <PrescriptionAccountedLines
-                                  buckets={row.accounted}
-                                />
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2 text-right tabular-nums">
-                            <span
-                              title={
-                                row.usage_mixed_currency
-                                  ? mixedUsage
-                                  : undefined
-                              }
-                            >
-                              {row.usage_mixed_currency
-                                ? dash
-                                : formatPurchaseRate(
-                                    row.cost_per_dose,
-                                    row.usage_currency
+                              {row.usage_sources.prescription > 0 && (
+                                <span className="mt-1 block text-xs text-muted-foreground">
+                                  {t(
+                                    'medications.costEstimates.usageSources',
+                                    '{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates',
+                                    {
+                                      invoice: row.usage_sources.invoice,
+                                      prescription:
+                                        row.usage_sources.prescription,
+                                    }
                                   )}
-                            </span>
-                            {row.usage_mixed_currency && (
-                              <span className="sr-only">{mixedUsage}</span>
-                            )}
-                          </td>
-                          <td className="py-2 text-right tabular-nums">
-                            <span
-                              title={
-                                row.usage_mixed_currency
-                                  ? mixedUsage
-                                  : undefined
-                              }
-                            >
-                              {row.usage_mixed_currency
-                                ? dash
-                                : formatPurchaseRate(
-                                    row.cost_per_mg,
-                                    row.usage_currency
-                                  )}
-                            </span>
-                            {row.usage_mixed_currency && (
-                              <span className="sr-only">{mixedUsage}</span>
-                            )}
-                          </td>
-                        </tr>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right tabular-nums">
+                              <span
+                                title={
+                                  row.spend_mixed_currency
+                                    ? mixedSpend
+                                    : undefined
+                                }
+                              >
+                                {row.spend_present &&
+                                row.spend !== null &&
+                                row.spend_currency !== null &&
+                                !row.spend_mixed_currency
+                                  ? formatPurchaseMoney(
+                                      row.spend,
+                                      row.spend_currency
+                                    )
+                                  : dash}
+                              </span>
+                              {row.spend_mixed_currency && (
+                                <span className="sr-only">{mixedSpend}</span>
+                              )}
+                              {row.accounted.some(
+                                (bucket) => bucket.estimated_vials > 0
+                              ) && (
+                                <div className="mt-2">
+                                  <PrescriptionAccountedLines
+                                    buckets={row.accounted}
+                                  />
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 text-right tabular-nums">
+                              <span
+                                title={
+                                  row.usage_mixed_currency
+                                    ? mixedUsage
+                                    : undefined
+                                }
+                              >
+                                {row.usage_mixed_currency
+                                  ? dash
+                                  : formatPurchaseRate(
+                                      row.cost_per_dose,
+                                      row.usage_currency
+                                    )}
+                              </span>
+                              {row.usage_mixed_currency && (
+                                <span className="sr-only">{mixedUsage}</span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right tabular-nums">
+                              <span
+                                title={
+                                  row.usage_mixed_currency
+                                    ? mixedUsage
+                                    : undefined
+                                }
+                              >
+                                {row.usage_mixed_currency
+                                  ? dash
+                                  : formatPurchaseRate(
+                                      row.cost_per_mg,
+                                      row.usage_currency
+                                    )}
+                              </span>
+                              {row.usage_mixed_currency && (
+                                <span className="sr-only">{mixedUsage}</span>
+                              )}
+                            </td>
+                          </tr>
+                          {blendCostLines(row)}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>

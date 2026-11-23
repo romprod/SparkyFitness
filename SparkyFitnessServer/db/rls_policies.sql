@@ -131,6 +131,7 @@ BEGIN
     'medication_purchase_packs',
     'medication_stacks',
     'medication_stack_members',
+    'medication_blend_components',
     'life_events',
     'medication_reminder_settings',
     'medication_reminder_sends',
@@ -1133,6 +1134,7 @@ SELECT create_medication_policy('medication_pens');
 SELECT create_medication_policy('medication_packs');
 SELECT create_medication_policy('medication_stacks');
 SELECT create_medication_policy('medication_stack_members');
+SELECT create_medication_policy('medication_blend_components');
 SELECT create_medication_policy('life_events');
 CREATE POLICY select_policy ON public.medication_syringes FOR SELECT TO PUBLIC
 USING (user_id IS NULL OR has_medication_read_access(user_id));

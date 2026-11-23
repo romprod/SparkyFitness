@@ -248,6 +248,29 @@ async function deleteMedication(userId: string, id: string) {
       [id, userId]
     );
     return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    // A component of a blend stays until it is taken out of the blend: dropping it would
+    // quietly change every share.
+    if (
+      (error as { constraint?: string }).constraint ===
+      'medication_blend_components_component_fk'
+    ) {
+      const blends = await client.query<{ name: string }>(
+        `SELECT DISTINCT COALESCE(NULLIF(b.display_name, ''), b.name) AS name
+           FROM medication_blend_components c
+           JOIN medications b ON b.id = c.blend_medication_id
+          WHERE c.component_medication_id = $1
+          ORDER BY 1`,
+        [id]
+      );
+      throw Object.assign(
+        new Error(
+          `This medication is a component of ${blends.rows.map((r) => r.name).join(', ')}. Remove it from the blend before deleting it.`
+        ),
+        { statusCode: 409, status: 409 }
+      );
+    }
+    throw error;
   } finally {
     client.release();
   }

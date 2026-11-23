@@ -6,6 +6,10 @@ import type { MedicationPrescriptionCostAnalytics } from '@workspace/shared';
 import MedicationCostReport from '@/pages/Medications/MedicationCostReport';
 import * as api from '@/api/Medications/purchaseService';
 const mockUser = { id: 'owner', activeUserId: 'owner' };
+const mockBlends: unknown[] | undefined = undefined;
+jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
+  useMedicationBlends: () => ({ data: mockBlends }),
+}));
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockUser, loading: false }),
 }));

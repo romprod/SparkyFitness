@@ -96,6 +96,8 @@ describe('cumulative exposure', () => {
         name: 'Cagrilintide',
         doses: 1,
         total_mg: '0.25',
+        via_blends_mg: '0',
+        derived_source: null,
         first_date: '2026-11-01',
         last_date: '2026-11-01',
       },
@@ -104,6 +106,8 @@ describe('cumulative exposure', () => {
         name: 'Retatrutide',
         doses: 2,
         total_mg: '4',
+        via_blends_mg: '0',
+        derived_source: null,
         first_date: '2026-11-10',
         last_date: '2026-11-17',
       },
@@ -121,5 +125,106 @@ describe('cumulative exposure', () => {
       ['Old peptide', 1],
       ['Retatrutide', 3],
     ]);
+  });
+
+  describe('blends', () => {
+    // One labelled vial: 50 mg + 10 mg + 10 mg + 10 mg = 80 mg.
+    const klow = {
+      blend_medication_id: 'blend',
+      components: [
+        ['ghk', 'GHK-Cu', '50'],
+        ['bpc', 'BPC-157', '10'],
+        ['tb', 'TB-500', '10'],
+        ['kpv', 'KPV', '10'],
+      ].map(([id, name, mass], sort_index) => ({
+        component_medication_id: id!,
+        name: name!,
+        mass_mg: mass!,
+        source: 'label' as const,
+        sort_index,
+      })),
+    };
+    const blendDose = (over: Partial<DoseHistoryEntry> = {}) =>
+      dose({
+        medication_id: 'blend',
+        med_name_snapshot: 'KLOW',
+        dose_amount_snapshot: 800,
+        dose_unit_snapshot: 'mcg',
+        ...over,
+      });
+
+    it('counts a blend dose for each component by its share and no longer under the blend', () => {
+      const rows = cumulativeExposure([blendDose()], [klow]);
+      expect(rows.map((r) => r.name)).toEqual([
+        'BPC-157',
+        'GHK-Cu',
+        'KPV',
+        'TB-500',
+      ]);
+      const byName = Object.fromEntries(rows.map((r) => [r.name, r]));
+      expect(byName['GHK-Cu']).toMatchObject({
+        medication_id: 'ghk',
+        doses: 1,
+        total_mg: '0.5',
+        via_blends_mg: '0.5',
+        derived_source: 'label',
+      });
+      expect(byName['BPC-157']!.total_mg).toBe('0.1');
+      expect(rows.some((r) => r.name === 'KLOW')).toBe(false);
+    });
+
+    it('adds blend mass to the same compound logged on its own', () => {
+      const rows = cumulativeExposure(
+        [
+          dose({
+            medication_id: 'bpc',
+            med_name_snapshot: 'BPC-157',
+            dose_amount_snapshot: 250,
+            dose_unit_snapshot: 'mcg',
+            entry_date: '2026-11-01',
+          }),
+          blendDose({ entry_date: '2026-11-12' }),
+        ],
+        [klow]
+      );
+      const bpc = rows.find((r) => r.medication_id === 'bpc')!;
+      expect(bpc).toMatchObject({
+        name: 'BPC-157',
+        doses: 2,
+        total_mg: '0.35',
+        via_blends_mg: '0.1',
+        first_date: '2026-11-01',
+        last_date: '2026-11-12',
+      });
+    });
+
+    it('claims the weakest source of the blends that delivered, and leaves a blend with no components under its own name', () => {
+      const assumed = {
+        ...klow,
+        components: klow.components.map((c, i) =>
+          i === 1 ? { ...c, source: 'assumed' as const } : c
+        ),
+      };
+      const rows = cumulativeExposure([blendDose()], [assumed]);
+      expect(new Set(rows.map((r) => r.derived_source))).toEqual(
+        new Set(['assumed'])
+      );
+      const plain = cumulativeExposure(
+        [blendDose()],
+        [{ blend_medication_id: 'blend', components: [] }]
+      );
+      expect(plain.map((r) => [r.name, r.total_mg, r.derived_source])).toEqual([
+        ['KLOW', '0.8', null],
+      ]);
+    });
+
+    it('still leaves blend doses in tablets or millilitres out', () => {
+      expect(
+        cumulativeExposure(
+          [blendDose({ dose_amount_snapshot: 0.2, dose_unit_snapshot: 'ml' })],
+          [klow]
+        )
+      ).toEqual([]);
+    });
   });
 });

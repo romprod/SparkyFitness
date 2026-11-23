@@ -192,6 +192,7 @@ beforeEach(() => {
         return { courses: [], today: '2026-11-16', timezone: 'Europe/London' };
       if (endpoint === '/v2/medication-purchases/vial-costs')
         return { vials: [] };
+      if (endpoint === '/v2/medication-blends') return { blends: [] };
       if (endpoint === '/v2/medication-purchases/analytics')
         return {
           window: {
@@ -337,6 +338,16 @@ it('keeps syringe controls within a selected non-GLP1 injectable Cabinet detail'
   fireEvent.click(await screen.findByText('Synthetic injectable'));
   expect(
     await screen.findByRole('button', { name: 'Manage devices' })
+  ).toBeInTheDocument();
+});
+it('offers blend components on a selected injectable, as a plain medication until some are added', async () => {
+  mockGlp1 = false;
+  open();
+  fireEvent.click(await screen.findByText('Synthetic injectable'));
+  expect(await screen.findByText('Blend components')).toBeInTheDocument();
+  expect(screen.getByText('Not a blend.')).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Add components' })
   ).toBeInTheDocument();
 });
 it('keeps Inventory inventory-only through the full Medications route', async () => {

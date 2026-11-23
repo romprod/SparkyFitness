@@ -451,7 +451,9 @@
       "exposureCompound": "Compound",
       "exposureDoses": "Doses",
       "exposureTotal": "Total",
-      "exposureNote": "Counts only doses recorded in mass units (mcg, mg, g). Doses logged in tablets, millilitres or other units are not converted."
+      "exposureNote": "Counts only doses recorded in mass units (mcg, mg, g). Doses logged in tablets, millilitres or other units are not converted.",
+      "exposureViaBlends": "Via blends",
+      "exposureBlendNote": "“Via blends” is worked out from each blend’s stated ratio, not from separately measured doses. A blend with components is counted under its components; one without stays under its own name."
     },
     "locations": {
       "general": "General",
@@ -2161,6 +2163,38 @@
       "restartSoonBody": "The break ends {{date}}; the next cycle starts then.",
       "restartNow": "{{name}}: back on today",
       "restartNowBody": "The break is over. Open the course to start the next cycle."
+    },
+    "blends": {
+      "title": "Blend components",
+      "intro": "For one vial that holds several compounds. Log doses of the blend as a whole; what each compound received is worked out from these masses and always shown as derived.",
+      "componentOf": "This is a component of {{blends}}, so it cannot have components of its own.",
+      "vialTotal": "One labelled vial: {{total}} mg. Ratio source: {{source}}.",
+      "none": "Not a blend.",
+      "saved": "Components saved.",
+      "edit": "Edit components",
+      "add": "Add components",
+      "formLabel": "Blend components",
+      "noCandidates": "Add each compound as a medication first, then choose it here.",
+      "component": "Component",
+      "choose": "— choose —",
+      "mass": "mg in one vial",
+      "sourceField": "Ratio source",
+      "remove": "Remove component",
+      "addRow": "Add component",
+      "draftTotal": "Total {{total}} mg",
+      "clearHint": "Saving with no components makes this a plain medication again.",
+      "save": "Save components",
+      "cancel": "Cancel",
+      "note": "Masses are for one labelled vial. Everything worked out from them is shown as derived, never as a measured dose.",
+      "incomplete": "Choose a compound and a mass for every row.",
+      "invalid": "Check the components and try again.",
+      "saveFailed": "Could not save the components. Please try again.",
+      "derivedFrom": "(derived, {{source}})",
+      "source": {
+        "label": "Label",
+        "coa": "Certificate of analysis",
+        "assumed": "Assumed"
+      }
     }
   },
   "nav": {

@@ -7,6 +7,10 @@ import type {
   MedicationPrescriptionCostAnalytics,
 } from '@workspace/shared';
 const mockReport = jest.fn();
+let mockBlends: unknown[] | undefined;
+jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
+  useMedicationBlends: () => ({ data: mockBlends }),
+}));
 jest.mock('@/hooks/useMedicationPurchases', () => ({
   useMedicationCostAnalytics: (...args: unknown[]) => mockReport(...args),
 }));
@@ -40,7 +44,10 @@ const data = (
   ...emptyCostBreakdown,
   waste: { ...emptyCostBreakdown.waste, rows: [] },
 });
-beforeEach(() => mockReport.mockReset());
+beforeEach(() => {
+  mockReport.mockReset();
+  mockBlends = undefined;
+});
 const ready = (value = data()) =>
   mockReport.mockReturnValue({
     data: value,
@@ -387,4 +394,66 @@ it('shows the bacteriostatic water share of each dose between medication and sun
   expect(
     stat().getByText('medication GBP 0.927 + water GBP 0.044')
   ).toBeInTheDocument();
+});
+
+const klow = {
+  blend_medication_id: 'blend',
+  name: 'KLOW',
+  components: [
+    ['ghk', 'GHK-Cu', '50'],
+    ['bpc', 'BPC-157', '10'],
+    ['tb', 'TB-500', '10'],
+    ['kpv', 'KPV', '10'],
+  ].map(([id, name, mass_mg], sort_index) => ({
+    component_medication_id: id,
+    name,
+    mass_mg,
+    source: 'label',
+    sort_index,
+  })),
+};
+
+it('shares a blend’s spend out by label mass under it, as derived, and never adds it to the row', () => {
+  mockBlends = [klow];
+  ready(
+    data([
+      row({ medication_id: 'blend', medication_name: 'KLOW', spend: '80' }),
+    ])
+  );
+  render(<MedicationCostReport ownerId="owner" />);
+  const lines = screen
+    .getAllByText(/^↳ /)
+    .map((cell) => cell.closest('tr') as HTMLElement);
+  expect(
+    lines.map((line) => within(line).getAllByRole('cell')[0]!.textContent)
+  ).toEqual(['↳ GHK-Cu', '↳ BPC-157', '↳ TB-500', '↳ KPV']);
+  expect(lines[0]).toHaveTextContent('AUD 50.00');
+  expect(lines[0]).toHaveTextContent('(derived, label)');
+  expect(lines[1]).toHaveTextContent('AUD 10.00');
+  // The parent row still carries the one real figure.
+  expect(screen.getByText('AUD 80.00')).toBeInTheDocument();
+});
+
+it('shows no component lines for a plain medication, an unknown spend or mixed currencies', () => {
+  mockBlends = [klow];
+  ready(data([row({ medication_id: 'plain', spend: '80' })]));
+  const { rerender } = render(<MedicationCostReport ownerId="owner" />);
+  expect(screen.queryByText(/^↳ /)).not.toBeInTheDocument();
+  ready(
+    data([row({ medication_id: 'blend', spend: null, spend_present: false })])
+  );
+  rerender(<MedicationCostReport ownerId="owner" />);
+  expect(screen.queryByText(/^↳ /)).not.toBeInTheDocument();
+  ready(
+    data([
+      row({
+        medication_id: 'blend',
+        spend: null,
+        spend_currency: null,
+        spend_mixed_currency: true,
+      }),
+    ])
+  );
+  rerender(<MedicationCostReport ownerId="owner" />);
+  expect(screen.queryByText(/^↳ /)).not.toBeInTheDocument();
 });

@@ -67,6 +67,7 @@ import MedicationScheduleMove from './MedicationScheduleMove';
 import MedicationSupplyTile from './MedicationSupplyTile';
 import MedicationNextDoses from './MedicationNextDoses';
 import MedicationLevelsOverlay from './MedicationLevelsOverlay';
+import MedicationBlendCard from './MedicationBlendCard';
 import SymptomsHub from '../Symptoms/SymptomsHub';
 import MedicationDisclaimer from './MedicationDisclaimer';
 import { formatScheduleDescription } from './medicationUtils';
@@ -818,6 +819,25 @@ export default function Medications() {
                       )}
                     </CardContent>
                   </Card>
+
+                  {selected.type_id === 'injection' &&
+                    !selected.is_supplement && (
+                      <MedicationBlendCard
+                        key={selected.id}
+                        medication={{
+                          id: selected.id,
+                          name: selected.display_name || selected.name,
+                        }}
+                        candidates={meds
+                          .filter(
+                            (m) => !m.is_supplement && m.id !== selected.id
+                          )
+                          .map((m) => ({
+                            id: m.id,
+                            name: m.display_name || m.name,
+                          }))}
+                      />
+                    )}
 
                   {selected.is_glp1 ? (
                     <div className="space-y-4">

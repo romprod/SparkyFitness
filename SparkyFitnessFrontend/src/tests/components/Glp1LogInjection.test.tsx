@@ -15,6 +15,10 @@ let mockFulfilled: Record<string, unknown>[] = [];
 const mockCourseRefresh = jest.fn(async () => ({
   data: { slots: mockCourseSlots, fulfilled_slots: mockFulfilled },
 }));
+let mockBlends: unknown[] | undefined;
+jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
+  useMedicationBlends: () => ({ data: mockBlends }),
+}));
 jest.mock('@/hooks/Medications/useMedicationCourses', () => ({
   HttpApiError: jest.requireActual('@/api/api').HttpApiError,
   useMedicationCourses: () => ({
@@ -107,6 +111,7 @@ const prep = {
   created_at: '2026-11-15T00:00:00Z',
 };
 beforeEach(() => {
+  mockBlends = undefined;
   mockInjections = [];
   mockLog.mockClear();
   mockCourseCurrent = true;
@@ -737,5 +742,60 @@ it('stops stale scheduled injection retries until explicit canonical refresh whi
   expect(mockLog.mock.calls[1][0]).toMatchObject({
     course_expected_version: 2,
     calculated_draw: { dose: { value: '500', unit: 'mcg' } },
+  });
+});
+
+describe('a blend', () => {
+  const blend = {
+    blend_medication_id: 'med',
+    name: 'KLOW',
+    components: [
+      ['ghk', 'GHK-Cu', '50'],
+      ['bpc', 'BPC-157', '10'],
+      ['tb', 'TB-500', '10'],
+      ['kpv', 'KPV', '10'],
+    ].map(([id, name, mass_mg], sort_index) => ({
+      component_medication_id: id,
+      name,
+      mass_mg,
+      source: 'label',
+      sort_index,
+    })),
+  };
+
+  it('shows what each compound receives from the delivered dose, as derived', () => {
+    mockBlends = [blend];
+    render(<Glp1LogInjection med={medication} />);
+    expect(
+      screen.getByText(
+        '↳ GHK-Cu 375 mcg · BPC-157 75 mcg · TB-500 75 mcg · KPV 75 mcg',
+        { exact: false }
+      )
+    ).toHaveTextContent('(derived, label)');
+  });
+
+  it('splits a manual mg dose the same way', async () => {
+    mockBlends = [blend];
+    mockDefault = null;
+    render(<Glp1LogInjection med={medication} />);
+    fireEvent.pointerDown(screen.getByLabelText('Device'), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'Manual dose (mg)' })
+    );
+    fireEvent.change(screen.getByLabelText('Dose (mg)'), {
+      target: { value: '0.8' },
+    });
+    expect(
+      screen.getByText(/↳ GHK-Cu 500 mcg · BPC-157 100 mcg/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows nothing for a medication that is not a blend', () => {
+    mockBlends = [{ ...blend, blend_medication_id: 'another' }];
+    render(<Glp1LogInjection med={medication} />);
+    expect(screen.queryByText(/↳/)).not.toBeInTheDocument();
   });
 });

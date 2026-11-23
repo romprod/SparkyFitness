@@ -23,6 +23,8 @@ import { useInjectionSiteSelection } from '@/hooks/useInjectionSiteSelection';
 import InjectionSiteSettings from './InjectionSiteSettings';
 import MedicationSyringeSettings from './MedicationSyringeSettings';
 import MedicationDrawPreview from './MedicationDrawPreview';
+import MedicationBlendSplit from './MedicationBlendSplit';
+import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
 import MedicationBudWarning from './MedicationBudWarning';
 import MedicationCourseAttributionPicker from './MedicationCourseAttributionPicker';
 import {
@@ -268,6 +270,9 @@ export default function Glp1LogInjection({
       preview.warnings.some((warning) => warning.severity === 'block'));
   const manualDose =
     currentDoseUnit === 'mg' && currentDose.trim() ? Number(currentDose) : null;
+  const blendComponents = useMedicationBlends().data?.find(
+    (blend) => blend.blend_medication_id === med.id
+  )?.components;
   const doseValid =
     (penChoice === 'none' || pensQ.data !== undefined) &&
     (syringeChoice === 'none' || syringesQ.data !== undefined) &&
@@ -752,6 +757,14 @@ export default function Glp1LogInjection({
             isError={previewQ.isError}
           />
         }
+
+        {blendComponents && (
+          <MedicationBlendSplit
+            amount={preview ? preview.deliveredMassMcg : manualDose}
+            unit={preview ? 'mcg' : 'mg'}
+            components={blendComponents}
+          />
+        )}
 
         {selectedPen?.bud_date && (
           <MedicationBudWarning date={selectedPen.bud_date} />

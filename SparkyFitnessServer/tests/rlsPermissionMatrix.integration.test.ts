@@ -252,6 +252,7 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     medication_packs: 'medication',
     medication_stacks: 'medication',
     medication_stack_members: 'medication',
+    medication_blend_components: 'medication',
     medication_syringes: 'medication',
     medication_device_preferences: 'medication',
     medication_stock_status_audit: 'medication',
