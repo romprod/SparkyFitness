@@ -441,6 +441,88 @@ describe('canonical seven-day planned/recorded composition', () => {
     ).toBe('08:00:00');
     expect(i.courses).toEqual(before);
   });
+  it('shows the next dose amount once the previous slot is logged, and keeps later slots unknown', () => {
+    const i = input();
+    steps(i);
+    attach(i, [matched(today)]);
+    const before = structuredClone(i),
+      out = result(i);
+    const future = out.planned_slots.filter((p) => p.scheduled_day > today);
+    const nextSlot = future.find((p) => p.scheduled_day === '2026-11-18')!;
+    expect(nextSlot.dose_amount).toBe('1');
+    expect(nextSlot.dose_unit).toBe('mg');
+    expect(nextSlot.dose_qualification).toBe('configured');
+    const later = future.filter((p) => p.scheduled_day > '2026-11-18');
+    expect(later.length).toBeGreaterThan(0);
+    expect(
+      later.every(
+        (p) =>
+          p.dose_amount === null &&
+          p.dose_qualification === 'future_phase_unknown'
+      )
+    ).toBe(true);
+    expect(i).toEqual(before);
+  });
+  it('treats an unlinked phase-family dose on the previous day as covering it', () => {
+    const i = input();
+    const r = steps(i);
+    i.actuals = [fact({ entry_date: today, id: uid(200) })];
+    i.phase_actuals = [
+      {
+        ...fact({ entry_date: today, id: uid(200) }),
+        phase_family_id: r.id,
+        course_revision_id: null,
+      },
+    ];
+    const out = result(i);
+    const next = out.planned_slots.find(
+      (p) => p.scheduled_day === '2026-11-18'
+    )!;
+    expect(next.dose_amount).toBe('1');
+    expect(next.dose_qualification).toBe('configured');
+    expect(
+      out.planned_slots
+        .filter((p) => p.scheduled_day > '2026-11-18')
+        .every((p) => p.dose_amount === null)
+    ).toBe(true);
+  });
+  it('finds the next dose across weeks for a weekly course', () => {
+    const i = input();
+    const r = steps(i);
+    r.rules[0]!.schedule_type_id = 'weekly';
+    r.rules[0]!.days_of_week = [1];
+    // Step 0 is two weekly doses, so one logged dose leaves the phase on the
+    // 1 mg step with a differing 2 mg step still ahead.
+    r.steps[0]!.duration_days = 14;
+    attach(i, [matched('2026-11-16')]);
+    i.week_start = '2026-11-23';
+    const bySlot = (day: string) =>
+      result(i).planned_slots.find((p) => p.scheduled_day === day)!;
+    const next = bySlot('2026-11-23');
+    expect(next.dose_amount).toBe('1');
+    expect(next.dose_unit).toBe('mg');
+    expect(next.dose_qualification).toBe('configured');
+    // The 23 Nov slot is still open before 30 Nov, so 30 Nov stays unknown.
+    i.week_start = '2026-11-30';
+    const following = bySlot('2026-11-30');
+    expect(following.dose_amount).toBeNull();
+    expect(following.dose_qualification).toBe('future_phase_unknown');
+  });
+  it('leaves a later week unknown while an unlogged future slot precedes it', () => {
+    const i = input();
+    steps(i);
+    attach(i, [matched(today)]);
+    i.week_start = '2026-11-23';
+    const out = result(i);
+    expect(out.planned_slots.length).toBeGreaterThan(0);
+    expect(
+      out.planned_slots.every(
+        (p) =>
+          p.dose_amount === null &&
+          p.dose_qualification === 'future_phase_unknown'
+      )
+    ).toBe(true);
+  });
   it('preserves fixed identical/terminal/rule-override intent while uncertain step identity stays unset', () => {
     const i = input();
     const r = steps(i, '1', '1');

@@ -17,10 +17,15 @@ import {
   isDayString,
   localDateTimeToUtc,
 } from '../utils/timezone.ts';
-import { computeCourseAdherence } from './courseAdherence.ts';
-import type {
-  CourseDeliveredDose,
-  CourseExpectedSlot,
+import {
+  computeCourseAdherence,
+  courseEntryMatchesSlot,
+} from './courseAdherence.ts';
+import { coursePhaseActuals } from './coursePhaseContext.ts';
+import {
+  courseSlotsForDay,
+  type CourseDeliveredDose,
+  type CourseExpectedSlot,
 } from './courseSchedules.ts';
 import { getDueDosesForDate, type SharedScheduleRule } from './schedules.ts';
 
@@ -135,11 +140,72 @@ function future(
     ? slot.scheduled_day >= instantToDay(asOf, timezone)
     : Date.parse(slot.scheduled_for) > Date.parse(asOf);
 }
+const SETTLED = new Set(['taken', 'prn_taken', 'skipped']);
+/**
+ * The key of the course's single next unlogged slot, or null when it is not certain.
+ * Its phase step is fixed by the doses already logged (nothing earlier can still
+ * change the count), unlike later slots whose step depends on doses not yet taken.
+ */
+function nextSlotKey(
+  course: MedicationCourse,
+  asOf: string,
+  lastDay: string,
+  medicationActive: boolean,
+  settled: CourseDeliveredDose[],
+  phase: CourseDeliveredDose[]
+): string | null {
+  const todayC = instantToDay(asOf, course.timezone);
+  if (todayC > lastDay) return null;
+  const slotsOn = (day: string) =>
+    courseSlotsForDay({
+      course,
+      day,
+      today: todayC,
+      nowInstant: asOf,
+      medicationActive,
+    });
+  const logged = (slot: CourseExpectedSlot) =>
+    settled.some((entry) => courseEntryMatchesSlot(entry, slot));
+  let candidate: CourseExpectedSlot | undefined;
+  for (let day = todayC; day <= lastDay; day = addDays(day, 1)) {
+    const open = slotsOn(day).filter(
+      (slot) => future(slot, asOf, course.timezone) && !logged(slot)
+    );
+    if (!open.length) continue;
+    const times = open.map((slot) => slot.scheduled_for);
+    if (
+      open.length > 1 &&
+      (times.some((t) => t === null) || times[0] === times[1])
+    )
+      return null;
+    candidate = open[0];
+    break;
+  }
+  if (!candidate) return null;
+  let previous: CourseExpectedSlot | undefined;
+  const captured = instantToDay(course.captured_at, course.timezone);
+  for (let day = todayC; day >= captured && !previous; day = addDays(day, -1))
+    previous = slotsOn(day)
+      .filter((slot) => !future(slot, asOf, course.timezone))
+      .at(-1);
+  if (!previous || logged(previous)) return candidate.course_slot_key;
+  const revision = course.revisions.find(
+    (row) => row.id === candidate.course_revision_id
+  );
+  const day = previous.scheduled_day;
+  return revision &&
+    coursePhaseActuals({ course, revision, delivered: phase }).some(
+      (entry) => entry.entry_date.slice(0, 10) >= day
+    )
+    ? candidate.course_slot_key
+    : null;
+}
 /** Amount uncertainty is not a phase simulator. Course steps cannot alter recurrence timing. */
 function plannedDose(
   course: MedicationCourse,
   slot: CourseExpectedSlot,
-  asOf: string
+  asOf: string,
+  next: boolean
 ) {
   const revision = course.revisions.find(
     (row) => row.id === slot.course_revision_id
@@ -156,7 +222,10 @@ function plannedDose(
     const index = ordered.findIndex((row) => row.id === slot.course_step_id);
     const remaining = index < 0 ? ordered : ordered.slice(index);
     if (remaining.length > 1 || index < 0) step = null;
-    if (rule.dose_amount === null || rule.dose_amount === undefined) {
+    if (
+      (rule.dose_amount === null || rule.dose_amount === undefined) &&
+      !(next && index >= 0)
+    ) {
       const first = remaining[0];
       if (!first || remaining.some((row) => row.dose_unit !== first.dose_unit))
         unit = null;
@@ -271,6 +340,17 @@ export function buildMedicationLogWeek(
         });
       continue;
     }
+    const medicationActive =
+      course.medication_id !== null &&
+      medications.get(course.medication_id)?.is_active === true;
+    const nextKey = nextSlotKey(
+      course,
+      input.as_of,
+      days[6]!,
+      medicationActive,
+      original.filter((row) => SETTLED.has(row.status)),
+      phase
+    );
     const score = computeCourseAdherence({
       course,
       entries: original,
@@ -279,9 +359,7 @@ export function buildMedicationLogWeek(
       toDay: days[6]!,
       today: instantToDay(input.as_of, course.timezone),
       now: input.as_of,
-      medicationActive:
-        course.medication_id !== null &&
-        medications.get(course.medication_id)?.is_active === true,
+      medicationActive,
     });
     for (const day of score.days) {
       coverage.push({
@@ -311,7 +389,12 @@ export function buildMedicationLogWeek(
                 Date.parse(expected.scheduled_for) > Date.parse(input.as_of)))
               ? 'planned'
               : expected.status,
-          ...plannedDose(course, expected, input.as_of),
+          ...plannedDose(
+            course,
+            expected,
+            input.as_of,
+            expected.course_slot_key === nextKey
+          ),
           course_id: course.id,
           course_revision_id: expected.course_revision_id,
           course_rule_id: expected.course_rule_id,
