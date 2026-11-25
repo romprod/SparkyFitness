@@ -5,6 +5,7 @@ import {
   useDeleteStackMutation,
   useMedicationStacks,
   useSaveStackMutation,
+  useSetupStackMutation,
 } from '@/hooks/Medications/useMedicationStacks';
 import { useMedications } from '@/hooks/useMedications';
 
@@ -12,6 +13,7 @@ jest.mock('@/hooks/Medications/useMedicationStacks', () => ({
   useMedicationStacks: jest.fn(),
   useDeleteStackMutation: jest.fn(),
   useSaveStackMutation: jest.fn(),
+  useSetupStackMutation: jest.fn(),
 }));
 jest.mock('@/hooks/useMedications', () => ({ useMedications: jest.fn() }));
 
@@ -64,6 +66,10 @@ const setup = (
     mutate: jest.fn(),
     isPending: false,
   } as unknown as ReturnType<typeof useSaveStackMutation>);
+  jest.mocked(useSetupStackMutation).mockReturnValue({
+    mutate: jest.fn(),
+    isPending: false,
+  } as unknown as ReturnType<typeof useSetupStackMutation>);
   jest.mocked(useMedications).mockReturnValue({
     data: [],
     isLoading: false,
@@ -117,6 +123,9 @@ it('has no log button for read-only access and hides when empty', () => {
   expect(
     screen.queryByRole('button', { name: 'New stack' })
   ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Set up a premixed stack' })
+  ).not.toBeInTheDocument();
 });
 
 it('opens the new-stack dialog from the header', () => {
@@ -124,4 +133,14 @@ it('opens the new-stack dialog from the header', () => {
   expect(screen.getByText(/No stacks yet/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'New stack' }));
   expect(screen.getByRole('dialog')).toHaveTextContent('New stack');
+});
+
+it('opens the premixed stack setup from the header', () => {
+  setup(undefined, true, []);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Set up a premixed stack' })
+  );
+  expect(screen.getByRole('dialog')).toHaveTextContent(
+    'Set up a premixed stack'
+  );
 });

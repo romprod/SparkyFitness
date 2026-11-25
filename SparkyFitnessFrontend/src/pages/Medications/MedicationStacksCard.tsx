@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Check,
   CircleDashed,
+  Droplet,
   Layers,
   Pencil,
   Plus,
@@ -20,6 +21,7 @@ import {
 import { useMedicationStacks } from '@/hooks/Medications/useMedicationStacks';
 import { useDeleteStackMutation } from '@/hooks/Medications/useMedicationStacks';
 import MedicationStackDialog from './MedicationStackDialog';
+import MedicationStackSetupDialog from './MedicationStackSetupDialog';
 import {
   stackProgress,
   type StackMemberState,
@@ -54,6 +56,7 @@ export default function MedicationStacksCard<
   const stacks = useMedicationStacks();
   const remove = useDeleteStackMutation();
   const [editing, setEditing] = useState<MedicationStack | 'new' | null>(null);
+  const [settingUp, setSettingUp] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notices, setNotices] = useState<Record<string, string>>({});
 
@@ -106,14 +109,27 @@ export default function MedicationStacksCard<
               {t('medications.stacks.title', 'Stacks')}
             </span>
             {canWrite && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setEditing('new')}
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                {t('medications.stacks.new', 'New stack')}
-              </Button>
+              <span className="flex flex-wrap justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSettingUp(true)}
+                >
+                  <Droplet className="mr-1 h-4 w-4" />
+                  {t(
+                    'medications.stacks.setup.button',
+                    'Set up a premixed stack'
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditing('new')}
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  {t('medications.stacks.new', 'New stack')}
+                </Button>
+              </span>
             )}
           </CardTitle>
           <CardDescription>
@@ -284,6 +300,9 @@ export default function MedicationStacksCard<
           })}
         </CardContent>
       </Card>
+      {settingUp && (
+        <MedicationStackSetupDialog onClose={() => setSettingUp(false)} />
+      )}
       {editing && (
         <MedicationStackDialog
           stack={editing === 'new' ? undefined : editing}

@@ -38,14 +38,16 @@ const PEN_COLS = `id, medication_id, user_id, kind, label, label_mass_mg::text, 
 const penColumns = (owner: string) =>
   PEN_COLS + (prescriptionActor(owner) === owner ? ', prescription_id' : '');
 
+/** `joined` is a client inside a transaction the caller owns: no BEGIN, COMMIT, ROLLBACK or release here. */
 async function createPen(
   userId: string,
   medicationId: string,
-  data: CreatePenBody
+  data: CreatePenBody,
+  joined?: PoolClient
 ) {
-  const client = await getClient(userId);
+  const client = joined ?? (await getClient(userId));
   try {
-    await client.query('BEGIN');
+    if (!joined) await client.query('BEGIN');
     if (
       data.label_mass_mg !== null &&
       data.label_mass_mg !== undefined &&
@@ -170,13 +172,13 @@ async function createPen(
       `SELECT ${penColumns(userId)} FROM medication_pens WHERE id=$1 AND user_id=$2`,
       [pen.id, userId]
     );
-    await client.query('COMMIT');
+    if (!joined) await client.query('COMMIT');
     return saved.rows[0];
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (!joined) await client.query('ROLLBACK');
     throw error;
   } finally {
-    client.release();
+    if (!joined) client.release();
   }
 }
 

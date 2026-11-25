@@ -1,6 +1,8 @@
 import {
   medicationStackListSchema,
+  medicationStackSetupResultSchema,
   type MedicationStackInput,
+  type MedicationStackSetupInput,
 } from '@workspace/shared';
 import { apiCall } from '@/api/api';
 
@@ -37,3 +39,12 @@ export const deleteMedicationStack = (id: string): Promise<void> =>
     method: 'DELETE',
     suppressErrorToast: true,
   });
+
+export const setupPremixedStack = async (body: MedicationStackSetupInput) =>
+  medicationStackSetupResultSchema.parse(
+    await apiCall('/v2/medication-stacks/setup', {
+      method: 'POST',
+      body,
+      suppressErrorToast: true,
+    })
+  );

@@ -1,10 +1,14 @@
 import express from 'express';
-import { medicationStackInputSchema } from '@workspace/shared';
+import {
+  medicationStackInputSchema,
+  medicationStackSetupInputSchema,
+} from '@workspace/shared';
 import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
 import { UuidParamSchema } from '../../schemas/measurementSchemas.js';
 import * as stacks from '../../models/medicationStackRepository.js';
+import { setupPremixedStack } from '../../services/medicationStackSetupService.js';
 
 /**
  * Stacks of medications and supplements. Same access as the medication APIs:
@@ -39,6 +43,27 @@ router.post('/', async (req, res, next) => {
     res
       .status(201)
       .json({ id: await stacks.createStack(req.userId, body.data) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /v2/medication-stacks/setup:
+ *   post:
+ *     summary: Set up a premixed stack
+ *     description: >
+ *       In one transaction, for each component: finds or creates the medicine,
+ *       creates its vials with a premixed preparation, and creates a daily plan
+ *       dosed at the chosen volume; then creates the stack. A retry with the
+ *       same operation_id returns the first result and creates nothing.
+ */
+router.post('/setup', async (req, res, next) => {
+  try {
+    const body = medicationStackSetupInputSchema.safeParse(req.body);
+    if (!body.success) return void invalid(res, body.error);
+    res.status(201).json(await setupPremixedStack(req.userId, body.data));
   } catch (error) {
     next(error);
   }

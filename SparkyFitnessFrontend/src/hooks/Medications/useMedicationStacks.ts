@@ -1,12 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MedicationStackInput } from '@workspace/shared';
+import type {
+  MedicationStackInput,
+  MedicationStackSetupInput,
+} from '@workspace/shared';
 import {
   createMedicationStack,
   deleteMedicationStack,
   listMedicationStacks,
+  setupPremixedStack,
   updateMedicationStack,
 } from '@/api/Medications/stackService';
-import { useMedicationCourseScope } from './useMedicationCourses';
+import {
+  invalidateMedicationCourses,
+  useMedicationCourseScope,
+} from './useMedicationCourses';
 
 const stackKeys = { all: ['medication-stacks'] as const };
 
@@ -46,5 +53,21 @@ export const useDeleteStackMutation = () => {
   return useMutation({
     mutationFn: (id: string) => deleteMedicationStack(id),
     onSuccess: invalidate,
+  });
+};
+
+/**
+ * Sets up a premixed stack. It creates medicines, vials and plans as well as
+ * the stack, so everything that lists them is refreshed.
+ */
+export const useSetupStackMutation = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: MedicationStackSetupInput) => setupPremixedStack(body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: stackKeys.all });
+      void client.invalidateQueries({ queryKey: ['medication-pens'] });
+      invalidateMedicationCourses(client);
+    },
   });
 };

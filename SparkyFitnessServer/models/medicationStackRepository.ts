@@ -82,27 +82,42 @@ const duplicateName = (error: unknown) =>
     ? fail('You already have a stack with that name.', 409)
     : error;
 
+/** `joined` is a client inside a transaction the caller owns: no BEGIN, COMMIT, ROLLBACK or release here. */
 export async function createStack(
   owner: string,
-  input: MedicationStackInput
+  input: MedicationStackInput,
+  joined?: PoolClient
 ): Promise<string> {
-  const client: PoolClient = await getClient(owner);
+  const client: PoolClient = joined ?? (await getClient(owner));
   try {
-    await client.query('BEGIN');
+    if (!joined) await client.query('BEGIN');
     const { rows } = await client.query<{ id: string }>(
       'INSERT INTO medication_stacks(user_id, name, notes) VALUES($1,$2,$3) RETURNING id',
       [owner, input.name, input.notes]
     );
     const id = rows[0]!.id;
     await replaceMembers(client, owner, id, input.medication_ids);
-    await client.query('COMMIT');
+    if (!joined) await client.query('COMMIT');
     return id;
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (!joined) await client.query('ROLLBACK');
     throw duplicateName(error);
   } finally {
-    client.release();
+    if (!joined) client.release();
   }
+}
+
+/** One stack with its members, read on the caller's client (so a transaction sees its own writes). */
+export async function loadStack(
+  client: PoolClient,
+  owner: string,
+  id: string
+): Promise<MedicationStack | null> {
+  const { rows } = await client.query<StackRow>(
+    `${SELECT_STACKS} WHERE s.user_id = $1 AND s.id = $2`,
+    [owner, id]
+  );
+  return rows[0] ? view(rows[0]) : null;
 }
 
 /** Returns false when the stack does not exist for this owner. */

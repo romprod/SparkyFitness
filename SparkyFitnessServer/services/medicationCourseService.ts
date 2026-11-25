@@ -63,7 +63,7 @@ import {
   type CourseActual,
 } from '../models/medicationCourseRepository.js';
 
-async function assertWrite(owner: string) {
+export async function assertWrite(owner: string) {
   if (
     courseActor(owner) !== owner &&
     !(await canAccessUserData(owner, 'medications', courseActor(owner)))
@@ -532,95 +532,101 @@ export async function createMedicationCourse(
     'create',
     input,
     { medication_id: input.medication_id },
-    async (client) => {
-      const state = await createReviewState(
-        client,
-        owner,
-        input.medication_id,
-        input,
-        now
-      );
-      const plan = state.review.plan;
-      const context = await loadCourseOwnerContext(client, owner, now);
-      if (
-        input.handoff &&
-        (!input.native_reminder_limitation_acknowledged ||
-          !input.review_fingerprint)
-      )
-        throw courseProblem(
-          'Review and acknowledge the legacy handoff and native reminder limitation.',
-          422
-        );
-      if (
-        input.review_fingerprint &&
-        input.review_fingerprint !== state.review.review_fingerprint
-      )
-        throw courseProblem(
-          'The handoff or authored draft changed. Review it again.'
-        );
-      const id = randomUUID(),
-        revisionId = randomUUID();
+    (client) => createCourseInTransaction(client, owner, input, now)
+  );
+}
+/** The create work itself, on a client whose transaction (and receipt, if any) the caller owns. */
+export async function createCourseInTransaction(
+  client: PoolClient,
+  owner: string,
+  input: MedicationCourseCreateInput,
+  now = new Date()
+): Promise<MedicationCourseMutationResult> {
+  const state = await createReviewState(
+    client,
+    owner,
+    input.medication_id,
+    input,
+    now
+  );
+  const plan = state.review.plan;
+  const context = await loadCourseOwnerContext(client, owner, now);
+  if (
+    input.handoff &&
+    (!input.native_reminder_limitation_acknowledged ||
+      !input.review_fingerprint)
+  )
+    throw courseProblem(
+      'Review and acknowledge the legacy handoff and native reminder limitation.',
+      422
+    );
+  if (
+    input.review_fingerprint &&
+    input.review_fingerprint !== state.review.review_fingerprint
+  )
+    throw courseProblem(
+      'The handoff or authored draft changed. Review it again.'
+    );
+  const id = randomUUID(),
+    revisionId = randomUUID();
+  await client.query(
+    'INSERT INTO medication_courses(id,user_id,medication_id,medication_name_snapshot,current_revision_id,version,captured_at,capture_day,timezone) VALUES($1,$2,$3,$4,$5,1,$6,$7,$8)',
+    [
+      id,
+      owner,
+      input.medication_id,
+      state.medication.name,
+      revisionId,
+      now,
+      context.today,
+      context.timezone,
+    ]
+  );
+  await insertCourseRevision(
+    client,
+    owner,
+    id,
+    revisionId,
+    1,
+    null,
+    plan,
+    now,
+    state.medication.is_active
+      ? dayToUtcRange(plan.start_date, context.timezone).start.toISOString()
+      : null,
+    state.device.choice
+  );
+  if (input.handoff) {
+    for (const row of state.selected) {
+      const capped =
+        row.end_date && row.end_date < addDays(input.handoff.cutover_day, -1)
+          ? row.end_date
+          : addDays(input.handoff.cutover_day, -1);
       await client.query(
-        'INSERT INTO medication_courses(id,user_id,medication_id,medication_name_snapshot,current_revision_id,version,captured_at,capture_day,timezone) VALUES($1,$2,$3,$4,$5,1,$6,$7,$8)',
+        'UPDATE medication_schedules SET end_date=$3 WHERE user_id=$1 AND id=$2',
+        [owner, row.id, capped]
+      );
+      await client.query(
+        'INSERT INTO medication_course_handoffs(user_id,course_id,revision_id,schedule_id,original_schedule_id,original_rule,original_fingerprint,cutover_day,capped_end_date) VALUES($1,$2,$3,$4,$4,$5::jsonb,$6,$7,$8)',
         [
-          id,
           owner,
-          input.medication_id,
-          state.medication.name,
+          id,
           revisionId,
-          now,
-          context.today,
-          context.timezone,
+          row.id,
+          JSON.stringify(row),
+          courseFingerprint(row),
+          input.handoff.cutover_day,
+          capped,
         ]
       );
-      await insertCourseRevision(
-        client,
-        owner,
-        id,
-        revisionId,
-        1,
-        null,
-        plan,
-        now,
-        state.medication.is_active
-          ? dayToUtcRange(plan.start_date, context.timezone).start.toISOString()
-          : null,
-        state.device.choice
-      );
-      if (input.handoff) {
-        for (const row of state.selected) {
-          const capped =
-            row.end_date &&
-            row.end_date < addDays(input.handoff.cutover_day, -1)
-              ? row.end_date
-              : addDays(input.handoff.cutover_day, -1);
-          await client.query(
-            'UPDATE medication_schedules SET end_date=$3 WHERE user_id=$1 AND id=$2',
-            [owner, row.id, capped]
-          );
-          await client.query(
-            'INSERT INTO medication_course_handoffs(user_id,course_id,revision_id,schedule_id,original_schedule_id,original_rule,original_fingerprint,cutover_day,capped_end_date) VALUES($1,$2,$3,$4,$4,$5::jsonb,$6,$7,$8)',
-            [
-              owner,
-              id,
-              revisionId,
-              row.id,
-              JSON.stringify(row),
-              courseFingerprint(row),
-              input.handoff.cutover_day,
-              capped,
-            ]
-          );
-        }
-      }
-      return {
-        course_id: id,
-        revision_id: revisionId,
-        version: 1,
-        operation_id: input.operation_id,
-      };
     }
-  );
+  }
+  return {
+    course_id: id,
+    revision_id: revisionId,
+    version: 1,
+    operation_id: input.operation_id,
+  };
 }
 export async function editMedicationCourse(
   owner: string,

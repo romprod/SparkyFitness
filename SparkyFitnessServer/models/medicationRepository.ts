@@ -29,8 +29,13 @@ const SCHEDULE_COLS = `id, medication_id, user_id, schedule_type_id, time_of_day
   with_meal, prn_reason, prn_max_per_day, start_date, end_date, active,
   source, custom_fields, created_at, updated_at`;
 
-async function createMedication(userId: string, data: CreateMedicationBody) {
-  const client: PoolClient = await getClient(userId);
+/** `joined` is a client whose transaction the caller owns; the caller releases it. */
+async function createMedication(
+  userId: string,
+  data: CreateMedicationBody,
+  joined?: PoolClient
+) {
+  const client: PoolClient = joined ?? (await getClient(userId));
   try {
     const result = await client.query(
       `INSERT INTO medications (
@@ -75,7 +80,7 @@ async function createMedication(userId: string, data: CreateMedicationBody) {
     );
     return result.rows[0];
   } finally {
-    client.release();
+    if (!joined) client.release();
   }
 }
 
