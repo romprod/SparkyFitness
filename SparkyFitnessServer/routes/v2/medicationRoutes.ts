@@ -44,6 +44,7 @@ import { canAccessUserData } from '../../utils/permissionUtils.js';
 import { getClient } from '../../db/poolManager.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import medicationRepository from '../../models/medicationRepository.js';
+import * as medicationSmoothWeekPinRepository from '../../models/medicationSmoothWeekPinRepository.js';
 import medicationPenRepository from '../../models/medicationPenRepository.js';
 import {
   medicationPackCreateSchema,
@@ -1194,6 +1195,76 @@ router.get('/calendar/week', async (req, res, next) => {
     next(error);
   }
 });
+
+// --- Smooth your week: "keep as is" pins ------------------------------------
+// Registered ahead of every `/:id` and `/:medicationId/...` route so the fixed
+// `smooth-week` segment is never read as a medication id.
+
+const listSmoothWeekPins: RequestHandler = async (req, res, next) => {
+  try {
+    const medicationIds =
+      await medicationSmoothWeekPinRepository.listSmoothWeekPins(req.userId);
+    res.json({ medication_ids: medicationIds });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const pinSmoothWeekMedication: RequestHandler = async (req, res, next) => {
+  try {
+    const params = MedicationIdParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    const pinned =
+      await medicationSmoothWeekPinRepository.pinSmoothWeekMedication(
+        req.userId,
+        params.data.medicationId
+      );
+    if (!pinned) {
+      res.status(404).json({ error: 'Medication not found.' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+const unpinSmoothWeekMedication: RequestHandler = async (req, res, next) => {
+  try {
+    const params = MedicationIdParamSchema.safeParse(req.params);
+    if (!params.success) return badRequest(res, params.error);
+    await medicationSmoothWeekPinRepository.unpinSmoothWeekMedication(
+      req.userId,
+      params.data.medicationId
+    );
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.get('/smooth-week/pins', listSmoothWeekPins);
+router.put('/smooth-week/pins/:medicationId', pinSmoothWeekMedication);
+router.delete('/smooth-week/pins/:medicationId', unpinSmoothWeekMedication);
+
+/**
+ * /v2/medications/smooth-week/pins:
+ *   get:
+ *     summary: List medications pinned "keep as is" for Smooth your week
+ *     tags: [Medications & GLP-1]
+ *     responses: { 200: { description: "{ medication_ids: string[] } for the signed-in user." } }
+ * /v2/medications/smooth-week/pins/{medicationId}:
+ *   put:
+ *     summary: Pin a medication so Smooth your week leaves it alone
+ *     description: Idempotent. Answers 404 when the medication is not the user's and 400 when the id is not a UUID.
+ *     tags: [Medications & GLP-1]
+ *     responses: { 204: { description: Pinned. }, 404: { description: Medication not found. } }
+ *   delete:
+ *     summary: Remove a "keep as is" pin
+ *     description: Idempotent. Removing a pin that does not exist still answers 204.
+ *     tags: [Medications & GLP-1]
+ *     responses: { 204: { description: Pin removed or already absent. } }
+ */
 
 router.get('/:id', getMedication);
 router.put(

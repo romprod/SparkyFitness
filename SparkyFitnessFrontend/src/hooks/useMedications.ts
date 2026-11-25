@@ -758,7 +758,8 @@ export const useAddScheduleMutation = (medId: string) => {
   });
 };
 
-export const useMoveSchedulesMutation = () => {
+/** `quiet` drops the per-move toasts, for a caller that reports its own summary. */
+export const useMoveSchedulesMutation = (options: { quiet?: boolean } = {}) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -772,16 +773,18 @@ export const useMoveSchedulesMutation = () => {
       queryClient.invalidateQueries({ queryKey: ['medications'] });
       invalidateReports(queryClient);
     },
-    meta: {
-      errorMessage: i18n.t(
-        'hooks.useMedications.couldNotMoveSchedule',
-        'Could not move the schedule.'
-      ),
-      successMessage: i18n.t(
-        'hooks.useMedications.scheduleMoved',
-        'Schedule moved.'
-      ),
-    },
+    meta: options.quiet
+      ? { silentError: true }
+      : {
+          errorMessage: i18n.t(
+            'hooks.useMedications.couldNotMoveSchedule',
+            'Could not move the schedule.'
+          ),
+          successMessage: i18n.t(
+            'hooks.useMedications.scheduleMoved',
+            'Schedule moved.'
+          ),
+        },
   });
 };
 
