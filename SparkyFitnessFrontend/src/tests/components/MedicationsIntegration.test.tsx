@@ -385,9 +385,10 @@ it('keeps Inventory inventory-only through the full Medications route', async ()
   expect(
     await screen.findByRole('button', { name: 'Add stock' })
   ).toBeInTheDocument();
-  expect(
-    await screen.findByText('4.000 mg / 2.000 mL remaining')
-  ).toBeInTheDocument();
+  expect(await screen.findByText('Stock balance')).toBeInTheDocument();
+  expect(screen.getByText('4.000 mg')).toBeInTheDocument();
+  expect(screen.getByText('Remaining volume')).toBeInTheDocument();
+  expect(screen.getByText('2.000 mL')).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: 'Manage devices' })
   ).not.toBeInTheDocument();
