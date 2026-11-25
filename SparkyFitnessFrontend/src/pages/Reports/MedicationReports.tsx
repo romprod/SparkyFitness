@@ -60,6 +60,7 @@ import {
 import Papa from 'papaparse';
 
 import MedicationDoseHistory from './MedicationDoseHistory';
+import MedicationAdherenceCard from './MedicationAdherenceCard';
 import MedicationLogTable from './MedicationLogTable';
 import AppointmentPdfExport from './AppointmentPdfExport';
 import MedicationInsightsCard from './MedicationInsightsCard';
@@ -138,6 +139,7 @@ const DEFAULT_VISIBLE_ITEMS = [
   'protein_nausea_card',
   'sleep_fatigue_card',
   'dose_nausea_card',
+  'adherence_90_card',
 ];
 
 /** Cards added to the page after others had been saved; each is switched on once for them. */
@@ -146,6 +148,7 @@ const NEW_DEFAULT_CARDS = [
   'medication_log_table',
   'insights_card',
   'life_events_card',
+  'adherence_90_card',
 ];
 
 /** Tints of the illness, travel and other windows shaded on the charts; faint, as context. */
@@ -550,6 +553,13 @@ const MedicationReports = ({
                 ),
               },
               {
+                id: 'adherence_90_card',
+                label: t(
+                  'medications.reports.configAdherence90',
+                  'Adherence (90 days)'
+                ),
+              },
+              {
                 id: 'nausea_vs_dose_chart',
                 label: t(
                   'medications.reports.configNauseaDose',
@@ -698,6 +708,8 @@ const MedicationReports = ({
       )}
 
       <MedicationDoseHistory />
+
+      {isVisible('adherence_90_card') && <MedicationAdherenceCard />}
 
       {lifeShades.length > 0 && (
         <p className="text-xs text-muted-foreground">

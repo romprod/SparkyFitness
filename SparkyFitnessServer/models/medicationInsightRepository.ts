@@ -169,3 +169,42 @@ export async function loadInsightRecords(
     client.release();
   }
 }
+
+/** An injectable, non-supplement medication, and whether a taken dose was logged in the window. */
+export interface AdherenceMedication {
+  id: string;
+  name: string;
+  dosed_in_window: boolean;
+}
+
+export async function loadAdherenceMedications(
+  userId: string,
+  authenticatedUserId: string | undefined,
+  window: { from_day: string; to_day: string }
+): Promise<AdherenceMedication[]> {
+  const client = await getClient(userId, authenticatedUserId);
+  try {
+    const result = await client.query(
+      `SELECT m.id, m.name,
+              (EXISTS (SELECT 1 FROM injection_entries i
+                        WHERE i.user_id=m.user_id AND i.medication_id=m.id
+                          AND i.entry_date BETWEEN $2 AND $3)
+               OR EXISTS (SELECT 1 FROM medication_entries e
+                           WHERE e.user_id=m.user_id AND e.medication_id=m.id
+                             AND e.entry_date BETWEEN $2 AND $3
+                             AND e.status IN ('taken','prn_taken'))
+              ) AS dosed_in_window
+         FROM medications m
+        WHERE m.user_id=$1 AND m.type_id='injection' AND m.is_supplement IS NOT TRUE
+        ORDER BY m.name, m.id`,
+      [userId, window.from_day, window.to_day]
+    );
+    return (result.rows as AdherenceMedication[]).map((row) => ({
+      id: row.id,
+      name: row.name,
+      dosed_in_window: row.dosed_in_window === true,
+    }));
+  } finally {
+    client.release();
+  }
+}

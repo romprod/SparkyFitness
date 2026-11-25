@@ -79,6 +79,9 @@ jest.mock('@/hooks/useMedicationDisplayPreferences', () => ({
 
 jest.mock('@/pages/Reports/MedicationLogTable', () => () => null);
 jest.mock('@/pages/Reports/MedicationDoseHistory', () => () => null);
+jest.mock('@/pages/Reports/MedicationAdherenceCard', () => () => (
+  <div>Adherence card</div>
+));
 jest.mock('@/pages/Reports/MedicationInsightsCard', () => () => (
   <div>Insights card</div>
 ));
@@ -313,6 +316,7 @@ describe('Insights card on the medication reports', () => {
     mockPreferences = saved(everyCard);
     localStorage.setItem('migrated_insights_card_pref-1', 'true');
     localStorage.setItem('migrated_life_events_card_pref-1', 'true');
+    localStorage.setItem('migrated_adherence_90_card_pref-1', 'true');
     renderReports();
     expect(screen.queryByText('Insights card')).not.toBeInTheDocument();
     expect(screen.queryByText('Life events card')).not.toBeInTheDocument();
@@ -326,7 +330,12 @@ describe('Insights card on the medication reports', () => {
     expect(mockSavePreference).toHaveBeenCalledWith({
       viewGroup: 'reports',
       platform: 'web',
-      visibleItems: [...everyCard, 'insights_card', 'life_events_card'],
+      visibleItems: [
+        ...everyCard,
+        'insights_card',
+        'life_events_card',
+        'adherence_90_card',
+      ],
     });
     expect(localStorage.getItem('migrated_insights_card_pref-1')).toBe('true');
     expect(localStorage.getItem('migrated_life_events_card_pref-1')).toBe(
@@ -350,6 +359,7 @@ describe('Insights card on the medication reports', () => {
         'medication_log_table',
         'insights_card',
         'life_events_card',
+        'adherence_90_card',
       ],
     });
   });

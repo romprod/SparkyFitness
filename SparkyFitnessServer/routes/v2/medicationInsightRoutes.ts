@@ -2,7 +2,10 @@ import express from 'express';
 import { authenticate } from '../../middleware/authMiddleware.js';
 import onBehalfOfMiddleware from '../../middleware/onBehalfOfMiddleware.js';
 import checkPermissionMiddleware from '../../middleware/checkPermissionMiddleware.js';
-import { getMedicationInsightStreams } from '../../services/medicationInsightService.js';
+import {
+  getMedicationAdherenceWindow,
+  getMedicationInsightStreams,
+} from '../../services/medicationInsightService.js';
 
 /**
  * The records behind the Insights card, for the trailing 90 days. Same access as the medication
@@ -29,6 +32,31 @@ router.get('/', async (req, res, next) => {
   try {
     res.json(
       await getMedicationInsightStreams(
+        req.userId,
+        req.authenticatedUserId || req.userId
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /v2/medication-insights/adherence:
+ *   get:
+ *     summary: Adherence over the last 90 days for each injectable medication on a plan, and overall
+ *     tags: [Medications]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Taken, missed and percentage per medicine and overall; skipped and not-yet-due doses are left out
+ */
+router.get('/adherence', async (req, res, next) => {
+  try {
+    res.json(
+      await getMedicationAdherenceWindow(
         req.userId,
         req.authenticatedUserId || req.userId
       )

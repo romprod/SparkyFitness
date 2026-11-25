@@ -432,6 +432,7 @@ export * from './medications/nextDose.ts';
 export * from './medications/dataExports.ts';
 export * from './medications/pkOverlay.ts';
 export * from './medications/doseInsights.ts';
+export * from './medications/adherenceWindow.ts';
 export * from './utils/csv.ts';
 export type { AppointmentReportData } from './reports/appointmentReport.ts';
 export * from './schemas/api/MedicationCourses.api.zod.ts';

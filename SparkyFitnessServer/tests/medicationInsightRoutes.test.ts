@@ -6,10 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const owner = '00000000-0000-4000-a000-000000000001';
 const mocks = vi.hoisted(() => ({
   streams: vi.fn(),
+  adherence: vi.fn(),
   permission: vi.fn(),
 }));
 vi.mock('../services/medicationInsightService.js', () => ({
   getMedicationInsightStreams: mocks.streams,
+  getMedicationAdherenceWindow: mocks.adherence,
 }));
 vi.mock('../middleware/authMiddleware.js', () => ({
   authenticate: (
@@ -107,5 +109,67 @@ describe('insight records', () => {
     const response = await request(failing).get(path);
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: 'database down' });
+  });
+});
+
+describe('adherence window', () => {
+  const figure = { pct: 100, taken: 4, missed: 0, days_of_data: 13 };
+  const body = {
+    today: '2026-11-22',
+    from_day: '2026-08-25',
+    to_day: '2026-11-22',
+    overall: figure,
+    medications: [{ medication_id: 'm1', name: 'Cagrilintide', ...figure }],
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.adherence.mockResolvedValue(body);
+  });
+  it('serves the figures for the owner', async () => {
+    const response = await request(app).get(`${path}/adherence`);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(body);
+    expect(mocks.adherence).toHaveBeenCalledWith(owner, owner);
+    expect(mocks.permission).toHaveBeenCalledWith('medications');
+  });
+  it('reads the profile being acted for, with the caller recorded', async () => {
+    const other = '00000000-0000-4000-a000-000000000002';
+    await request(app).get(`${path}/adherence`).set('x-test-target', other);
+    expect(mocks.adherence).toHaveBeenCalledWith(other, owner);
+  });
+  it('is closed to the signed-out and to people without medication access', async () => {
+    expect(
+      (
+        await request(app)
+          .get(`${path}/adherence`)
+          .set('x-test-auth', 'missing')
+      ).status
+    ).toBe(401);
+    expect(
+      (
+        await request(app)
+          .get(`${path}/adherence`)
+          .set('x-test-permission', 'denied')
+      ).status
+    ).toBe(403);
+    expect(mocks.adherence).not.toHaveBeenCalled();
+  });
+  it('fails loudly rather than hiding an error', async () => {
+    mocks.adherence.mockRejectedValue(new Error('plan unreadable'));
+    const failing = express();
+    failing.use('/api/v2/medication-insights', router);
+    failing.use(
+      (
+        error: Error,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction
+      ) => {
+        res.status(500).json({ error: error.message });
+      }
+    );
+    const response = await request(failing).get(`${path}/adherence`);
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'plan unreadable' });
   });
 });
