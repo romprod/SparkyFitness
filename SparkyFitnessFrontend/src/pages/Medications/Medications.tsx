@@ -19,6 +19,7 @@ import {
   Plus,
   FlaskConical,
   Receipt,
+  ListChecks,
 } from 'lucide-react';
 import {
   todayInZone,
@@ -60,6 +61,7 @@ import AddMedicationDialog, { MedTypeIcon } from './AddMedicationDialog';
 import { countMedicationNutrients } from './medicationUtils';
 import ScheduleManager from './ScheduleManager';
 import MedicationCourseTimeline from './MedicationCourseTimeline';
+import MedicationPlansPage from './MedicationPlansPage';
 import TodayMedications from './TodayMedications';
 import MedicationLogCalendar from './MedicationLogCalendar';
 import MedicationSmoothWeek from './MedicationSmoothWeek';
@@ -82,6 +84,7 @@ export default function Medications() {
   const tabParam = searchParams.get('tab');
   const activeTab =
     tabParam === 'cabinet' ||
+    tabParam === 'plans' ||
     tabParam === 'stock' ||
     tabParam === 'symptoms' ||
     tabParam === 'prescriptions' ||
@@ -89,7 +92,14 @@ export default function Medications() {
       ? tabParam
       : 'today';
   const setActiveTab = (
-    tab: 'today' | 'cabinet' | 'stock' | 'symptoms' | 'costs' | 'prescriptions'
+    tab:
+      | 'today'
+      | 'cabinet'
+      | 'plans'
+      | 'stock'
+      | 'symptoms'
+      | 'costs'
+      | 'prescriptions'
   ) =>
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -116,13 +126,16 @@ export default function Medications() {
     localStorage.setItem('medications.subtypeFilter', next);
   };
 
-  const manageTimelinePlan = (row: MedicationCourseTimelineRow) => {
-    if (!row.medication_id || !row.is_current_tip) return;
+  const managePlan = (medicationId: string, revisionId: string) => {
     setTimelineOpen(false);
     setSubtypeFilter('all');
-    setSelectedId(row.medication_id);
-    setFocusRevisionId(row.revision_id);
+    setSelectedId(medicationId);
+    setFocusRevisionId(revisionId);
     setActiveTab('cabinet');
+  };
+  const manageTimelinePlan = (row: MedicationCourseTimelineRow) => {
+    if (!row.medication_id || !row.is_current_tip) return;
+    managePlan(row.medication_id, row.revision_id);
   };
   const dateParam = searchParams.get('date');
 
@@ -305,6 +318,21 @@ export default function Medications() {
             </span>
           </Button>
           <Button
+            variant={activeTab === 'plans' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('plans')}
+            className={`rounded-full px-4 h-9 gap-2 transition-all ${
+              activeTab === 'plans'
+                ? 'bg-slate-200/60 dark:bg-muted shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+            }`}
+          >
+            <ListChecks className="w-4 h-4" />
+            <span className="text-xs font-semibold">
+              {t('medications.tabs.plans', 'Plans')}
+            </span>
+          </Button>
+          <Button
             variant={activeTab === 'stock' ? 'secondary' : 'ghost'}
             size="sm"
             onClick={() => setActiveTab('stock')}
@@ -382,26 +410,30 @@ export default function Medications() {
         </div>
 
         {/* Vertical Divider (Desktop Only) */}
-        {activeTab !== 'stock' && activeTab !== 'costs' && (
-          <div className="hidden lg:block w-px h-6 bg-border" />
-        )}
+        {activeTab !== 'stock' &&
+          activeTab !== 'costs' &&
+          activeTab !== 'plans' && (
+            <div className="hidden lg:block w-px h-6 bg-border" />
+          )}
 
         {/* Date Filter */}
-        {activeTab !== 'stock' && activeTab !== 'costs' && (
-          <div className="shrink-0">
-            <DayNavigator
-              selectedDate={selectedDate}
-              onDateChange={(d) =>
-                setSearchParams((previous) => {
-                  const next = new URLSearchParams(previous);
-                  next.set('date', d);
-                  return next;
-                })
-              }
-              className="flex items-center justify-end gap-2 mb-0"
-            />
-          </div>
-        )}
+        {activeTab !== 'stock' &&
+          activeTab !== 'costs' &&
+          activeTab !== 'plans' && (
+            <div className="shrink-0">
+              <DayNavigator
+                selectedDate={selectedDate}
+                onDateChange={(d) =>
+                  setSearchParams((previous) => {
+                    const next = new URLSearchParams(previous);
+                    next.set('date', d);
+                    return next;
+                  })
+                }
+                className="flex items-center justify-end gap-2 mb-0"
+              />
+            </div>
+          )}
       </div>
 
       {/* Subtype filter — reuses the sub-tab button styling for visual consistency.
@@ -435,6 +467,13 @@ export default function Medications() {
         </div>
       )}
 
+      {activeTab === 'plans' && (
+        <MedicationPlansPage
+          medications={meds as MedicationDetail[]}
+          onTimeline={() => setTimelineOpen(true)}
+          onManage={managePlan}
+        />
+      )}
       {activeTab === 'stock' && (
         <PeptideStock meds={stockMeds.length > 0 ? stockMeds : meds} />
       )}
