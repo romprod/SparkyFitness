@@ -2,6 +2,7 @@ import MedicationPrescriptionLink, {
   MedicationPrescriptionSummary,
 } from './MedicationPrescriptionLink';
 import { useRef, useState } from 'react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -51,6 +52,7 @@ import {
 import MedicationCourseRules from './MedicationCourseRules';
 import MedicationCourseCycleDates from './MedicationCourseCycleDates';
 import MedicationCourseRampGenerator from './MedicationCourseRampGenerator';
+import MedicationCourseRampChart from './MedicationCourseRampChart';
 import { formatScheduleDescription } from './medicationUtils';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationForecastDevices } from '@/hooks/Medications/useMedicationInventoryForecast';
@@ -222,6 +224,14 @@ export default function MedicationCourseEditor({
           })),
         }
       : undefined;
+  // Reorders the draft only; nothing is saved until the user reviews and saves.
+  const movePhase = (index: number, delta: -1 | 1) => {
+    const target = index + delta;
+    if (target < 0 || target >= draft.steps.length) return;
+    const steps = [...draft.steps];
+    [steps[index], steps[target]] = [steps[target]!, steps[index]!];
+    change({ steps });
+  };
   const parseWeeks = (raw: string) =>
     raw === '' ? null : /^\d+$/.test(raw) ? Number(raw) : NaN;
   const parsed = medicationCoursePlanInputSchema.safeParse({
@@ -992,20 +1002,60 @@ export default function MedicationCourseEditor({
                       })
                     }
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      change({
-                        steps: draft.steps.filter((_, i) => i !== index),
-                      })
-                    }
-                  >
-                    {t('medications.courses.removePhase', 'Remove phase')}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={locked || index === 0}
+                      aria-label={t(
+                        'medications.courses.movePhaseUp',
+                        'Move phase {{number}} up',
+                        { number: index + 1 }
+                      )}
+                      onClick={() => movePhase(index, -1)}
+                    >
+                      <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={locked || index === draft.steps.length - 1}
+                      aria-label={t(
+                        'medications.courses.movePhaseDown',
+                        'Move phase {{number}} down',
+                        { number: index + 1 }
+                      )}
+                      onClick={() => movePhase(index, 1)}
+                    >
+                      <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        change({
+                          steps: draft.steps.filter((_, i) => i !== index),
+                        })
+                      }
+                    >
+                      {t('medications.courses.removePhase', 'Remove phase')}
+                    </Button>
+                  </div>
                 </div>
               ))}
+              {draft.steps.length > 0 && (
+                <MedicationCourseRampChart
+                  steps={draft.steps}
+                  rules={draft.rules}
+                  doseBasis={draft.dose_basis}
+                  startDate={draft.start_date || null}
+                  endDate={draft.end_date ?? null}
+                  today={today}
+                />
+              )}
               <MedicationCourseRampGenerator
                 unit={draft.dose_unit}
                 hasPhases={draft.steps.length > 0}

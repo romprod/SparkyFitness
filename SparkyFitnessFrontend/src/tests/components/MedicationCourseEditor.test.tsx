@@ -793,3 +793,74 @@ it('shows no advance note when the revise draft was opened normally', () => {
   setup('revise');
   expect(screen.queryByTestId('advance-note')).not.toBeInTheDocument();
 });
+function phasedCourse() {
+  const c = courseFixture();
+  const step = (
+    id: string,
+    index: number,
+    dose: string,
+    days: number | null
+  ) => ({
+    id,
+    user_id: courseIds.owner,
+    revision_id: courseIds.revision,
+    step_index: index,
+    dose,
+    dose_unit: 'mg',
+    duration_days: days,
+    notes: null,
+  });
+  c.revisions[0]!.steps = [
+    step('00000000-0000-4000-8000-0000000000b1', 0, '1', 7),
+    step('00000000-0000-4000-8000-0000000000b2', 1, '2', 14),
+    step('00000000-0000-4000-8000-0000000000b3', 2, '4', null),
+  ];
+  return c;
+}
+const phaseDoses = () =>
+  [1, 2, 3].map(
+    (n) => (screen.getByLabelText(`Phase ${n} dose`) as HTMLInputElement).value
+  );
+it('moves a phase down and up in the draft, renumbering and disabling the ends', () => {
+  setup('edit', phasedCourse());
+  expect(phaseDoses()).toEqual(['1', '2', '4']);
+  expect(
+    screen.getByRole('button', { name: 'Move phase 1 up' })
+  ).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: 'Move phase 3 down' })
+  ).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Move phase 1 down' }));
+  expect(phaseDoses()).toEqual(['2', '1', '4']);
+  expect(
+    screen.getByLabelText('Phase 1 duration in days (blank is open-ended)')
+  ).toHaveValue(14);
+  fireEvent.click(screen.getByRole('button', { name: 'Move phase 3 up' }));
+  expect(phaseDoses()).toEqual(['2', '4', '1']);
+  // The open-ended phase is now in the middle: the chart warns that the last is never reached.
+  expect(screen.getByText(/never reached/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Move phase 3 up' }));
+  expect(phaseDoses()).toEqual(['2', '1', '4']);
+  expect(refresh).not.toHaveBeenCalled();
+  expect(mockEdit).not.toHaveBeenCalled();
+  expect(mockRevise).not.toHaveBeenCalled();
+});
+it('reviews the reordered phases in order and shows the order change', async () => {
+  mockReview.mockImplementation(async (_m, _i, input) =>
+    courseReview(input, {
+      expected_version: input.expected_version,
+      material_changes: ['steps'],
+      requires_revision: true,
+    })
+  );
+  setup('edit', phasedCourse());
+  fireEvent.click(screen.getByRole('button', { name: 'Move phase 1 down' }));
+  review();
+  await screen.findByText(/Phase order or duration/);
+  expect(mockReview.mock.calls[0]![2].steps.map((s) => s.dose)).toEqual([
+    '2',
+    '1',
+    '4',
+  ]);
+  expect(screen.getByText(/Phase 1: 2 mg · 14 days/)).toBeInTheDocument();
+});
