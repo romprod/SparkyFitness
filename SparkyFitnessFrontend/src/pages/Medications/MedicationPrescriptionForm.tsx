@@ -38,7 +38,7 @@ function seed(initial: MedicationPrescription | undefined, target: string) {
     prescriber: initial?.prescriber ?? '',
     dose_instructions: initial?.dose_instructions ?? '',
     cost: initial?.cost ?? '',
-    currency: initial?.currency ?? 'AUD',
+    currency: initial?.currency ?? '',
     quantity: initial?.quantity == null ? '' : String(initial.quantity),
     refills_authorized:
       initial?.refills_authorized == null
@@ -61,6 +61,7 @@ export default function MedicationPrescriptionForm({
   medications,
   initial,
   fixedMedicationId,
+  defaultCurrency,
   onClose,
   onSaved,
   returnFocus,
@@ -70,6 +71,8 @@ export default function MedicationPrescriptionForm({
   medications: Medication[];
   initial?: MedicationPrescription;
   fixedMedicationId?: string;
+  /** Currency of the newest prescription or invoice; prefills a new record. */
+  defaultCurrency?: string;
   onClose: () => void;
   onSaved: (id: string) => void;
   returnFocus?: HTMLElement | null;
@@ -81,9 +84,17 @@ export default function MedicationPrescriptionForm({
   const detail = useMedicationPrescription(initial?.id, !!initial);
   const [base, setBase] = useState(initial);
   const [costTouched, setCostTouched] = useState(false);
-  const [draft, setDraft] = useState(() =>
+  const [stored, setDraft] = useState(() =>
     seed(initial, fixedMedicationId ?? medications[0]?.id ?? '')
   );
+  const [currencyError, setCurrencyError] = useState(false);
+  const [currencyTyped, setCurrencyTyped] = useState(false);
+  // A new record follows the default (which may arrive after the form opens)
+  // until the user types a currency; an existing record keeps its own.
+  const draft =
+    base || currencyTyped
+      ? stored
+      : { ...stored, currency: defaultCurrency ?? '' };
   const [pending, setPending] = useState(false),
     [uncertain, setUncertain] = useState(false),
     [stale, setStale] = useState(false),
@@ -95,6 +106,10 @@ export default function MedicationPrescriptionForm({
     if (locked) return;
     attempt.current = null;
     if (key === 'cost') setCostTouched(true);
+    if (key === 'currency') {
+      setCurrencyTyped(true);
+      setCurrencyError(false);
+    }
     setDraft((old) => ({ ...old, [key]: value }));
     setMessage('');
   };
@@ -109,6 +124,10 @@ export default function MedicationPrescriptionForm({
       return;
     if (!attempt.current) {
       const { medication_id, ...fields } = draft;
+      if (!fields.currency.trim()) {
+        setCurrencyError(true);
+        return;
+      }
       // A prescription cannot expire, or be due for a refill, before it was written.
       const written = fields.date_written.trim();
       const outOfOrder = (later: string) =>
@@ -259,6 +278,10 @@ export default function MedicationPrescriptionForm({
         type={type}
         inputMode={inputMode}
         placeholder={placeholder}
+        aria-invalid={key === 'currency' && currencyError ? true : undefined}
+        aria-describedby={
+          key === 'currency' && currencyError ? 'rx-currency-error' : undefined
+        }
         onChange={(event) => change(key, event.target.value)}
         onInput={
           key === 'cost'
@@ -268,6 +291,18 @@ export default function MedicationPrescriptionForm({
             : undefined
         }
       />
+      {key === 'currency' && currencyError && (
+        <p
+          id="rx-currency-error"
+          role="alert"
+          className="text-sm text-destructive"
+        >
+          {t(
+            'medications.prescriptions.currencyRequired',
+            'Enter a currency, for example GBP.'
+          )}
+        </p>
+      )}
     </div>
   );
   return (
@@ -384,7 +419,7 @@ export default function MedicationPrescriptionForm({
               t('medications.prescriptions.currency', 'Currency'),
               'text',
               undefined,
-              'AUD'
+              t('medications.prescriptions.currencyPlaceholder', 'e.g. GBP')
             )}
             {field(
               'quantity',

@@ -194,6 +194,29 @@ describe('invoice route integration', () => {
     ).toBe(403);
     expect(courseCosts.getMedicationCourseCosts).not.toHaveBeenCalled();
   });
+  it('refuses a new invoice without a currency and reports why', async () => {
+    const res = await request(routed())
+      .post('/api/v2/medication-purchases')
+      .send({
+        expected_owner_id: owner,
+        operation_id: other,
+        ordered_date: '2026-11-15',
+        currency: '  ',
+        items: [
+          {
+            kind: 'consumable',
+            description: 'Synthetic needles',
+            quantity: '1',
+            unit_cost: '1',
+          },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.details.fieldErrors.currency).toEqual([
+      'Currency is required.',
+    ]);
+    expect(repository.createPurchase).not.toHaveBeenCalled();
+  });
   it('rejects missing expected owner or revision on writes', async () => {
     expect(
       (

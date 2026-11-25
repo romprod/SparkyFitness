@@ -18,7 +18,7 @@ import {
 
 const id = '40000000-0000-4000-8000-000000000001';
 const med = '40000000-0000-4000-8000-000000000002';
-const create = { operation_id: id, medication_id: med };
+const create = { operation_id: id, medication_id: med, currency: 'GBP' };
 const update = { operation_id: id, expected_version: 1 };
 const row = () => {
   const { operation_id: _operation, ...fields } =
@@ -45,7 +45,7 @@ describe('basic owner-private prescription contracts', () => {
       lead_time_days: 0,
     });
     expect(parsed).toMatchObject({
-      currency: 'AUD',
+      currency: 'GBP',
       status: 'active',
       prescriber: null,
       cost: null,
@@ -61,9 +61,37 @@ describe('basic owner-private prescription contracts', () => {
       medicationPrescriptionUpdateSchema.parse({
         ...update,
         pharmacy: '  ',
-        currency: ' ',
+        currency: ' gbp ',
       })
-    ).toEqual({ ...update, pharmacy: null, currency: 'AUD' });
+    ).toEqual({ ...update, pharmacy: null, currency: 'gbp' });
+  });
+
+  it('refuses a create with a missing, blank or null currency and never invents one', () => {
+    const { currency: _currency, ...without } = create;
+    for (const body of [
+      without,
+      { ...create, currency: '' },
+      { ...create, currency: '   ' },
+      { ...create, currency: null },
+    ]) {
+      const result = medicationPrescriptionCreateSchema.safeParse(body);
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+        'Currency is required.',
+      ]);
+      expect(result.error?.issues[0]?.path).toEqual(['currency']);
+    }
+  });
+
+  it('lets an update omit currency but refuses to blank the stored one', () => {
+    expect(medicationPrescriptionUpdateSchema.parse(update)).not.toHaveProperty(
+      'currency'
+    );
+    for (const currency of ['', '  ', null])
+      expect(
+        medicationPrescriptionUpdateSchema.safeParse({ ...update, currency })
+          .success
+      ).toBe(false);
   });
 
   it('accepts strict nonnegative integer counts up to the actual storage bound', () => {

@@ -82,6 +82,7 @@ const row = (
 const createBody = {
   operation_id: courseIds.step,
   medication_id: courseIds.med,
+  currency: 'GBP',
 };
 const changeBody = { operation_id: courseIds.step, expected_version: 1 };
 const receipt = { id: courseIds.legacy, version: 1, deleted: false };

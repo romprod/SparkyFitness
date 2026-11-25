@@ -4,6 +4,7 @@ import {
   formatPurchaseMoney,
   normalizePurchaseDecimal,
   medicationPurchaseCreateSchema,
+  medicationPurchaseUpdateSchema,
 } from '@workspace/shared';
 const allocation = (
   costs: string[],
@@ -79,6 +80,7 @@ describe('source invoice allocation and exact money', () => {
       formatPurchaseMoney('123456789123456789.12', 'custom currency')
     ).toBe('custom currency 123456789123456789.12');
     expect(formatPurchaseMoney('0', 'AUD')).toBe('AUD 0.00');
+    expect(formatPurchaseMoney('12.5', '')).toBe('12.50');
     expect(formatPurchaseMoney('1e500', 'AUD')).not.toMatch(/Infinity|NaN/);
   });
   it('retains monetary precision and validates only representable nonnegative inputs', () => {
@@ -99,6 +101,7 @@ describe('source invoice allocation and exact money', () => {
       expected_owner_id: '00000000-0000-4000-8000-000000000001',
       operation_id: '00000000-0000-4000-8000-000000000002',
       ordered_date: '2026-11-15',
+      currency: 'GBP',
       items: [
         {
           kind: 'consumable',
@@ -109,11 +112,39 @@ describe('source invoice allocation and exact money', () => {
       ],
     };
     expect(medicationPurchaseCreateSchema.parse(draft)).toMatchObject({
-      currency: 'AUD',
+      currency: 'GBP',
       shipping_cost: '0',
       allocation_method: 'value',
       items: [{ quantity: 3, unit_cost: '0.335' }],
     });
+    const { currency: _currency, ...undated } = draft;
+    for (const body of [
+      undated,
+      { ...draft, currency: '' },
+      { ...draft, currency: '  ' },
+      { ...draft, currency: null },
+    ]) {
+      const refused = medicationPurchaseCreateSchema.safeParse(body);
+      expect(refused.success).toBe(false);
+      expect(refused.error?.issues.map((issue) => issue.message)).toEqual([
+        'Currency is required.',
+      ]);
+    }
+    const { operation_id: _operation, ...updateDraft } = draft;
+    expect(
+      medicationPurchaseUpdateSchema.parse({
+        ...updateDraft,
+        currency: undefined,
+        expected_revision: 1,
+      }).currency
+    ).toBeUndefined();
+    expect(
+      medicationPurchaseUpdateSchema.safeParse({
+        ...updateDraft,
+        currency: ' ',
+        expected_revision: 1,
+      }).success
+    ).toBe(false);
     expect(
       medicationPurchaseCreateSchema.safeParse({
         ...draft,

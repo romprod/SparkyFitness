@@ -26,6 +26,7 @@ describe.runIf(process.env.PURCHASE_LEDGER_INTEGRATION === '1')(
       expected_owner_id: owner,
       operation_id: randomUUID(),
       ordered_date: '2026-11-15',
+      currency: 'AUD',
       items,
       ...patch,
     });
@@ -82,6 +83,41 @@ describe.runIf(process.env.PURCHASE_LEDGER_INTEGRATION === '1')(
         c.release();
         await endPool();
       }
+    });
+    it('refuses a create without a currency and keeps the stored one when an update omits it', async () => {
+      const item = [
+        {
+          kind: 'consumable' as const,
+          category: 'needle' as const,
+          description: 'Synthetic currency needles',
+          quantity: '1',
+          unit_cost: '2',
+        },
+      ];
+      const { currency: _currency, ...unpriced } = create(item as never);
+      await expect(
+        purchases.createPurchase(owner, unpriced as never)
+      ).rejects.toThrow('Currency is required.');
+      const invoice = await purchases.createPurchase(
+        owner,
+        create(item as never, { currency: 'GBP' })
+      );
+      const { currency: _stored, ...omitted } = update(invoice, {
+        vendor: 'Renamed supplier',
+      });
+      const updated = await purchases.updatePurchase(
+        owner,
+        invoice.id,
+        omitted as never
+      );
+      expect(updated.currency).toBe('GBP');
+      expect(updated.vendor).toBe('Renamed supplier');
+      const changed = await purchases.updatePurchase(
+        owner,
+        invoice.id,
+        update(updated, { currency: 'EUR' })
+      );
+      expect(changed.currency).toBe('EUR');
     });
     it('keeps exact invoice data, encryption, per-currency totals and source overmatch warning semantics', async () => {
       const c = await getSystemClient();

@@ -45,6 +45,7 @@ const data = {
 const props = () => ({
   ownerId: owner,
   data,
+  defaultCurrency: 'GBP',
   isCurrent: () => true,
   onDone: jest.fn(),
   onCancel: jest.fn(),
@@ -58,7 +59,7 @@ const save = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Save invoice' }));
 it('uses source defaults and raw money strings with a live shared allocation preview', async () => {
   render(<MedicationPurchaseForm {...props()} />);
-  expect(screen.getByLabelText('Currency')).toHaveValue('AUD');
+  expect(screen.getByLabelText('Currency')).toHaveValue('GBP');
   expect(screen.getByLabelText('Vials')).toHaveValue('1');
   fireEvent.change(screen.getByLabelText('Unit cost'), {
     target: { value: '24.1234567890123456789' },
@@ -72,7 +73,7 @@ it('uses source defaults and raw money strings with a live shared allocation pre
   expect(mockSave.mock.calls[0][0].body).toMatchObject({
     expected_owner_id: owner,
     operation_id: expect.any(String),
-    currency: 'AUD',
+    currency: 'GBP',
     shipping_cost: '5',
     items: [
       expect.objectContaining({
@@ -665,4 +666,38 @@ describe('bacteriostatic water bottle size', () => {
     expect(screen.getByLabelText('Used per dose')).toHaveValue('1');
     expect(screen.getByLabelText('mL per bottle')).toHaveValue('');
   });
+});
+
+it('starts the currency empty with no history, shows no AUD in the preview and refuses to save until one is entered', async () => {
+  render(<MedicationPurchaseForm {...props()} defaultCurrency={undefined} />);
+  const currency = screen.getByLabelText('Currency');
+  expect(currency).toHaveValue('');
+  expect(currency).toHaveAttribute('placeholder', 'e.g. GBP');
+  fireEvent.change(screen.getByLabelText('Unit cost'), {
+    target: { value: '12.5' },
+  });
+  expect(screen.getAllByText(/12\.50/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/AUD/)).not.toBeInTheDocument();
+  save();
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Enter a currency, for example GBP.'
+  );
+  expect(mockSave).not.toHaveBeenCalled();
+  fireEvent.change(currency, { target: { value: 'eur' } });
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  save();
+  await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+  expect(mockSave.mock.calls[0][0].body).toMatchObject({ currency: 'eur' });
+});
+it('fills the default when history loads after opening, but never over what the user typed', () => {
+  const view = render(
+    <MedicationPurchaseForm {...props()} defaultCurrency={undefined} />
+  );
+  view.rerender(<MedicationPurchaseForm {...props()} defaultCurrency="EUR" />);
+  expect(screen.getByLabelText('Currency')).toHaveValue('EUR');
+  fireEvent.change(screen.getByLabelText('Currency'), {
+    target: { value: 'CHF' },
+  });
+  view.rerender(<MedicationPurchaseForm {...props()} defaultCurrency="GBP" />);
+  expect(screen.getByLabelText('Currency')).toHaveValue('CHF');
 });

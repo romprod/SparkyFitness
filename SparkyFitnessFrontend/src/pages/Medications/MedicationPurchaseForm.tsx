@@ -28,6 +28,7 @@ export default function MedicationPurchaseForm({
   ownerId,
   initial: initialValue,
   data,
+  defaultCurrency,
   isCurrent,
   onDone,
   onCancel,
@@ -36,6 +37,8 @@ export default function MedicationPurchaseForm({
   ownerId: string;
   initial?: MedicationPurchaseView;
   data: MedicationPurchaseEditorData;
+  /** Currency of the newest prescription or invoice; prefills a new invoice. */
+  defaultCurrency?: string;
   isCurrent: () => boolean;
   onDone: () => void;
   onCancel: () => void;
@@ -60,12 +63,12 @@ export default function MedicationPurchaseForm({
     vial_ids: [],
     pack_ids: [],
   });
-  const [head, setHead] = useState({
+  const [stored, setHead] = useState({
     vendor: initial?.vendor ?? '',
     reference: initial?.reference ?? '',
     ordered_date: initial?.ordered_date ?? todayInZone(timezone),
     received_date: initial?.received_date ?? '',
-    currency: initial?.currency ?? 'AUD',
+    currency: initial?.currency ?? '',
     shipping_cost: initial?.shipping_cost ?? '',
     tax_cost: initial?.tax_cost ?? '',
     other_fees: initial?.other_fees ?? '',
@@ -73,6 +76,14 @@ export default function MedicationPurchaseForm({
     allocation_method: initial?.allocation_method ?? 'value',
     notes: initial?.notes ?? '',
   });
+  const [currencyError, setCurrencyError] = useState(false);
+  const [currencyTyped, setCurrencyTyped] = useState(false);
+  // A new invoice follows the default (which may arrive after the form opens)
+  // until the user types a currency; an existing one keeps its own.
+  const head =
+    initial || currencyTyped
+      ? stored
+      : { ...stored, currency: defaultCurrency ?? '' };
   // Lines imported without a medication start from the one their description names, if any.
   const [suggested] = useState(() => {
     const picks = new Map<string, string>();
@@ -115,6 +126,10 @@ export default function MedicationPurchaseForm({
   const patchHead = (key: keyof typeof head, value: string) => {
     if (locked) return;
     change();
+    if (key === 'currency') {
+      setCurrencyTyped(true);
+      setCurrencyError(false);
+    }
     setHead({ ...head, [key]: value });
   };
   const patchLine = (key: string, patch: Partial<Line>) => {
@@ -128,7 +143,12 @@ export default function MedicationPurchaseForm({
     ...head,
     items: lines.map(({ key: _key, ...line }) => line),
   };
-  const parsed = medicationPurchaseInputSchema.safeParse(raw);
+  // A blank currency is reported by its own message on save; it must not hide
+  // the preview, so validate the rest with a stand-in code.
+  const parsed = medicationPurchaseInputSchema.safeParse({
+    ...raw,
+    currency: head.currency.trim() || '-',
+  });
   const allocation = parsed.success
     ? allocateMedicationPurchase({
         lines: parsed.data.items.map((line, i) => ({
@@ -140,8 +160,13 @@ export default function MedicationPurchaseForm({
       })
     : null;
   const money = (value: string) =>
-    formatPurchaseMoney(value, head.currency || 'AUD', i18n.language);
-  const field = (key: keyof typeof head, label: string, type = 'text') => (
+    formatPurchaseMoney(value, head.currency, i18n.language);
+  const field = (
+    key: keyof typeof head,
+    label: string,
+    type = 'text',
+    placeholder?: string
+  ) => (
     <div className="min-w-0 space-y-1">
       <Label htmlFor={`purchase-${key}`}>{label}</Label>
       <Input
@@ -153,9 +178,28 @@ export default function MedicationPurchaseForm({
             : undefined
         }
         value={head[key]}
+        placeholder={placeholder}
+        aria-invalid={key === 'currency' && currencyError ? true : undefined}
+        aria-describedby={
+          key === 'currency' && currencyError
+            ? 'purchase-currency-error'
+            : undefined
+        }
         onChange={(e) => patchHead(key, e.target.value)}
         disabled={locked}
       />
+      {key === 'currency' && currencyError && (
+        <p
+          id="purchase-currency-error"
+          role="alert"
+          className="text-sm text-destructive"
+        >
+          {t(
+            'medications.costs.currencyRequired',
+            'Enter a currency, for example GBP.'
+          )}
+        </p>
+      )}
     </div>
   );
   const submit = async () => {
@@ -174,6 +218,10 @@ export default function MedicationPurchaseForm({
           'Choose a medication or enter a consumable description for each line.'
         )
       );
+      return;
+    }
+    if (!head.currency.trim()) {
+      setCurrencyError(true);
       return;
     }
     if (!parsed.success) {
@@ -269,7 +317,12 @@ export default function MedicationPurchaseForm({
             {field('tax_cost', t('medications.costs.tax', 'Tax / GST'))}
             {field('other_fees', t('medications.costs.fees', 'Other fees'))}
             {field('discount', t('medications.costs.discount', 'Discount'))}
-            {field('currency', t('medications.costs.currency', 'Currency'))}
+            {field(
+              'currency',
+              t('medications.costs.currency', 'Currency'),
+              'text',
+              t('medications.costs.currencyPlaceholder', 'e.g. GBP')
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="purchase-allocation">

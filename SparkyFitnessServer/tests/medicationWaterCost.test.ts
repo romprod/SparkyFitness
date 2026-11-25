@@ -239,6 +239,7 @@ describe('water in the cost report', () => {
 describe('invoice line bottle size', () => {
   const base = {
     ordered_date: '2026-11-15',
+    currency: 'GBP',
     shipping_cost: '',
     tax_cost: '',
     other_fees: '',

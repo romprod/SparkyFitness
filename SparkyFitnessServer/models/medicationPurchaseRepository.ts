@@ -5,6 +5,7 @@ import {
   medicationPurchaseInputSchema,
   medicationPurchaseCreateSchema,
   medicationPurchaseUpdateSchema,
+  medicationPurchaseUpdateValuesSchema,
   medicationPurchaseDeleteSchema,
   type MedicationPurchaseValues,
   type MedicationPurchaseCreateInput,
@@ -295,8 +296,19 @@ export async function getPackCosts(
     });
   });
 }
-function normalized(input: unknown): MedicationPurchaseValues {
-  const data = medicationPurchaseInputSchema.parse(input);
+/** Update bodies may omit currency; writePurchase then keeps the stored one. */
+type MedicationPurchaseWrite = Omit<MedicationPurchaseValues, 'currency'> & {
+  currency?: string;
+};
+function normalized(
+  input: unknown,
+  forUpdate = false
+): MedicationPurchaseWrite {
+  const data = (
+    forUpdate
+      ? medicationPurchaseUpdateValuesSchema
+      : medicationPurchaseInputSchema
+  ).parse(input);
   return {
     ...data,
     items: data.items.map((item) => ({
@@ -343,7 +355,7 @@ async function lockContext(
   client: PoolClient,
   userId: string,
   id?: string,
-  data?: MedicationPurchaseValues
+  data?: MedicationPurchaseWrite
 ) {
   const existing = await client.query<{
     id: string;
@@ -498,7 +510,7 @@ async function writePurchase(
   client: PoolClient,
   userId: string,
   id: string,
-  data: MedicationPurchaseValues,
+  data: MedicationPurchaseWrite,
   expectedRevision?: number
 ) {
   const reference = await encode(data.reference),
@@ -525,7 +537,7 @@ async function writePurchase(
     );
   else {
     const result = await client.query(
-      'UPDATE medication_purchases SET vendor=$3,reference_encrypted=$4,ordered_date=$5,received_date=$6,currency=$7,shipping_cost=$8,tax_cost=$9,other_fees=$10,discount=$11,allocation_method=$12,notes_encrypted=$13,revision=revision+1 WHERE user_id=$1 AND id=$2 AND revision=$14 RETURNING id',
+      'UPDATE medication_purchases SET vendor=$3,reference_encrypted=$4,ordered_date=$5,received_date=$6,currency=COALESCE($7::text,currency),shipping_cost=$8,tax_cost=$9,other_fees=$10,discount=$11,allocation_method=$12,notes_encrypted=$13,revision=revision+1 WHERE user_id=$1 AND id=$2 AND revision=$14 RETURNING id',
       [...values, expectedRevision]
     );
     if (!result.rowCount)
@@ -638,7 +650,7 @@ export async function updatePurchase(
 ): Promise<MedicationPurchaseView> {
   const parsed = medicationPurchaseUpdateSchema.parse(input);
   assertOwner(userId, parsed.expected_owner_id);
-  const data = normalized(parsed);
+  const data = normalized(parsed, true);
   const client: PoolClient = await getClient(userId);
   try {
     await client.query('BEGIN');

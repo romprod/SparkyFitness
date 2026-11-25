@@ -4,9 +4,11 @@ import {
   useMedicationCostsAccess,
   useMedicationPurchase,
   useMedicationPurchaseEditorData,
+  useMedicationPurchases,
 } from '../hooks/useMedicationPurchases';
 import MedicationPurchaseEditor from '../components/medications/MedicationPurchaseEditor';
 import MedicationCostsStatus from '../components/medications/MedicationCostsStatus';
+import { latestPurchaseCurrency } from '../utils/medicationPurchases';
 import type { RootStackScreenProps } from '../types/navigation';
 export default function MedicationPurchaseFormScreen({
   route,
@@ -17,6 +19,8 @@ export default function MedicationPurchaseFormScreen({
   const id = route.params?.purchaseId;
   const detail = useMedicationPurchase(access.ownerId, id);
   const editor = useMedicationPurchaseEditorData(access.ownerId, id);
+  // The list is already cached by the costs screen; it only seeds a new invoice.
+  const list = useMedicationPurchases(id ? null : access.ownerId);
   const [reload, setReload] = useState(0);
   const onClose = () => navigation.goBack();
   const title = id
@@ -50,6 +54,7 @@ export default function MedicationPurchaseFormScreen({
       ownerId={access.ownerId}
       initial={detail.data}
       data={editor.data}
+      defaultCurrency={latestPurchaseCurrency(list.data?.purchases ?? [])}
       isScopeCurrent={access.isCurrent}
       onClose={onClose}
       onReload={() => {

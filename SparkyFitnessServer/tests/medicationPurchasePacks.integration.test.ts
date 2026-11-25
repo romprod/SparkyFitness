@@ -59,6 +59,7 @@ describe.runIf(process.env.PURCHASE_PACKS_INTEGRATION === '1')(
       expected_owner_id: owner,
       operation_id: randomUUID(),
       ordered_date: '2026-11-15',
+      currency: 'AUD',
       items,
       ...patch,
     });

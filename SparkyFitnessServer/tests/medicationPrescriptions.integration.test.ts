@@ -97,6 +97,7 @@ describe.runIf(process.env.MEDICATION_PRESCRIPTIONS_INTEGRATION === '1')(
       medicationPrescriptionCreateSchema.parse({
         medication_id,
         operation_id: randomUUID(),
+        currency: 'AUD',
         ...patch,
       });
     const create = async (

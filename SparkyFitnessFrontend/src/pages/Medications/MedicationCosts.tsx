@@ -13,6 +13,7 @@ import {
   useMedicationPurchaseScope,
   useDeleteMedicationPurchase,
 } from '@/hooks/useMedicationPurchases';
+import { useLastUsedMedicationCurrency } from '@/hooks/Medications/useLastUsedMedicationCurrency';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,6 +55,7 @@ function OwnedCosts({
   const [reloadError, setReloadError] = useState('');
   const editingId = params.get('purchase');
   const purchases = useMedicationPurchases(ownerId, true);
+  const defaultCurrency = useLastUsedMedicationCurrency(!editingId);
   const detail = useMedicationPurchase(ownerId, editingId, true);
   const editor = useMedicationPurchaseEditor(
     ownerId,
@@ -111,6 +113,7 @@ function OwnedCosts({
           ownerId={ownerId}
           initial={editingId ? detail.data : undefined}
           data={editor.data}
+          defaultCurrency={defaultCurrency}
           isCurrent={isCurrent}
           onDone={done}
           onCancel={done}

@@ -40,6 +40,7 @@ const scope = {
 };
 const props = () => ({
   scope,
+  defaultCurrency: 'GBP',
   medications: [courseMedication],
   onClose: jest.fn(),
   onSaved: jest.fn(),
@@ -69,7 +70,7 @@ it('uses source defaults, full fields, exact cost and zero counters without touc
   const p = props();
   render(<MedicationPrescriptionForm {...p} />);
   expect(screen.getByLabelText('Medication')).toHaveValue(courseIds.med);
-  expect(screen.getByLabelText('Currency')).toHaveValue('AUD');
+  expect(screen.getByLabelText('Currency')).toHaveValue('GBP');
   expect(screen.queryByLabelText('Stored status')).not.toBeInTheDocument();
   for (const label of [
     'Quantity',
@@ -85,7 +86,7 @@ it('uses source defaults, full fields, exact cost and zero counters without touc
   await waitFor(() => expect(mockCreate).toHaveBeenCalled());
   expect(mockCreate.mock.calls[0][0]).toMatchObject({
     medication_id: courseIds.med,
-    currency: 'AUD',
+    currency: 'GBP',
     status: 'active',
     cost: '0.1234567890123456789',
     quantity: 0,
@@ -429,4 +430,43 @@ it('discards prior cost-input intent when explicitly reloading a stale saved rec
   await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
   expect(mockUpdate.mock.calls[0][1]).toHaveProperty('cost_basis', 'per_vial');
   expect(mockUpdate.mock.calls[1][1]).not.toHaveProperty('cost_basis');
+});
+
+it('starts the currency empty with no history, refuses to save until one is entered and then keeps it', async () => {
+  const p = { ...props(), defaultCurrency: undefined };
+  render(<MedicationPrescriptionForm {...p} />);
+  const currency = screen.getByLabelText('Currency');
+  expect(currency).toHaveValue('');
+  expect(currency).toHaveAttribute('placeholder', 'e.g. GBP');
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Enter a currency, for example GBP.'
+  );
+  expect(mockCreate).not.toHaveBeenCalled();
+  fireEvent.change(currency, { target: { value: ' usd ' } });
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  await waitFor(() => expect(mockCreate).toHaveBeenCalled());
+  expect(mockCreate.mock.calls[0][0]).toMatchObject({ currency: 'usd' });
+});
+it('fills the default when history loads after opening, but never over what the user typed', () => {
+  const p = { ...props(), defaultCurrency: undefined };
+  const view = render(<MedicationPrescriptionForm {...p} />);
+  view.rerender(<MedicationPrescriptionForm {...p} defaultCurrency="EUR" />);
+  expect(screen.getByLabelText('Currency')).toHaveValue('EUR');
+  fireEvent.change(screen.getByLabelText('Currency'), {
+    target: { value: 'CHF' },
+  });
+  view.rerender(<MedicationPrescriptionForm {...p} defaultCurrency="GBP" />);
+  expect(screen.getByLabelText('Currency')).toHaveValue('CHF');
+});
+it('keeps an existing prescription its own currency whatever the default is', () => {
+  render(
+    <MedicationPrescriptionForm
+      {...props()}
+      defaultCurrency="GBP"
+      initial={prescriptionFixture({ currency: 'AUD' })}
+    />
+  );
+  expect(screen.getByLabelText('Currency')).toHaveValue('AUD');
 });

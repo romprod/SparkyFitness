@@ -12,6 +12,7 @@ import {
   useMedicationPrescription,
   useMedicationPrescriptionActions,
 } from '@/hooks/Medications/useMedicationPrescriptions';
+import { useLastUsedMedicationCurrency } from '@/hooks/Medications/useLastUsedMedicationCurrency';
 import { HttpApiError } from '@/hooks/Medications/useMedicationCourses';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -237,6 +238,7 @@ function PrescriptionRegister({
     record?: MedicationPrescription;
     trigger: HTMLElement;
   } | null>(null);
+  const defaultCurrency = useLastUsedMedicationCurrency(!!edit && !edit.record);
   const [remove, setRemove] = useState<{
     record: MedicationPrescription;
     trigger: HTMLElement;
@@ -458,6 +460,7 @@ function PrescriptionRegister({
             scope={scope}
             medications={medications}
             initial={edit.record}
+            defaultCurrency={defaultCurrency}
             onClose={() => setEdit(null)}
             onSaved={() => setEdit(null)}
             returnFocus={edit.trigger}

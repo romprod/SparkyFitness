@@ -52,6 +52,7 @@ describe('confirmed prescription cost read contracts', () => {
       medicationPrescriptionCreateSchema.parse({
         operation_id: id,
         medication_id: med,
+        currency: 'GBP',
         cost: '50',
       })
     ).not.toHaveProperty('cost_basis');
@@ -87,6 +88,7 @@ describe('confirmed prescription cost read contracts', () => {
       medicationPrescriptionCreateSchema.parse({
         operation_id: id,
         medication_id: med,
+        currency: 'GBP',
         cost: '0',
         cost_basis: 'per_vial',
       })
@@ -105,6 +107,7 @@ describe('confirmed prescription cost read contracts', () => {
       medicationPrescriptionCreateSchema.parse({
         operation_id: id,
         medication_id: med,
+        currency: 'GBP',
         cost: '2',
       });
     const row = {

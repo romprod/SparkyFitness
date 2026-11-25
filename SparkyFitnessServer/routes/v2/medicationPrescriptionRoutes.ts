@@ -48,7 +48,16 @@ const run =
       await work(req, res, owner, query.expected_owner_id);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json({ error: 'Invalid prescription request.' });
+        const currencyRefused = error.issues.some(
+          (issue) =>
+            issue.path[0] === 'currency' &&
+            issue.message === 'Currency is required.'
+        );
+        res.status(400).json({
+          error: currencyRefused
+            ? 'Currency is required.'
+            : 'Invalid prescription request.',
+        });
         return;
       }
       next(error);

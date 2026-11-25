@@ -180,7 +180,7 @@ const initial: MedicationPurchaseView = {
   vials_expected: 1,
   vials_linked: 0,
 };
-const setup = (invoice?: MedicationPurchaseView) => {
+const setup = (invoice?: MedicationPurchaseView, defaultCurrency = 'GBP') => {
   const close = jest.fn(),
     reload = jest.fn();
   return {
@@ -189,6 +189,7 @@ const setup = (invoice?: MedicationPurchaseView) => {
         ownerId={owner}
         initial={invoice}
         data={data}
+        defaultCurrency={defaultCurrency}
         isScopeCurrent={() => mockCurrent}
         onClose={close}
         onReload={reload}
@@ -224,7 +225,7 @@ test('new invoice keeps exact prices and permits source overmatching across reti
     expect.objectContaining({
       expected_owner_id: owner,
       operation_id: expect.any(String),
-      currency: 'AUD',
+      currency: 'GBP',
       shipping_cost: '1.01',
     })
   );
@@ -440,6 +441,7 @@ test('same-label vials retain known saved preparation mass and legacy unknown ge
   const view = render(
     <MedicationPurchaseEditor
       ownerId={owner}
+      defaultCurrency="GBP"
       data={editorData}
       isScopeCurrent={() => true}
       onClose={jest.fn()}
@@ -489,6 +491,7 @@ test('explicit vial label is preferred over preparation content, while null labe
   const view = render(
     <MedicationPurchaseEditor
       ownerId={owner}
+      defaultCurrency="GBP"
       data={editorData}
       isScopeCurrent={() => true}
       onClose={jest.fn()}
@@ -509,4 +512,27 @@ test('explicit vial label is preferred over preparation content, while null labe
   fireEvent(view.getByLabelText(explicit), 'valueChange', true);
   act(() => mockSave());
   expect(mockCreate.mock.calls[0][0].items[0].vial_ids).toEqual([vial]);
+});
+
+test('a new invoice with no history starts with an empty currency, previews without AUD and will not save until one is entered', () => {
+  const { view } = setup(undefined, '');
+  const currency = view.getByLabelText('Currency');
+  expect(currency.props.value).toBe('');
+  expect(currency.props.placeholder).toBe('e.g. GBP');
+  fireEvent.changeText(view.getByLabelText('Unit cost'), '12.5');
+  expect(view.queryByText(/AUD/)).toBeNull();
+  act(() => mockSave());
+  expect(view.getByText('Enter a currency, for example GBP.')).toBeTruthy();
+  expect(mockCreate).not.toHaveBeenCalled();
+  fireEvent.changeText(currency, 'EUR');
+  expect(view.queryByText('Enter a currency, for example GBP.')).toBeNull();
+  act(() => mockSave());
+  expect(mockCreate).toHaveBeenCalledTimes(1);
+  expect(mockCreate.mock.calls[0][0]).toEqual(
+    expect.objectContaining({ currency: 'EUR' })
+  );
+});
+test('an existing invoice keeps its own currency whatever the default is', () => {
+  const { view } = setup(initial, 'GBP');
+  expect(view.getByLabelText('Currency').props.value).toBe('AUD');
 });

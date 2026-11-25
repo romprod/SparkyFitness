@@ -109,6 +109,7 @@ describe('owner-private prescription API', () => {
     const res = await request(appFor()).post('/rx').send({
       operation_id: op,
       medication_id: id,
+      currency: ' GBP ',
       cost: '0',
       refills_remaining: 0,
     });
@@ -119,11 +120,21 @@ describe('owner-private prescription API', () => {
       expect.objectContaining({
         cost: '0',
         refills_remaining: 0,
-        currency: 'AUD',
+        currency: 'GBP',
         status: 'active',
       }),
       undefined
     );
+  });
+  it('refuses a create without a currency as a 400 and never calls the repository', async () => {
+    for (const currency of [undefined, '', '  ', null]) {
+      const res = await request(appFor())
+        .post('/rx')
+        .send({ operation_id: op, medication_id: id, currency });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: 'Currency is required.' });
+    }
+    expect(repo.createMedicationPrescription).not.toHaveBeenCalled();
   });
   it('keeps update omission and delete receipt JSON semantics', async () => {
     const update = await request(appFor())

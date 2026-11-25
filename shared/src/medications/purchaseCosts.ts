@@ -127,7 +127,9 @@ export function formatPurchaseMoney(
   _locale?: string
 ): string {
   try {
-    return `${currency} ${new D(value).toFixed(2)}`;
+    const amount = new D(value).toFixed(2);
+    // A blank currency prints the bare amount rather than a stray space.
+    return currency.trim() ? `${currency.trim()} ${amount}` : amount;
   } catch {
     return '—';
   }

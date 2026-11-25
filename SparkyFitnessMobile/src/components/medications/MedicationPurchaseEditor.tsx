@@ -35,6 +35,7 @@ export default function MedicationPurchaseEditor({
   ownerId,
   initial,
   data,
+  defaultCurrency,
   isScopeCurrent,
   onClose,
   onReload,
@@ -42,6 +43,8 @@ export default function MedicationPurchaseEditor({
   ownerId: string;
   initial?: MedicationPurchaseView;
   data: MedicationPurchaseEditorData;
+  /** Currency of the newest invoice; prefills a new invoice. */
+  defaultCurrency?: string;
   isScopeCurrent: () => boolean;
   onClose: () => void;
   onReload: () => void;
@@ -50,9 +53,17 @@ export default function MedicationPurchaseEditor({
   const insets = useSafeAreaInsets();
   const native = useNativeIOSHeadersActive();
   const padding = useActiveWorkoutBarPadding('stack');
-  const [draft, setDraft] = useState(() =>
+  const [stored, setDraft] = useState(() =>
     purchaseDraft(initial, data.medications[0]?.id)
   );
+  const [currencyTyped, setCurrencyTyped] = useState(false);
+  const [currencyError, setCurrencyError] = useState(false);
+  // A new invoice follows the default (which may arrive after the editor opens)
+  // until the user types a currency; an existing one keeps its own.
+  const draft =
+    initial || currencyTyped
+      ? stored
+      : { ...stored, currency: defaultCurrency ?? '' };
   const [revision] = useState(initial?.revision);
   const [draftOwner] = useState(ownerId);
   const [invoiceItemIds] = useState(
@@ -70,11 +81,17 @@ export default function MedicationPurchaseEditor({
   const locked = busy || uncertain || conflict || !isScopeCurrent();
   const preview = purchasePreview(draft);
   const money = (value: string) =>
-    formatPurchaseMoney(value, draft.currency || 'AUD', i18n.language);
+    formatPurchaseMoney(value, draft.currency, i18n.language);
   const setHeader = <K extends Exclude<keyof PurchaseDraft, 'items'>>(
     key: K,
     value: PurchaseDraft[K]
-  ) => setDraft((previous) => ({ ...previous, [key]: value }));
+  ) => {
+    if (key === 'currency') {
+      setCurrencyTyped(true);
+      setCurrencyError(false);
+    }
+    setDraft((previous) => ({ ...previous, [key]: value }));
+  };
   const setLine = (key: string, patch: Partial<PurchaseLineDraft>) =>
     setDraft((previous) => ({
       ...previous,
@@ -123,6 +140,10 @@ export default function MedicationPurchaseEditor({
       purchaseInput(draft)
     );
     if (!pinned.current) {
+      if (!draft.currency.trim()) {
+        setCurrencyError(true);
+        return;
+      }
       if (
         draft.items.some(
           (line) => line.kind === 'consumable' && !line.description.trim()
@@ -234,7 +255,9 @@ export default function MedicationPurchaseEditor({
     label: string,
     value: string,
     onChange: (text: string) => void,
-    decimal = false
+    decimal = false,
+    placeholder?: string,
+    fieldError?: string | null
   ) => (
     <View className="gap-1.5">
       <Text className="text-sm text-text-secondary">{label}</Text>
@@ -246,7 +269,13 @@ export default function MedicationPurchaseEditor({
         }}
         editable={!locked}
         keyboardType={decimal ? 'decimal-pad' : 'default'}
+        placeholder={placeholder}
       />
+      {fieldError ? (
+        <Text accessibilityRole="alert" className="text-sm text-text-primary">
+          {fieldError}
+        </Text>
+      ) : null}
     </View>
   );
   const methods = [
@@ -392,7 +421,16 @@ export default function MedicationPurchaseEditor({
           {textField(
             t('medications.costs.currency', { defaultValue: 'Currency' }),
             draft.currency,
-            (value) => setHeader('currency', value)
+            (value) => setHeader('currency', value),
+            false,
+            t('medications.costs.currencyPlaceholder', {
+              defaultValue: 'e.g. GBP',
+            }),
+            currencyError
+              ? t('medications.costs.currencyRequired', {
+                  defaultValue: 'Enter a currency, for example GBP.',
+                })
+              : null
           )}
           <BottomSheetPicker
             value={draft.allocation_method}

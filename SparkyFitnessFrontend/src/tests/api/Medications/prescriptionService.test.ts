@@ -33,6 +33,7 @@ const row = (): MedicationPrescription => ({
 const createBody = {
   operation_id: courseIds.step,
   medication_id: courseIds.med,
+  currency: 'GBP',
   source: ' Example source ',
   cost: '0.0000',
   quantity: '0',
@@ -85,7 +86,11 @@ it('reads one exact owner record with caller cancellation', async () => {
 });
 it('accepts minimal basic-create input without injecting unknown counters or normalising the original retry body', async () => {
   request.mockResolvedValue({ ...receipt, version: 1 });
-  const body = { operation_id: courseIds.step, medication_id: courseIds.med };
+  const body = {
+    operation_id: courseIds.step,
+    medication_id: courseIds.med,
+    currency: 'GBP',
+  };
   await service.createMedicationPrescription(courseIds.owner, body);
   expect(request.mock.calls[0]![1]!.body).toBe(body);
   expect(request.mock.calls[0]![1]!.body).toEqual(body);
@@ -274,6 +279,7 @@ it('preserves only explicit per-vial basis input and keeps unrelated sparse upda
   const confirmed = {
     operation_id: courseIds.step,
     medication_id: courseIds.med,
+    currency: 'GBP',
     cost: '0.0000',
     cost_basis: 'per_vial' as const,
   };

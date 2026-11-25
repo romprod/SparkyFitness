@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Medication } from '@/types/medications';
 import { useMedicationPrescriptions } from '@/hooks/Medications/useMedicationPrescriptions';
+import { useLastUsedMedicationCurrency } from '@/hooks/Medications/useLastUsedMedicationCurrency';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -23,6 +24,7 @@ export default function MedicationPrescriptionLink({
   const { scope, query, data } = useMedicationPrescriptions();
   const id = useId();
   const [create, setCreate] = useState<HTMLElement | null>(null);
+  const defaultCurrency = useLastUsedMedicationCurrency(!!create);
   if (!scope.ready || !scope.isCurrent()) return null;
   const options =
     data?.prescriptions.filter((row) => row.medication_id === medication.id) ??
@@ -109,6 +111,7 @@ export default function MedicationPrescriptionLink({
           scope={scope}
           medications={[medication]}
           fixedMedicationId={medication.id}
+          defaultCurrency={defaultCurrency}
           onClose={() => setCreate(null)}
           onSaved={(createdId) => {
             if (scope.isCurrent()) {

@@ -58,7 +58,7 @@ export function purchaseDraft(
     reference: initial?.reference ?? '',
     ordered_date: initial?.ordered_date ?? getTodayDate(),
     received_date: initial?.received_date ?? '',
-    currency: initial?.currency ?? 'AUD',
+    currency: initial?.currency ?? '',
     shipping_cost: initial?.shipping_cost ?? '',
     tax_cost: initial?.tax_cost ?? '',
     other_fees: initial?.other_fees ?? '',
@@ -90,8 +90,26 @@ export const purchaseInput = (
     units_per_dose: line.units_per_dose || null,
   })),
 });
+/** Currency of the newest invoice by created_at, or undefined with none. */
+export function latestPurchaseCurrency(
+  purchases: readonly Pick<MedicationPurchaseView, 'currency' | 'created_at'>[]
+): string | undefined {
+  let best: { currency: string; at: number } | undefined;
+  for (const row of purchases) {
+    const currency = row.currency?.trim();
+    if (!currency) continue;
+    const parsed = Date.parse(row.created_at);
+    const at = Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+    if (!best || at > best.at) best = { currency, at };
+  }
+  return best?.currency;
+}
 export function purchasePreview(draft: PurchaseDraft) {
-  const parsed = medicationPurchaseInputSchema.safeParse(purchaseInput(draft));
+  // A blank currency gets its own message on save; it must not hide the preview.
+  const parsed = medicationPurchaseInputSchema.safeParse({
+    ...purchaseInput(draft),
+    currency: draft.currency.trim() || '-',
+  });
   if (!parsed.success) return null;
   return allocateMedicationPurchase({
     ...parsed.data,

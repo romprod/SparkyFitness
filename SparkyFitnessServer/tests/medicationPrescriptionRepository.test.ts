@@ -71,6 +71,7 @@ describe('private manual prescription transactions', () => {
       ...medicationPrescriptionCreateSchema.parse({
         operation_id: op,
         medication_id: med,
+        currency: 'GBP',
         source: 'Synthetic source',
         prescriber: 'Synthetic prescriber',
         pharmacy: 'Synthetic pharmacy',
@@ -88,15 +89,29 @@ describe('private manual prescription transactions', () => {
       c[0].startsWith('INSERT INTO medication_prescriptions(')
     )!;
     expect(insert[1]).toContain('0');
+    expect(insert[1]).toContain('GBP');
+    expect(insert[1]).not.toContain('AUD');
     expect(insert[1].filter((v: unknown) => v === 0)).toHaveLength(4);
     expect(insert[0]).not.toContain('medication_entries');
     expect(mocks.query).toHaveBeenLastCalledWith('COMMIT');
     expect(mocks.release).toHaveBeenCalledOnce();
   });
+  it('refuses to create without a currency instead of inventing one', async () => {
+    await expect(
+      createMedicationPrescription(owner, {
+        operation_id: op,
+        medication_id: med,
+      } as never)
+    ).rejects.toThrow('Currency is required.');
+    expect(
+      mocks.query.mock.calls.some((c) => c[0].startsWith('INSERT INTO'))
+    ).toBe(false);
+  });
   it('replays the exact original create result without inserting or resurrecting records', async () => {
     const data = medicationPrescriptionCreateSchema.parse({
       operation_id: op,
       medication_id: med,
+      currency: 'GBP',
     });
     const prior = { id, version: 1, deleted: false };
     const hash = createHash('sha256')
@@ -129,6 +144,7 @@ describe('private manual prescription transactions', () => {
         medicationPrescriptionCreateSchema.parse({
           operation_id: op,
           medication_id: med,
+          currency: 'GBP',
         })
       )
     ).rejects.toMatchObject({ statusCode: 409 });
@@ -330,6 +346,7 @@ describe('private manual prescription transactions', () => {
     const legacy = medicationPrescriptionCreateSchema.parse({
       operation_id: op,
       medication_id: med,
+      currency: 'GBP',
       cost: '5',
     });
     const result = await createMedicationPrescription(owner, legacy);

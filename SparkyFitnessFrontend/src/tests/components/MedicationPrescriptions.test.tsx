@@ -16,6 +16,9 @@ let mockRecords = [prescriptionFixture()];
 const mockListRefresh = jest.fn();
 const mockRemove = jest.fn(),
   mockReload = jest.fn();
+jest.mock('@/hooks/Medications/useLastUsedMedicationCurrency', () => ({
+  useLastUsedMedicationCurrency: () => 'GBP',
+}));
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescriptions: () => ({
     scope: {

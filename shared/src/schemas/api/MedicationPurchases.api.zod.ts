@@ -91,40 +91,45 @@ export const medicationPurchaseItemInputSchema = z
       message: 'A bottle holds more than zero millilitres',
     }
   );
-export const medicationPurchaseInputSchema = z
-  .object({
-    vendor: optionalText,
-    reference: optionalText,
-    ordered_date: date,
-    received_date: z
-      .union([date, z.literal('')])
-      .nullish()
-      .transform((value) => value || null),
-    currency: z
-      .string()
-      .trim()
-      .default('AUD')
-      .transform((value) => value || 'AUD'),
-    shipping_cost: decimal,
-    tax_cost: decimal,
-    other_fees: decimal,
-    discount: decimal,
-    allocation_method: z.enum(['value', 'quantity', 'none']).default('value'),
-    notes: optionalText,
-    items: z.array(medicationPurchaseItemInputSchema).min(1),
-  })
-  .refine(
-    (value) =>
-      !value.received_date || value.received_date >= value.ordered_date,
-    { path: ['received_date'] }
-  );
+/** No default: a create without a currency is refused. */
+const purchaseCurrency = z
+  .string({ error: 'Currency is required.' })
+  .trim()
+  .min(1, 'Currency is required.');
+const purchaseFields = z.object({
+  vendor: optionalText,
+  reference: optionalText,
+  ordered_date: date,
+  received_date: z
+    .union([date, z.literal('')])
+    .nullish()
+    .transform((value) => value || null),
+  shipping_cost: decimal,
+  tax_cost: decimal,
+  other_fees: decimal,
+  discount: decimal,
+  allocation_method: z.enum(['value', 'quantity', 'none']).default('value'),
+  notes: optionalText,
+  items: z.array(medicationPurchaseItemInputSchema).min(1),
+});
+const receivedOnOrAfterOrdered = (value: {
+  ordered_date: string;
+  received_date: string | null;
+}) => !value.received_date || value.received_date >= value.ordered_date;
+export const medicationPurchaseInputSchema = purchaseFields
+  .extend({ currency: purchaseCurrency })
+  .refine(receivedOnOrAfterOrdered, { path: ['received_date'] });
 export const medicationPurchaseCreateSchema =
   medicationPurchaseInputSchema.safeExtend({
     expected_owner_id: z.string().uuid(),
     operation_id: z.string().uuid(),
   });
+/** An update may omit the currency; the stored one is kept. */
+export const medicationPurchaseUpdateValuesSchema = purchaseFields
+  .extend({ currency: purchaseCurrency.optional() })
+  .refine(receivedOnOrAfterOrdered, { path: ['received_date'] });
 export const medicationPurchaseUpdateSchema =
-  medicationPurchaseInputSchema.safeExtend({
+  medicationPurchaseUpdateValuesSchema.safeExtend({
     expected_owner_id: z.string().uuid(),
     expected_revision: z.number().int().positive(),
   });

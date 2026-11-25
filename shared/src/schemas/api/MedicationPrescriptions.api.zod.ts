@@ -69,10 +69,11 @@ const fields = z.object({
   pharmacy: text,
   dose_instructions: text,
   cost: costInput,
+  /** No default: a create without a currency is refused, an update may omit it. */
   currency: z
-    .string()
-    .nullish()
-    .transform((value) => value?.trim() || 'AUD'),
+    .string({ error: 'Currency is required.' })
+    .trim()
+    .min(1, 'Currency is required.'),
   quantity: integerInput,
   refills_authorized: integerInput,
   refills_remaining: integerInput,

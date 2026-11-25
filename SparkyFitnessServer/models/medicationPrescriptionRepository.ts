@@ -321,14 +321,7 @@ export async function createMedicationPrescription(
       for (const field of privateFields)
         values.push(await encode(data[field] ?? null));
       for (const field of publicFields)
-        values.push(
-          data[field] ??
-            (field === 'currency'
-              ? 'AUD'
-              : field === 'status'
-                ? 'active'
-                : null)
-        );
+        values.push(data[field] ?? (field === 'status' ? 'active' : null));
       values.push(prescriptionCostBasis(data));
       await c.query(
         `INSERT INTO medication_prescriptions(${fields.join(',')}) VALUES(${values.map((_, i) => '$' + (i + 1)).join(',')})`,

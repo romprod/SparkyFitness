@@ -11,6 +11,9 @@ import {
 } from '@/tests/fixtures/medicationCourses';
 let mockReady = true;
 const mockForm = jest.fn();
+jest.mock('@/hooks/Medications/useLastUsedMedicationCurrency', () => ({
+  useLastUsedMedicationCurrency: () => 'GBP',
+}));
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescriptions: () => ({
     scope: { ready: mockReady, isCurrent: () => mockReady, canWrite: true },
