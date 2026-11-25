@@ -20,7 +20,15 @@ vi.mock('../services/measurementService.js', () => ({
     getCheckInMeasurementsByDateRange: vi.fn(),
     getCustomMeasurementsByDateRange: vi.fn(),
     createCustomCategory: vi.fn(),
+    logWaterIntakeAmount: vi.fn(),
   },
+}));
+
+const { mockCanAccessUserData } = vi.hoisted(() => ({
+  mockCanAccessUserData: vi.fn(),
+}));
+vi.mock('../utils/permissionUtils.js', () => ({
+  canAccessUserData: mockCanAccessUserData,
 }));
 
 import type { Request, Response, NextFunction } from 'express';
@@ -645,5 +653,82 @@ describe('Measurement Routes - POST /api/measurements/custom-categories', () => 
     expect(res.body).toEqual({
       error: 'A category named "Waist" already exists.',
     });
+  });
+});
+
+describe('Measurement Routes - POST /api/measurements/water-intake/amount', () => {
+  const OTHER_USER = '8f14e45f-ceea-4672-9a4e-0c1d5d1a5b21';
+  const url = '/api/measurements/water-intake/amount';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCanAccessUserData.mockResolvedValue(true);
+  });
+
+  it('logs the amount for the caller', async () => {
+    vi.mocked(measurementService.logWaterIntakeAmount).mockResolvedValue({
+      id: 'log-1',
+    });
+    const res = await request(app)
+      .post(url)
+      .send({ entry_date: '2026-08-30', water_ml: 500 });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ id: 'log-1' });
+    expect(measurementService.logWaterIntakeAmount).toHaveBeenCalledWith(
+      'test-user-id',
+      'test-user-id',
+      '2026-08-30',
+      500
+    );
+    expect(mockCanAccessUserData).not.toHaveBeenCalled();
+  });
+
+  it('logs for another user the caller can access', async () => {
+    vi.mocked(measurementService.logWaterIntakeAmount).mockResolvedValue({});
+    const res = await request(app)
+      .post(url)
+      .send({ entry_date: '2026-08-30', water_ml: 250, user_id: OTHER_USER });
+    expect(res.statusCode).toBe(200);
+    expect(mockCanAccessUserData).toHaveBeenCalledWith(
+      OTHER_USER,
+      'checkin',
+      'test-user-id'
+    );
+    expect(measurementService.logWaterIntakeAmount).toHaveBeenCalledWith(
+      OTHER_USER,
+      'test-user-id',
+      '2026-08-30',
+      250
+    );
+  });
+
+  it('returns 403 for a user the caller cannot access', async () => {
+    mockCanAccessUserData.mockResolvedValue(false);
+    const res = await request(app)
+      .post(url)
+      .send({ entry_date: '2026-08-30', water_ml: 250, user_id: OTHER_USER });
+    expect(res.statusCode).toBe(403);
+    expect(measurementService.logWaterIntakeAmount).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing water_ml', { entry_date: '2026-08-30' }],
+    ['zero', { entry_date: '2026-08-30', water_ml: 0 }],
+    ['negative', { entry_date: '2026-08-30', water_ml: -5 }],
+    ['fractional', { entry_date: '2026-08-30', water_ml: 12.5 }],
+    ['over the maximum', { entry_date: '2026-08-30', water_ml: 10001 }],
+    ['a string amount', { entry_date: '2026-08-30', water_ml: '500' }],
+    ['a bad date', { entry_date: 'not-a-date', water_ml: 500 }],
+    ['an impossible date', { entry_date: '2026-02-30', water_ml: 500 }],
+    ['a missing date', { water_ml: 500 }],
+    [
+      'a bad user_id',
+      { entry_date: '2026-08-30', water_ml: 500, user_id: 'x' },
+    ],
+  ])('returns 400 for %s', async (_name, body) => {
+    const res = await request(app).post(url).send(body);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toEqual(expect.any(String));
+    expect(measurementService.logWaterIntakeAmount).not.toHaveBeenCalled();
   });
 });

@@ -130,6 +130,19 @@ export const UpsertWaterIntakeBodySchema = z
 
 export type UpsertWaterIntakeBody = z.infer<typeof UpsertWaterIntakeBodySchema>;
 
+// An exact amount of water in mL, logged as one itemized entry.
+export const LogWaterAmountBodySchema = z.object({
+  entry_date: requiredDayString('entry_date'),
+  water_ml: z
+    .number('water_ml must be a number')
+    .int('water_ml must be a whole number of mL')
+    .positive('water_ml must be greater than 0')
+    .max(10000, 'water_ml must be at most 10000'),
+  user_id: z.string().uuid('user_id must be a UUID').optional(),
+});
+
+export type LogWaterAmountBody = z.infer<typeof LogWaterAmountBodySchema>;
+
 export const UpdateWaterIntakeBodySchema = z
   .object({
     water_ml: optionalLegacyNumber,

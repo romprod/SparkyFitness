@@ -69,6 +69,7 @@ import MedicationScheduleMove from './MedicationScheduleMove';
 import MedicationSupplyTile from './MedicationSupplyTile';
 import MedicationPlanDayTile from './MedicationPlanDayTile';
 import MedicationWellnessTile from './MedicationWellnessTile';
+import MedicationDailyLog from './MedicationDailyLog';
 import MedicationNextDoses from './MedicationNextDoses';
 import MedicationLevelsOverlay from './MedicationLevelsOverlay';
 import MedicationBlendCard from './MedicationBlendCard';
@@ -489,6 +490,16 @@ export default function Medications() {
           <MedicationSupplyTile />
           <MedicationPlanDayTile medications={visibleMeds} />
           <MedicationWellnessTile />
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
+                {t('medications.dailyLog.todayTitle', "Today's log")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <MedicationDailyLog date={today} title={null} />
+            </CardContent>
+          </Card>
           <MedicationLevelsOverlay medications={visibleMeds} today={today} />
           <MedicationLogCalendar
             medications={visibleMeds}

@@ -15,6 +15,10 @@ import Medications from '@/pages/Medications/Medications';
 import { calendarWeek } from '@/tests/fixtures/medicationLogWeek';
 import { inventoryForecastFixture } from '@/tests/fixtures/medicationInventoryForecast';
 const mockInvoiceUser = { id: 'owner', activeUserId: 'owner' };
+jest.mock('@/pages/Medications/MedicationDailyLog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescriptionScope: () => ({
     ready: mockInvoiceUser.activeUserId === mockInvoiceUser.id,

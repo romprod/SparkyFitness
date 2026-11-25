@@ -20,6 +20,10 @@ const mockCreate = jest.fn(),
   mockDeleteInjection = jest.fn(),
   mockReadHook = jest.fn(),
   mockFullEditor = jest.fn();
+jest.mock('@/pages/Medications/MedicationDailyLog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/contexts/ActiveUserContext', () => ({
   useActiveUser: () => ({
     hasWritePermission: (key: string) =>

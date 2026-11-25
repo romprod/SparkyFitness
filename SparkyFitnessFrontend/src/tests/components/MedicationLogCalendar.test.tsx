@@ -7,6 +7,10 @@ let mockScope = 'owner',
   mockReady = true;
 const mockRead = jest.fn(),
   mockDetail = jest.fn();
+jest.mock('@/pages/Medications/MedicationDailyLog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({
     timezone: 'Europe/London',

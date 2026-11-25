@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/select';
 import Glp1RecentInjections from './Glp1RecentInjections';
 import MedicationAddDoseForDay from './MedicationAddDoseForDay';
+import MedicationDailyLog from './MedicationDailyLog';
 
 type Result = ReturnType<typeof useMedicationLogWeek>;
 type Scope = Result['scope'];
@@ -539,6 +540,9 @@ export default function MedicationCalendarDayDetail({
                 )}
             </>
           )}
+          <div className="border-t pt-3">
+            <MedicationDailyLog date={day} />
+          </div>
           <Button variant="outline" onClick={onClose}>
             {t('common.close', 'Close')}
           </Button>

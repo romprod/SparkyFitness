@@ -6,6 +6,8 @@ import {
   updateWaterIntakeLogTime,
   UpdateWaterPayload,
   updateWaterIntake,
+  logWaterAmount,
+  LogWaterAmountPayload,
   WaterIntakeLogEntry,
 } from '@/api/Diary/waterIntakteService';
 import { waterIntakeKeys } from '@/api/keys/diary';
@@ -157,6 +159,38 @@ export const useUpdateWaterIntakeMutation = () => {
           ),
         });
       }
+    },
+    meta: {
+      successMessage: t(
+        'foodDiary.waterIntake.updated',
+        'Water intake updated'
+      ),
+      errorMessage: t(
+        'foodDiary.waterIntake.updateError',
+        'Failed to save water intake'
+      ),
+    },
+  });
+};
+
+export const useLogWaterAmountMutation = () => {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  const invalidate = useDiaryInvalidation();
+  return useMutation({
+    mutationFn: (payload: LogWaterAmountPayload) => logWaterAmount(payload),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: waterIntakeKeys.daily(
+          variables.entry_date,
+          variables.user_id
+        ),
+      });
+      queryClient.invalidateQueries({
+        queryKey: waterIntakeKeys.log(variables.entry_date, variables.user_id),
+      });
+      invalidate();
     },
     meta: {
       successMessage: t(

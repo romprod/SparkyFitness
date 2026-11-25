@@ -8,6 +8,12 @@ import type {
 export type { WaterIntakeDayTotals, WaterIntakeLogEntry };
 export type UpdateWaterPayload = UpsertWaterIntakeBody;
 
+export interface LogWaterAmountPayload {
+  user_id: string;
+  entry_date: string;
+  water_ml: number;
+}
+
 export const getWaterGoalForDate = async (date: string, userId: string) => {
   return apiCall(`/goals/for-date?date=${date}&userId=${userId}&adjust=true`);
 };
@@ -21,6 +27,14 @@ export const getWaterIntakeForDate = async (
 
 export const updateWaterIntake = async (payload: UpdateWaterPayload) => {
   return apiCall('/measurements/water-intake', {
+    method: 'POST',
+    body: payload,
+  });
+};
+
+/** Logs an exact amount (mL) as one itemized water entry. */
+export const logWaterAmount = async (payload: LogWaterAmountPayload) => {
+  return apiCall('/measurements/water-intake/amount', {
     method: 'POST',
     body: payload,
   });

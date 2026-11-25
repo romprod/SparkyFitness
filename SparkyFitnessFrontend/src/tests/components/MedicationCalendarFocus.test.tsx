@@ -8,6 +8,10 @@ import {
 } from '@/tests/fixtures/medicationLogWeek';
 import { courseMedication } from '@/tests/fixtures/medicationCourses';
 let mockScope = 'owner';
+jest.mock('@/pages/Medications/MedicationDailyLog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({
     timezone: 'Europe/London',

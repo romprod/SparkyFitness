@@ -22,6 +22,10 @@ import {
   cycleAssumptionFixture,
 } from '@/tests/fixtures/medicationInventoryProjection';
 
+jest.mock('@/pages/Medications/MedicationDailyLog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (_key: string, fallback: string, values?: Record<string, unknown>) =>
