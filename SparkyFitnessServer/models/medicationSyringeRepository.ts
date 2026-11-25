@@ -120,23 +120,50 @@ export async function setDefaultSyringe(userId: string, id: string | null) {
 }
 export async function deleteSyringe(userId: string, id: string) {
   const client: PoolClient = await getClient(userId);
+  const linked = () =>
+    Object.assign(
+      new Error('Syringe is linked to recorded doses and cannot be removed.'),
+      { statusCode: 409 }
+    );
   try {
+    await client.query('BEGIN');
+    // FOR UPDATE conflicts with the key-share lock the injection_entries
+    // foreign key takes on insert, so a dose cannot be logged against this
+    // syringe between the check below and the delete.
+    const owned = await client.query(
+      'SELECT id FROM medication_syringes WHERE id=$1 AND user_id=$2 FOR UPDATE',
+      [id, userId]
+    );
+    if (!owned.rows[0]) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    // injection_entries.syringe_id is ON DELETE SET NULL, so the database would
+    // silently detach every dose; refuse instead. Injection rows are hard
+    // deleted, so any row found is a recorded dose.
+    const used = await client.query(
+      'SELECT 1 FROM injection_entries WHERE syringe_id=$1 LIMIT 1',
+      [id]
+    );
+    if (used.rows.length > 0) {
+      await client.query('ROLLBACK');
+      throw linked();
+    }
     const result = await client.query(
       'DELETE FROM medication_syringes WHERE id=$1 AND user_id=$2 RETURNING id',
       [id, userId]
     );
+    await client.query('COMMIT');
     return result.rows.length > 0;
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
     if (
       error &&
       typeof error === 'object' &&
       'code' in error &&
       error.code === '23503'
     )
-      throw Object.assign(
-        new Error('Syringe is linked to recorded doses and cannot be removed.'),
-        { statusCode: 409 }
-      );
+      throw linked();
     throw error;
   } finally {
     client.release();

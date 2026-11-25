@@ -74,7 +74,26 @@ it('supports clearing the default and removing previously used device configurat
   fireEvent.click(screen.getByRole('button', { name: 'Clear default' }));
   expect(mockDefault).toHaveBeenCalledWith(null);
   fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  expect(mockRemove).not.toHaveBeenCalled();
+  const dialog = screen.getByRole('alertdialog');
+  expect(
+    within(dialog).getByText('Delete Synthetic syringe?')
+  ).toBeInTheDocument();
+  expect(dialog).toHaveTextContent("This can't be undone.");
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
   expect(mockRemove).toHaveBeenCalledWith('used');
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+});
+it('does not delete when the confirmation is cancelled', () => {
+  open();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  fireEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Cancel',
+    })
+  );
+  expect(mockRemove).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 });
 it('does not save an empty name or zero increment', () => {
   open();

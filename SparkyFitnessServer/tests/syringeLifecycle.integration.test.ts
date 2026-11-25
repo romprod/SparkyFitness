@@ -56,7 +56,7 @@ describe.runIf(process.env.SYRINGE_INTEGRATION === '1')(
         await endPool();
       }
     });
-    it('scopes reusable devices/default and preserves snapshots when used device deleted', async () => {
+    it('scopes reusable devices/default and preserves snapshots and refuses to delete a used device', async () => {
       const device = await devices.saveSyringe(owner, syringe);
       await devices.setDefaultSyringe(owner, device.id);
       expect((await devices.listSyringes(owner)).default_syringe_id).toBe(
@@ -93,12 +93,19 @@ describe.runIf(process.env.SYRINGE_INTEGRATION === '1')(
           (p: MedicationPen) => p.id === vial.id
         )?.stock
       ).toMatchObject({ remainingMg: 3 });
-      await devices.deleteSyringe(owner, device.id);
-      expect((await devices.listSyringes(owner)).default_syringe_id).toBeNull();
+      await expect(
+        devices.deleteSyringe(owner, device.id)
+      ).rejects.toMatchObject({
+        message: 'Syringe is linked to recorded doses and cannot be removed.',
+        statusCode: 409,
+      });
+      const list = await devices.listSyringes(owner);
+      expect(list.syringes.some((s) => s.id === device.id)).toBe(true);
+      expect(list.default_syringe_id).toBe(device.id);
       const row = (
         await injections.listInjections(owner, { medicationId: med })
       ).find((i: InjectionEntry) => i.id === logged.id);
-      expect(row.syringe_id).toBeNull();
+      expect(row.syringe_id).toBe(device.id);
       expect(row.volume_ml).toBe('0');
       expect(
         (await stock.listPens(owner, med)).find(
@@ -216,7 +223,18 @@ describe.runIf(process.env.SYRINGE_INTEGRATION === '1')(
       expect(amended.dose_mg).toBe(0.9);
       expect(amended.volume_ml).toBe('0.9');
       expect(amended.dose_input_unit).toBe('mg');
-      await devices.deleteSyringe(owner, device.id);
+      await expect(
+        devices.deleteSyringe(owner, device.id)
+      ).rejects.toMatchObject({ statusCode: 409 });
+      // Simulate legacy data from before deletion was blocked.
+      const legacy = await getSystemClient();
+      try {
+        await legacy.query('DELETE FROM medication_syringes WHERE id=$1', [
+          device.id,
+        ]);
+      } finally {
+        legacy.release();
+      }
       await expect(
         injections.updateInjection(owner, logged.id, { dose_mg: 0.7 })
       ).rejects.toThrow('Original syringe is missing');

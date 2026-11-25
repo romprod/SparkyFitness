@@ -19,6 +19,16 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -46,6 +56,7 @@ export default function MedicationSyringeSettings() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<SyringeForm | null>(null);
+  const [deleting, setDeleting] = useState<MedicationSyringe | null>(null);
   const syringes = useMedicationSyringes();
   const save = useSaveMedicationSyringe();
   const remove = useDeleteMedicationSyringe();
@@ -187,7 +198,7 @@ export default function MedicationSyringeSettings() {
                       variant="ghost"
                       size="sm"
                       disabled={busy}
-                      onClick={() => remove.mutate(s.id)}
+                      onClick={() => setDeleting(s)}
                     >
                       <Trash2 className="mr-1 h-3 w-3" />
                       {t('common.delete', 'Delete')}
@@ -352,9 +363,47 @@ export default function MedicationSyringeSettings() {
               'medications.syringes.changeError',
               'Could not update syringes.'
             )}
+            {remove.error instanceof Error && remove.error.message
+              ? ` ${remove.error.message}`
+              : ''}
           </p>
         )}
       </DialogContent>
+      <AlertDialog
+        open={deleting !== null}
+        onOpenChange={(value) => {
+          if (!value) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('medications.syringes.deleteTitle', 'Delete {{name}}?', {
+                name: deleting?.name ?? '',
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'medications.syringes.deleteBody',
+                "This can't be undone. A device that recorded doses used can't be deleted, so their amounts stay correctable."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t('common.cancel', 'Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleting) remove.mutate(deleting.id);
+                setDeleting(null);
+              }}
+            >
+              {t('common.delete', 'Delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
