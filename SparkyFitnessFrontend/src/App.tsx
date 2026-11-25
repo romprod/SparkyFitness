@@ -64,6 +64,9 @@ const FoodDatabaseManager = lazyWithChunkRecovery(
 );
 const Reports = lazyWithChunkRecovery(() => import('./pages/Reports/Reports'));
 const Labs = lazyWithChunkRecovery(() => import('./pages/Labs/Labs'));
+const BodyCompPrepChecklist = lazyWithChunkRecovery(
+  () => import('./pages/Labs/BodyCompPrepChecklist')
+);
 const Symptoms = lazyWithChunkRecovery(
   () => import('./pages/Symptoms/Symptoms')
 );
@@ -459,6 +462,11 @@ const router = createBrowserRouter([
           {
             path: 'labs',
             Component: Labs,
+            ErrorBoundary: RouteErrorBoundary,
+          },
+          {
+            path: 'labs/dexa-checklist',
+            Component: BodyCompPrepChecklist,
             ErrorBoundary: RouteErrorBoundary,
           },
           {

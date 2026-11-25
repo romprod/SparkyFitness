@@ -102,6 +102,14 @@ jest.mock('@/pages/Medications/MedicationCourseHistory', () => ({
     <p>Exact history {revision.id}</p>
   ),
 }));
+let mockScans: { id: string; scanned_day: string }[] = [];
+let mockScansError = false;
+jest.mock('@/hooks/Labs/useBodyCompScans', () => ({
+  useBodyCompScans: () =>
+    mockScansError
+      ? { data: undefined, isError: true, isLoading: false }
+      : { data: mockScans, isError: false, isLoading: false },
+}));
 const props = () => ({
   medications: [courseMedication],
   onClose: jest.fn(),
@@ -115,6 +123,8 @@ beforeEach(() => {
   mockError = false;
   mockKey = 'self:owner:1';
   mockHistory.mockClear();
+  mockScans = [];
+  mockScansError = false;
 });
 it('shows all-profile scope, server ranges, saved calendars and separately qualified overlap without doses', () => {
   render(<MedicationCourseTimeline {...props()} />);
@@ -257,4 +267,82 @@ it('shows how far through each plan it is, from its own dates', () => {
   expect(screen.getByText('Day 7 of 91 · ends 2027-02-08')).toBeInTheDocument();
   expect(screen.getByText('Starts in 4 days · 2026-11-20')).toBeInTheDocument();
   expect(screen.getByText('Ended 2026-10-31')).toBeInTheDocument();
+});
+
+describe('DEXA scan markers', () => {
+  // Window starts 2026-10-11, so offset 37 is 2026-11-17 (the profile today).
+  // The dialog renders in a portal, so look through the whole document.
+  const markers = (_container?: HTMLElement) =>
+    Array.from(
+      document.body.querySelectorAll<HTMLElement>('[data-scan-marker]')
+    );
+
+  it('draws a tagged axis line and a plain row line inside the window', () => {
+    mockScans = [{ id: 's1', scanned_day: '2026-11-17' }];
+    const { container } = render(<MedicationCourseTimeline {...props()} />);
+    const lines = markers(container);
+    expect(lines).toHaveLength(2);
+    lines.forEach((line) => {
+      expect(line.style.left).toBe(`${(37.5 / 140) * 100}%`);
+      expect(line).toHaveAttribute('aria-hidden', 'true');
+      expect(line).toHaveClass('pointer-events-none');
+      expect(line).toHaveAttribute('title', 'DEXA scan — 2026-11-17');
+    });
+    expect(within(lines[0]!).getByText('DEXA')).toBeInTheDocument();
+    expect(within(lines[1]!).queryByText('DEXA')).not.toBeInTheDocument();
+  });
+
+  it('stacks the marker lines above the plan bars like the today line', () => {
+    mockScans = [{ id: 's1', scanned_day: '2026-11-17' }];
+    render(<MedicationCourseTimeline {...props()} />);
+    const lines = markers();
+    expect(lines).toHaveLength(2);
+    lines.forEach((line) => expect(line).toHaveClass('z-[1]'));
+    // The tag is a child of the axis line, so it shares that stacking context.
+    expect(within(lines[0]!).getByText('DEXA')).toBeInTheDocument();
+  });
+
+  it('includes the first and last day of the window', () => {
+    mockScans = [
+      { id: 'first', scanned_day: '2026-10-11' },
+      { id: 'last', scanned_day: '2027-02-27' },
+    ];
+    const { container } = render(<MedicationCourseTimeline {...props()} />);
+    expect(markers(container).map((m) => m.style.left)).toEqual([
+      `${(0.5 / 140) * 100}%`,
+      `${(139.5 / 140) * 100}%`,
+      `${(0.5 / 140) * 100}%`,
+      `${(139.5 / 140) * 100}%`,
+    ]);
+  });
+
+  it('draws nothing for scans outside the window, and no legend', () => {
+    mockScans = [
+      { id: 'before', scanned_day: '2026-10-10' },
+      { id: 'after', scanned_day: '2027-02-28' },
+    ];
+    const { container } = render(<MedicationCourseTimeline {...props()} />);
+    expect(markers(container)).toHaveLength(0);
+    expect(screen.queryByText('DEXA scan')).not.toBeInTheDocument();
+  });
+
+  it('draws nothing and still shows the timeline when the scans fail to load', () => {
+    mockScans = [{ id: 's1', scanned_day: '2026-11-17' }];
+    mockScansError = true;
+    const { container } = render(<MedicationCourseTimeline {...props()} />);
+    expect(markers(container)).toHaveLength(0);
+    expect(screen.queryByText('DEXA scan')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'View plan' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows the legend item only when a marker is visible', () => {
+    const view = render(<MedicationCourseTimeline {...props()} />);
+    expect(screen.queryByText('DEXA scan')).not.toBeInTheDocument();
+    view.unmount();
+    mockScans = [{ id: 's1', scanned_day: '2026-11-17' }];
+    render(<MedicationCourseTimeline {...props()} />);
+    expect(screen.getByText('DEXA scan')).toBeInTheDocument();
+  });
 });

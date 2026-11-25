@@ -76,6 +76,19 @@ describe('reading scans back', () => {
       },
     ],
     notes: null,
+    scan_mode: 'Whole Body',
+    reference_population: 'NHANES Male',
+    bmd_t_score: '-0.4',
+    bmd_z_score: '0.2',
+    bmd_cv_pct: '1.0',
+    pct_fat_yn: '55',
+    pct_fat_am: null,
+    fmi_yn: '45',
+    fmi_am: '38',
+    lmi_yn: null,
+    lmi_am: null,
+    almi_yn: null,
+    almi_am: '58',
   };
 
   it('turns the text numbers pg gives into numbers, and keeps the three-valued answers', () => {
@@ -101,6 +114,55 @@ describe('reading scans back', () => {
       illness_free_14d: null,
     });
     expect(scan.regions).toHaveLength(1);
+  });
+
+  it('reads the report fields as numbers and text, and not recorded as null', () => {
+    expect(toBodyCompScan(row)).toMatchObject({
+      scan_mode: 'Whole Body',
+      reference_population: 'NHANES Male',
+      bmd_t_score: -0.4,
+      bmd_z_score: 0.2,
+      bmd_cv_pct: 1,
+      pct_fat_yn: 55,
+      pct_fat_am: null,
+      fmi_yn: 45,
+      almi_am: 58,
+    });
+  });
+
+  it('reads a scan saved before the report fields existed with nulls, regions included', () => {
+    const old: Record<string, unknown> = { ...row };
+    for (const key of [
+      'scan_mode',
+      'reference_population',
+      'bmd_t_score',
+      'bmd_z_score',
+      'bmd_cv_pct',
+      'pct_fat_yn',
+      'pct_fat_am',
+      'fmi_yn',
+      'fmi_am',
+      'lmi_yn',
+      'lmi_am',
+      'almi_yn',
+      'almi_am',
+    ])
+      delete old[key];
+    const scan = toBodyCompScan(old);
+    expect(scan.scan_mode).toBeNull();
+    expect(scan.bmd_t_score).toBeNull();
+    expect(scan.almi_am).toBeNull();
+    expect(scan.regions[0]).toEqual({
+      region: 'trunk',
+      fat_g: 1,
+      lean_g: 2,
+      bmc_g: 3,
+      total_g: 6,
+      pct_fat: 16.7,
+      pct_fat_yn: null,
+      pct_fat_am: null,
+      bmd_gcm2: null,
+    });
   });
 
   it('reads a scan with no regions as an empty list', () => {
@@ -152,6 +214,60 @@ describe('saving a scan', () => {
     expect(params[fastedAt + 1]).toBeNull();
     expect(JSON.parse(String(params[28]))).toHaveLength(1);
     expect(mocks.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes the report fields after the notes, in the order of the columns, and null when not given', async () => {
+    mocks.query.mockResolvedValueOnce({ rows: [{ id: 'new' }], rowCount: 1 });
+    await createBodyCompScan(
+      owner,
+      parse({
+        notes: 'n',
+        scan_mode: 'Whole Body',
+        reference_population: 'NHANES Male',
+        bmd_t_score: -0.4,
+        bmd_cv_pct: 1,
+        pct_fat_yn: 50,
+        almi_am: 58,
+        regions: [
+          {
+            region: 'trunk',
+            fat_g: 1,
+            lean_g: 2,
+            bmc_g: 3,
+            total_g: 6,
+            pct_fat: 16.7,
+            pct_fat_yn: 48,
+            bmd_gcm2: 1.1,
+          },
+        ],
+      })
+    );
+    const [text, params] = mocks.query.mock.calls[0]! as [string, unknown[]];
+    expect(params).toHaveLength(43);
+    expect(params.slice(29)).toEqual([
+      'n',
+      'Whole Body',
+      'NHANES Male',
+      -0.4,
+      null,
+      1,
+      50,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      58,
+    ]);
+    expect(String(text)).toContain('$43)');
+    expect(String(text)).toMatch(
+      /carb_pattern_48h, regions, notes, scan_mode, reference_population, bmd_t_score,\s+bmd_z_score, bmd_cv_pct, pct_fat_yn, pct_fat_am, fmi_yn, fmi_am, lmi_yn, lmi_am,\s+almi_yn, almi_am\)/
+    );
+    expect(JSON.parse(String(params[28]))[0]).toMatchObject({
+      pct_fat_yn: 48,
+      bmd_gcm2: 1.1,
+    });
   });
 
   it('keeps the fasting hours when fasted is yes', async () => {

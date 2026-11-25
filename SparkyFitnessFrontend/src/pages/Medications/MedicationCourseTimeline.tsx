@@ -10,6 +10,7 @@ import {
 } from '@/hooks/Medications/useMedicationCourses';
 import type { MedicationDetail } from '@/types/medications';
 import { usePreferences } from '@/contexts/PreferencesContext';
+import { useBodyCompScans } from '@/hooks/Labs/useBodyCompScans';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -20,6 +21,76 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import MedicationCourseHistory from './MedicationCourseHistory';
+
+const WINDOW_DAYS = 140;
+const SCAN_MARKER_CLASS =
+  'pointer-events-none absolute inset-y-0 z-[1] w-px bg-violet-500/70';
+
+interface ScanMarker {
+  id: string;
+  day: string;
+  pct: number;
+}
+
+const dayNumber = (day: string) => {
+  const [y, m, d] = day.split('-').map(Number);
+  return Date.UTC(y!, m! - 1, d!) / 86_400_000;
+};
+
+/** Scans whose calendar day falls inside the window, positioned like the today line. */
+function scanMarkersInWindow(
+  scans: Array<{ id: string; scanned_day: string }> | undefined,
+  windowStart: string
+): ScanMarker[] {
+  if (!scans) return [];
+  const start = dayNumber(windowStart);
+  if (Number.isNaN(start)) return [];
+  const markers: ScanMarker[] = [];
+  for (const scan of scans) {
+    const offset = dayNumber(scan.scanned_day) - start;
+    if (!Number.isInteger(offset) || offset < 0 || offset >= WINDOW_DAYS)
+      continue;
+    markers.push({
+      id: scan.id,
+      day: scan.scanned_day,
+      pct: ((offset + 0.5) / WINDOW_DAYS) * 100,
+    });
+  }
+  return markers;
+}
+
+function ScanMarkerLines({
+  markers,
+  tag,
+  title,
+  formatDate,
+}: {
+  markers: ScanMarker[];
+  tag?: string;
+  title: string;
+  formatDate: (day: string) => string;
+}) {
+  return (
+    <>
+      {markers.map((m) => (
+        <span
+          key={m.id}
+          className={SCAN_MARKER_CLASS}
+          style={{ left: `${m.pct}%` }}
+          data-scan-marker={m.day}
+          title={`${title} — ${formatDate(m.day)}`}
+          aria-hidden="true"
+        >
+          {tag && (
+            <span className="absolute bottom-0 left-1/2 -translate-x-1/2 whitespace-nowrap bg-background px-0.5 text-[9px] font-medium leading-none text-violet-600 dark:text-violet-400">
+              {tag}
+            </span>
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
 
 function TimelineHistory({
   row,
@@ -83,6 +154,13 @@ export default function MedicationCourseTimeline({
   const { formatDate } = usePreferences();
   const result = useMedicationCourseTimeline(true);
   const { scope, query, data } = result;
+  // Decoration only: a loading or failed scan query draws nothing.
+  const scansQuery = useBodyCompScans();
+  const scanMarkers = scansQuery.isError
+    ? []
+    : scanMarkersInWindow(scansQuery.data, data?.window.start_date ?? '');
+  const scanTitle = t('medications.courses.timeline.scanLegend', 'DEXA scan');
+  const scanTag = t('medications.courses.timeline.scanTag', 'DEXA');
   const [originalScope] = useState(scope.key);
   const [history, setHistory] = useState<MedicationCourseTimelineRow | null>(
     null
@@ -179,6 +257,15 @@ export default function MedicationCourseTimeline({
                     {label}
                   </Badge>
                 ))}
+                {scanMarkers.length > 0 && (
+                  <Badge variant="outline" className="gap-1">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-3 w-px bg-violet-500/70"
+                    />
+                    {scanTitle}
+                  </Badge>
+                )}
               </div>
               {!data.rows.length ? (
                 <p>
@@ -219,6 +306,12 @@ export default function MedicationCourseTimeline({
                           'Profile today'
                         )}
                       </span>
+                      <ScanMarkerLines
+                        markers={scanMarkers}
+                        tag={scanTag}
+                        title={scanTitle}
+                        formatDate={formatDate}
+                      />
                     </div>
                     {data.rows.map((row) => (
                       <section
@@ -338,6 +431,11 @@ export default function MedicationCourseTimeline({
                                 left: `${((data.today_offset + 0.5) / 140) * 100}%`,
                               }}
                               className="absolute h-full border-l border-foreground/60 z-[1]"
+                            />
+                            <ScanMarkerLines
+                              markers={scanMarkers}
+                              title={scanTitle}
+                              formatDate={formatDate}
                             />
                             {row.segments.map((segment, i) => (
                               <span

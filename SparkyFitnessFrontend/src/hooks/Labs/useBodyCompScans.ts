@@ -5,6 +5,7 @@ import {
   createBodyCompScan,
   deleteBodyCompScan,
   listBodyCompScans,
+  readBodyCompReport,
 } from '@/api/Labs/bodyCompService';
 
 const bodyCompKeys = {
@@ -42,3 +43,10 @@ export const useDeleteBodyCompScanMutation = () => {
     onSuccess: invalidate,
   });
 };
+
+/** Reads a Hologic report PDF into scan values; the form shows a failure itself. */
+export const useReadBodyCompReportMutation = () =>
+  useMutation({
+    mutationFn: (pdfBase64: string) => readBodyCompReport(pdfBase64),
+    meta: { silentError: true },
+  });

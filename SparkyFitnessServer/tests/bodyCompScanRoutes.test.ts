@@ -2,6 +2,7 @@ import express from 'express';
 // @ts-expect-error no declarations installed in workspace.
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HOLOGIC_TEMPLATE } from './fixtures/hologicReportText.js';
 
 const owner = '00000000-0000-4000-a000-000000000001';
 const scanId = '00000000-0000-4000-a000-0000000000b1';
@@ -10,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   remove: vi.fn(),
   permission: vi.fn(),
+  readText: vi.fn(),
+}));
+vi.mock('../services/pdfRowText.js', () => ({
+  readPdfRowText: mocks.readText,
 }));
 vi.mock('../models/bodyCompScanRepository.js', () => ({
   listBodyCompScans: mocks.list,
@@ -60,7 +65,8 @@ vi.mock('../middleware/checkPermissionMiddleware.js', () => ({
 import router from '../routes/v2/bodyCompScanRoutes.js';
 
 const app = express();
-app.use(express.json());
+// As in the server: a report PDF travels as base64 in the JSON body.
+app.use(express.json({ limit: '50mb' }));
 app.use('/api/v2/body-comp-scans', router);
 const path = '/api/v2/body-comp-scans';
 const body = {
@@ -113,6 +119,19 @@ const stored = {
   carb_pattern_48h: null,
   regions: [region('trunk', 10000, 27000, 900)],
   notes: 'private note',
+  scan_mode: 'Whole Body',
+  reference_population: 'NHANES Male',
+  bmd_t_score: 0.4,
+  bmd_z_score: 0.2,
+  bmd_cv_pct: 1,
+  pct_fat_yn: 55,
+  pct_fat_am: 48,
+  fmi_yn: null,
+  fmi_am: null,
+  lmi_yn: null,
+  lmi_am: null,
+  almi_yn: null,
+  almi_am: null,
 };
 
 describe('DEXA scans', () => {
@@ -147,6 +166,43 @@ describe('DEXA scans', () => {
     expect(mocks.create.mock.calls[0]?.[2]).toBe(owner);
   });
 
+  it('keeps the report fields: scan mode, scores, percentiles and a region’s own percentiles and bone density', async () => {
+    const response = await request(app)
+      .post(path)
+      .send({
+        ...body,
+        scan_mode: ' Whole Body ',
+        reference_population: 'NHANES Male',
+        bmd_t_score: -0.4,
+        bmd_z_score: 0.1,
+        bmd_cv_pct: 1,
+        pct_fat_yn: 50,
+        pct_fat_am: 40,
+        almi_am: 58,
+        regions: [
+          {
+            ...region('l_arm', 1000, 3500, 200),
+            pct_fat_yn: 55,
+            bmd_gcm2: 0.8,
+          },
+        ],
+      });
+    expect(response.status).toBe(201);
+    const saved = mocks.create.mock.calls[0]?.[1];
+    expect(saved).toMatchObject({
+      scan_mode: 'Whole Body',
+      reference_population: 'NHANES Male',
+      bmd_t_score: -0.4,
+      bmd_z_score: 0.1,
+      bmd_cv_pct: 1,
+      pct_fat_yn: 50,
+      pct_fat_am: 40,
+      fmi_yn: null,
+      almi_am: 58,
+    });
+    expect(saved.regions[0]).toMatchObject({ pct_fat_yn: 55, bmd_gcm2: 0.8 });
+  });
+
   it('keeps regions and what the report printed', async () => {
     await request(app)
       .post(path)
@@ -173,6 +229,10 @@ describe('DEXA scans', () => {
         regions: [region('trunk', 1, 2, 3), region('trunk', 1, 2, 3)],
       },
       { ...body, regions: [{ ...region('trunk', 1, 2, 3), region: 'elbow' }] },
+      { ...body, pct_fat_yn: 101 },
+      { ...body, bmd_t_score: 'low' },
+      { ...body, bmd_cv_pct: -1 },
+      { ...body, regions: [{ ...region('trunk', 1, 2, 3), bmd_gcm2: 9 }] },
     ]) {
       const response = await request(app).post(path).send(bad);
       expect(response.status).toBe(400);
@@ -193,6 +253,11 @@ describe('DEXA scans', () => {
     expect(lines[0]).toMatch(/^date,scan,region,device,facility,/);
     expect(lines).toHaveLength(4);
     expect(lines[1]).toContain('2026-08-10,1,trunk,Hologic Horizon A,Clinic');
+    // The report fields are appended after the existing columns, on the total row.
+    expect(lines[0]).toMatch(
+      /,creatine_status,scan_mode,reference_population,/
+    );
+    expect(lines[2]).toContain(',Whole Body,NHANES Male,0.4,0.2,1,55,48,');
     expect(lines[2]).toContain('2026-08-10,1,total,Hologic Horizon A,Clinic');
     for (const hidden of ['SERIAL-1', '13.6', 'private note'])
       expect(response.text).not.toContain(hidden);
@@ -234,5 +299,153 @@ describe('DEXA scans', () => {
     ).toBe(403);
     expect(mocks.list).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('reading a Hologic report', () => {
+  const readPath = `${path}/read-report`;
+  const pdfBytes = Buffer.from(
+    '%PDF-1.7\nnot a real file, the reader is mocked'
+  );
+  const send = (pdf: Buffer | string = pdfBytes) =>
+    request(app)
+      .post(readPath)
+      .send({
+        pdf_base64: typeof pdf === 'string' ? pdf : pdf.toString('base64'),
+      });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.readText.mockResolvedValue({
+      kind: 'text',
+      text: HOLOGIC_TEMPLATE,
+      pages: 3,
+    });
+  });
+
+  it('returns the values read, the checks, the confidence and what was missing, and saves nothing', async () => {
+    const response = await send();
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      confidence: 1,
+      missing: [],
+    });
+    expect(response.body.prefill).toMatchObject({
+      scanned_day: '2026-01-10',
+      device_label: 'Hologic Horizon A',
+      device_serial: 'TEST1',
+      scan_mode: 'Whole Body',
+      total_fat_g: 16400,
+      bmd_t_score: 0.1,
+      fmi_yn: 45,
+    });
+    expect(response.body.prefill.regions).toHaveLength(8);
+    expect(response.body.checks.length).toBeGreaterThan(5);
+    expect(response.body.checks[0]).toEqual({
+      name: 'fat_sum',
+      pass: true,
+      detail: expect.any(String),
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.permission).toHaveBeenCalledWith('checkin');
+    const [bytes] = mocks.readText.mock.calls[0]!;
+    expect(Buffer.from(bytes).subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('still returns the values when a check fails, with ok false and the failing check', async () => {
+    mocks.readText.mockResolvedValue({
+      kind: 'text',
+      text: HOLOGIC_TEMPLATE.replace('81000.0 20.2', '81000.0 25.2'),
+      pages: 3,
+    });
+    const response = await send();
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(false);
+    expect(response.body.confidence).toBeLessThan(1);
+    expect(response.body.prefill.total_fat_g).toBe(16400);
+    expect(
+      response.body.checks.find((c: { name: string }) => c.name === 'pct_fat')
+        .pass
+    ).toBe(false);
+  });
+
+  it('says why with 422 when the report cannot be read', async () => {
+    mocks.readText.mockResolvedValueOnce({ kind: 'text', text: '', pages: 1 });
+    let response = await send();
+    expect(response.status).toBe(422);
+    expect(response.body).toMatchObject({
+      ok: false,
+      reason: 'no_text_layer',
+      code: 'no_text_layer',
+    });
+
+    mocks.readText.mockResolvedValueOnce({
+      kind: 'text',
+      text: 'Some other clinic\nLipid panel 4.2 mmol/L',
+      pages: 1,
+    });
+    response = await send();
+    expect(response.status).toBe(422);
+    expect(response.body.reason).toBe('not_hologic');
+    expect(response.body.missing).toContain('summary:Total');
+
+    mocks.readText.mockResolvedValueOnce({ kind: 'unreadable' });
+    response = await send();
+    expect(response.status).toBe(422);
+    expect(response.body.reason).toBe('unreadable');
+
+    mocks.readText.mockResolvedValueOnce({ kind: 'too_many_pages', pages: 40 });
+    response = await send();
+    expect(response.status).toBe(422);
+    expect(response.body.reason).toBe('too_many_pages');
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a body that is not a PDF of up to 10 MB, without reading it', async () => {
+    for (const bad of [
+      await request(app).post(readPath).send({}),
+      await request(app).post(readPath).send({ pdf_base64: '' }),
+      await request(app).post(readPath).send({ pdf_base64: 12 }),
+      await send('not base64 at all!!'),
+      await send(Buffer.from('GIF89a, not a pdf')),
+      await send(
+        Buffer.concat([
+          Buffer.from('%PDF-'),
+          Buffer.alloc(10 * 1024 * 1024 + 1),
+        ])
+      ),
+    ]) {
+      expect(bad.status).toBe(400);
+      expect(bad.body.error).toBe('Invalid request');
+    }
+    expect(mocks.readText).not.toHaveBeenCalled();
+  });
+
+  it('takes a PDF of exactly 10 MB', async () => {
+    const response = await send(
+      Buffer.concat([Buffer.from('%PDF-'), Buffer.alloc(10 * 1024 * 1024 - 5)])
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('is closed to the signed-out and to people without check-in access', async () => {
+    expect(
+      (
+        await request(app)
+          .post(readPath)
+          .set('x-test-auth', 'missing')
+          .send({ pdf_base64: pdfBytes.toString('base64') })
+      ).status
+    ).toBe(401);
+    expect(
+      (
+        await request(app)
+          .post(readPath)
+          .set('x-test-permission', 'denied')
+          .send({ pdf_base64: pdfBytes.toString('base64') })
+      ).status
+    ).toBe(403);
+    expect(mocks.readText).not.toHaveBeenCalled();
   });
 });

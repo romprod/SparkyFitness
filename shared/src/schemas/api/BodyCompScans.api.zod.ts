@@ -60,6 +60,11 @@ export const bodyCompRegionSchema = z.object({
   bmc_g: optionalNumber(0, 20_000),
   total_g: gram(500_000),
   pct_fat: z.number().finite().gte(0).lte(100),
+  /** Where this region's percentage fat sits against the young-adult and age-matched reference. */
+  pct_fat_yn: z.number().finite().gte(0).lte(100).nullable().optional(),
+  pct_fat_am: z.number().finite().gte(0).lte(100).nullable().optional(),
+  /** This region's bone mineral density, g/cm2. */
+  bmd_gcm2: z.number().finite().gte(0).lte(5).nullable().optional(),
 });
 export type BodyCompRegionValues = z.infer<typeof bodyCompRegionSchema>;
 
@@ -112,6 +117,19 @@ export const bodyCompScanInputSchema = z
     vat_volume_cm3: optionalNumber(0, 30_000),
     vat_area_cm2: optionalNumber(0, 2_000),
     total_bmd_gcm2: optionalNumber(0.2, 3),
+    scan_mode: optionalText(60),
+    reference_population: optionalText(100),
+    bmd_t_score: optionalNumber(-20, 20),
+    bmd_z_score: optionalNumber(-20, 20),
+    bmd_cv_pct: optionalNumber(0, 100),
+    pct_fat_yn: optionalNumber(0, 100),
+    pct_fat_am: optionalNumber(0, 100),
+    fmi_yn: optionalNumber(0, 100),
+    fmi_am: optionalNumber(0, 100),
+    lmi_yn: optionalNumber(0, 100),
+    lmi_am: optionalNumber(0, 100),
+    almi_yn: optionalNumber(0, 100),
+    almi_am: optionalNumber(0, 100),
     prep: bodyCompPrepSchema,
     creatine_status: z
       .enum(CREATINE_STATUSES)
@@ -170,6 +188,23 @@ export const bodyCompScanSchema = z.object({
   vat_volume_cm3: z.number().nullable(),
   vat_area_cm2: z.number().nullable(),
   total_bmd_gcm2: z.number().nullable(),
+  /**
+   * What the report printed beyond grams. The server always sends these (null when not printed);
+   * they are optional here so a scan built without them still type-checks.
+   */
+  scan_mode: z.string().nullable().optional(),
+  reference_population: z.string().nullable().optional(),
+  bmd_t_score: z.number().nullable().optional(),
+  bmd_z_score: z.number().nullable().optional(),
+  bmd_cv_pct: z.number().nullable().optional(),
+  pct_fat_yn: z.number().nullable().optional(),
+  pct_fat_am: z.number().nullable().optional(),
+  fmi_yn: z.number().nullable().optional(),
+  fmi_am: z.number().nullable().optional(),
+  lmi_yn: z.number().nullable().optional(),
+  lmi_am: z.number().nullable().optional(),
+  almi_yn: z.number().nullable().optional(),
+  almi_am: z.number().nullable().optional(),
   prep: z.object({
     fasted: z.boolean().nullable(),
     fasting_hours: z.number().nullable(),
@@ -189,3 +224,49 @@ export type BodyCompScan = z.infer<typeof bodyCompScanSchema>;
 export const bodyCompScanListSchema = z.object({
   body_comp_scans: z.array(bodyCompScanSchema),
 });
+
+/**
+ * Reading a Hologic report: POST /v2/body-comp-scans/read-report. The PDF travels as base64 in the
+ * JSON body, the way a lab report does. The server's own limit is tighter than this length (10 MB
+ * decoded); this keeps an absurd body out early. Nothing is saved by the read.
+ */
+export const bodyCompReportReadRequestSchema = z.object({
+  pdf_base64: z.string().min(1).max(14_000_000),
+});
+export type BodyCompReportReadRequest = z.infer<
+  typeof bodyCompReportReadRequestSchema
+>;
+
+/** What the reader fills in: a scan as the form takes it, with only what the report printed. */
+export type BodyCompReportPrefill = Partial<BodyCompScanInput>;
+
+export const BODY_COMP_REPORT_FAILURES = [
+  'no_text_layer',
+  'not_hologic',
+  'unreadable',
+  'too_many_pages',
+] as const;
+export type BodyCompReportFailure = (typeof BODY_COMP_REPORT_FAILURES)[number];
+
+export const bodyCompReportCheckSchema = z.object({
+  name: z.string(),
+  pass: z.boolean(),
+  detail: z.string(),
+});
+export type BodyCompReportCheck = z.infer<typeof bodyCompReportCheckSchema>;
+
+export const bodyCompReportReadResponseSchema = z.object({
+  /** Every required anchor was found and every check passed. The prefill is returned either way. */
+  ok: z.boolean(),
+  prefill: z.custom<BodyCompReportPrefill>(
+    (value) => typeof value === 'object' && value !== null
+  ),
+  checks: z.array(bodyCompReportCheckSchema),
+  /** 0 to 1: the share of expected anchors found, times the share of checks passed. */
+  confidence: z.number().min(0).max(1),
+  /** Anchors the report did not have, required and optional alike. */
+  missing: z.array(z.string()),
+});
+export type BodyCompReportReadResponse = z.infer<
+  typeof bodyCompReportReadResponseSchema
+>;

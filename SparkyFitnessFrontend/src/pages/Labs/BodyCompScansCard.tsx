@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { Plus, ScanLine, Trash2 } from 'lucide-react';
 import {
   BODY_COMP_REGIONS,
@@ -32,9 +33,18 @@ import {
   useBodyCompScans,
   useDeleteBodyCompScanMutation,
 } from '@/hooks/Labs/useBodyCompScans';
+import { useMetabolicTests } from '@/hooks/Labs/useMetabolicTests';
+import { useLifeEvents } from '@/hooks/Medications/useLifeEvents';
 import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
 import { useMedicationEntries } from '@/hooks/useMedications';
 import BodyCompScanForm from './BodyCompScanForm';
+import BodyCompFigureCard from './BodyCompFigureCard';
+import BodyCompNearestLabs from './BodyCompNearestLabs';
+import BodyCompReportFields from './BodyCompReportFields';
+import BodyCompSeries from './BodyCompSeries';
+import { regionReportColumns } from './bodyCompReportFieldsModel';
+import { num } from './bodyCompFormat';
+import { TIER_FALLBACK, TIER_VARIANT } from './bodyCompTier';
 import LinkedDocuments from './LinkedDocuments';
 
 const kg = (grams: number) => (grams / 1000).toFixed(1);
@@ -51,16 +61,6 @@ const REGION_FALLBACK: Record<string, string> = {
   head: 'Head',
   android: 'Android zone',
   gynoid: 'Gynoid zone',
-};
-const TIER_FALLBACK: Record<ChangeTier, string> = {
-  within_noise: 'Within measurement noise',
-  indeterminate: 'Possible change',
-  exceeds_lsc: 'Beyond measurement noise',
-};
-const TIER_VARIANT: Record<ChangeTier, 'secondary' | 'outline' | 'default'> = {
-  within_noise: 'secondary',
-  indeterminate: 'outline',
-  exceeds_lsc: 'default',
 };
 const DELTA_FALLBACK: Record<BodyCompDeltaKey, string> = {
   fat_mass: 'Fat mass',
@@ -186,6 +186,8 @@ export default function BodyCompScansCard() {
   const [fromId, setFromId] = useState<string | null>(null);
   const [toId, setToId] = useState<string | null>(null);
   const scans = useMemo(() => data ?? [], [data]);
+  const metabolicTests = useMetabolicTests().data;
+  const lifeEvents = useLifeEvents().data;
   const today = todayInZone(timezone);
 
   const regionLabel = (name: string) =>
@@ -301,7 +303,13 @@ export default function BodyCompScansCard() {
           {t(
             'labs.bodyComp.intro',
             'Each report’s printed figures, the indices worked out from them, and what changed between two scans against the scanner’s own measurement noise. Nothing here sets a target.'
-          )}
+          )}{' '}
+          <Link
+            to="/labs/dexa-checklist"
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('labs.bodyComp.prepLink', 'Pre-visit checklist')}
+          </Link>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
@@ -366,6 +374,17 @@ export default function BodyCompScansCard() {
                     { to: formatDate(next.due_to) }
                   )}
           </p>
+        )}
+
+        {scans.length > 0 && (
+          <>
+            <BodyCompFigureCard scans={scans} />
+            <BodyCompSeries
+              scans={scans}
+              tests={metabolicTests ?? []}
+              lifeEvents={lifeEvents ?? []}
+            />
+          </>
         )}
 
         {comparison && ordered.from && ordered.to && (
@@ -550,8 +569,11 @@ export default function BodyCompScansCard() {
           </section>
         )}
 
+        {scans[0] && <BodyCompNearestLabs scanDay={scans[0].scanned_day} />}
+
         <ul className="space-y-2">
           {scans.map((scan) => {
+            const regionColumns = regionReportColumns(scan.regions);
             const idx = bodyCompIndices(scan);
             const asym = limbAsymmetry(scan);
             const ratios = distributionRatios(scan);
@@ -651,6 +673,8 @@ export default function BodyCompScansCard() {
                       </ul>
                     )}
 
+                    <BodyCompReportFields scan={scan} />
+
                     {scan.regions.length > 0 && (
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-[360px] text-xs">
@@ -668,6 +692,21 @@ export default function BodyCompScansCard() {
                               <th className="pb-1 text-right font-medium">
                                 {t('labs.bodyComp.regionPct', '% fat')}
                               </th>
+                              {regionColumns.pctFatYn && (
+                                <th className="pb-1 text-right font-medium">
+                                  {t('labs.bodyComp.regionYn', 'YN %ile')}
+                                </th>
+                              )}
+                              {regionColumns.pctFatAm && (
+                                <th className="pb-1 text-right font-medium">
+                                  {t('labs.bodyComp.regionAm', 'AM %ile')}
+                                </th>
+                              )}
+                              {regionColumns.bmd && (
+                                <th className="pb-1 text-right font-medium">
+                                  {t('labs.bodyComp.regionBmd', 'BMD g/cm²')}
+                                </th>
+                              )}
                             </tr>
                           </thead>
                           <tbody className="tabular-nums">
@@ -691,6 +730,21 @@ export default function BodyCompScansCard() {
                                   <td className="py-1 text-right">
                                     {one(r.pct_fat)}
                                   </td>
+                                  {regionColumns.pctFatYn && (
+                                    <td className="py-1 text-right">
+                                      {num(r.pct_fat_yn, 0)}
+                                    </td>
+                                  )}
+                                  {regionColumns.pctFatAm && (
+                                    <td className="py-1 text-right">
+                                      {num(r.pct_fat_am, 0)}
+                                    </td>
+                                  )}
+                                  {regionColumns.bmd && (
+                                    <td className="py-1 text-right">
+                                      {num(r.bmd_gcm2, 3)}
+                                    </td>
+                                  )}
                                 </tr>
                               ))}
                           </tbody>

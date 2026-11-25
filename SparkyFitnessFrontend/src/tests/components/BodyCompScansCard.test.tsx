@@ -7,7 +7,15 @@ import {
 } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import type { BodyCompRegionValues, BodyCompScan } from '@workspace/shared';
+import { MemoryRouter } from 'react-router-dom';
 import BodyCompScansCard from '@/pages/Labs/BodyCompScansCard';
+
+const renderCard = () =>
+  render(
+    <MemoryRouter>
+      <BodyCompScansCard />
+    </MemoryRouter>
+  );
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -64,6 +72,20 @@ jest.mock('@/hooks/useMedications', () => ({
 }));
 jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
   useMedicationBlends: () => ({ data: [] }),
+}));
+let mockMetabolicTests: unknown[] = [];
+jest.mock('@/hooks/Labs/useMetabolicTests', () => ({
+  useMetabolicTests: () => ({ data: mockMetabolicTests }),
+}));
+let mockLifeEvents: unknown[] = [];
+jest.mock('@/hooks/Medications/useLifeEvents', () => ({
+  useLifeEvents: () => ({ data: mockLifeEvents }),
+}));
+let mockLabPanels: { data?: unknown; isLoading?: boolean; isError?: boolean } =
+  { data: { panels: [] } };
+jest.mock('@/hooks/Labs/useLabResults', () => ({
+  useLabPanels: () => mockLabPanels,
+  useLabMarkers: () => ({ data: [] }),
 }));
 
 const region = (
@@ -132,6 +154,8 @@ const later = (patch: Partial<BodyCompScan> = {}) =>
     pct_fat: 22,
     ...patch,
   });
+/** The first scan's own detail, apart from the figure, series and bloodwork panels. */
+const inDetail = () => within(document.querySelector('details') as HTMLElement);
 const dose = (day: string, name: string, mg: number) => ({
   medication_id: name,
   status: 'taken',
@@ -148,14 +172,24 @@ beforeEach(() => {
   jest.setSystemTime(new Date('2026-09-01T10:00:00.000Z'));
   mockQuery = { data: [] };
   mockEntries = { data: [] };
+  mockMetabolicTests = [];
+  mockLifeEvents = [];
+  mockLabPanels = { data: { panels: [] } };
   mockEntriesHook.mockClear();
   mockRemove.mockReset();
 });
 afterEach(() => jest.useRealTimers());
 
 describe('with no scans', () => {
+  it('links to the pre-visit checklist', () => {
+    renderCard();
+    expect(
+      screen.getByRole('link', { name: 'Pre-visit checklist' })
+    ).toHaveAttribute('href', '/labs/dexa-checklist');
+  });
+
   it('says so and offers to add one', () => {
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(screen.getByText(/No scans yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add a scan' }));
     expect(screen.getByText('mock form')).toBeInTheDocument();
@@ -167,7 +201,7 @@ describe('with no scans', () => {
 
   it('says when the scans could not be loaded', () => {
     mockQuery = { isError: true };
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(screen.getByText('Could not load the scans.')).toBeInTheDocument();
     expect(screen.queryByText(/No scans yet/)).not.toBeInTheDocument();
   });
@@ -178,9 +212,18 @@ describe('one scan', () => {
     mockQuery = { data: [scan()] };
   });
 
+  it('still links to the pre-visit checklist', () => {
+    renderCard();
+    expect(
+      screen.getByRole('link', { name: 'Pre-visit checklist' })
+    ).toHaveAttribute('href', '/labs/dexa-checklist');
+  });
+
   it('shows the headline figures and the repeat-scan window', () => {
-    render(<BodyCompScansCard />);
-    expect(screen.getByText('UK:2026-08-10')).toBeInTheDocument();
+    renderCard();
+    expect(
+      screen.getByText('UK:2026-08-10', { selector: 'summary span' })
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/24\.1% fat · 20\.0 kg fat · 60\.0 kg lean/)
     ).toBeInTheDocument();
@@ -196,26 +239,28 @@ describe('one scan', () => {
   });
 
   it('works the indices out in its details', () => {
-    render(<BodyCompScansCard />);
-    const ffm = screen.getByText('Fat-free mass').parentElement!;
+    renderCard();
+    const ffm = inDetail().getByText('Fat-free mass').parentElement!;
     expect(within(ffm).getByText('63.0 kg')).toBeInTheDocument();
     // 63 kg over 1.8 m squared.
     expect(
-      within(screen.getByText('FFMI').parentElement!).getByText('19.4')
+      within(inDetail().getByText('FFMI').parentElement!).getByText('19.4')
     ).toBeInTheDocument();
     expect(
-      within(screen.getByText('FMI').parentElement!).getByText('6.2')
+      within(inDetail().getByText('FMI').parentElement!).getByText('6.2')
     ).toBeInTheDocument();
     expect(
-      within(screen.getByText('Appendicular lean').parentElement!).getByText(
-        '29.0 kg'
+      within(
+        inDetail().getByText('Appendicular lean').parentElement!
+      ).getByText('29.0 kg')
+    ).toBeInTheDocument();
+    expect(
+      within(inDetail().getByText('Visceral fat').parentElement!).getByText(
+        '800 g'
       )
     ).toBeInTheDocument();
     expect(
-      within(screen.getByText('Visceral fat').parentElement!).getByText('800 g')
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByText('Bone density').parentElement!).getByText(
+      within(inDetail().getByText('Bone density').parentElement!).getByText(
         '1.310 g/cm²'
       )
     ).toBeInTheDocument();
@@ -234,9 +279,9 @@ describe('one scan', () => {
         }),
       ],
     };
-    render(<BodyCompScansCard />);
-    expect(screen.getByText('Left arm')).toBeInTheDocument();
-    expect(screen.getByText('Trunk')).toBeInTheDocument();
+    renderCard();
+    expect(inDetail().getByText('Left arm')).toBeInTheDocument();
+    expect(inDetail().getByText('Trunk')).toBeInTheDocument();
     expect(
       screen.getByText('Arm lean mass, right against left: +9.5%')
     ).toBeInTheDocument();
@@ -261,11 +306,11 @@ describe('one scan', () => {
   });
 
   it('is quiet when the report agrees with itself and flags it when it does not', () => {
-    const { unmount } = render(<BodyCompScansCard />);
+    const { unmount } = renderCard();
     expect(screen.queryByText(/adds up to the total/)).not.toBeInTheDocument();
     unmount();
     mockQuery = { data: [scan({ total_fat_g: 21000, pct_fat: 31 })] };
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(
       screen.getByText(
         /Region fat adds up to the total: worked out 20000\.0, printed 21000\.0/
@@ -278,7 +323,7 @@ describe('one scan', () => {
 
   it('says where the window stands once it has come, and once it has passed', () => {
     jest.setSystemTime(new Date('2026-11-10T10:00:00.000Z'));
-    const { unmount } = render(<BodyCompScansCard />);
+    const { unmount } = renderCard();
     expect(
       screen.getByText(
         'A repeat scan is worth taking now, until UK:2026-11-30.'
@@ -286,7 +331,7 @@ describe('one scan', () => {
     ).toBeInTheDocument();
     unmount();
     jest.setSystemTime(new Date('2026-12-15T10:00:00.000Z'));
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(
       screen.getByText(
         'The usual window for a repeat scan ended on UK:2026-11-30.'
@@ -295,7 +340,7 @@ describe('one scan', () => {
   });
 
   it('deletes after confirming, and says why it could not', async () => {
-    render(<BodyCompScansCard />);
+    renderCard();
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(screen.getByText('Delete this scan?')).toBeInTheDocument();
     mockRemove.mockImplementation(
@@ -323,7 +368,7 @@ describe('two scans', () => {
     screen.getByRole('region', { name: 'Compare two scans' });
 
   it('compares the latest two against the scanner’s own noise, with the days apart', () => {
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(within(compare()).getByText('84 days apart')).toBeInTheDocument();
     const fat = within(compare()).getByText('Fat mass').closest('tr')!;
     expect(fat).toHaveTextContent('20.0 kg');
@@ -360,7 +405,7 @@ describe('two scans', () => {
         scan(),
       ],
     };
-    render(<BodyCompScansCard />);
+    renderCard();
     const fat = within(compare()).getByText('Fat mass').closest('tr')!;
     expect(fat).toHaveTextContent('Possible change');
     expect(fat).toHaveTextContent(
@@ -373,7 +418,7 @@ describe('two scans', () => {
 
   it('shows no numbers across a different scanner, only why', () => {
     mockQuery = { data: [later({ device_serial: 'S2' }), scan()] };
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(within(compare()).getByRole('status')).toHaveTextContent(
       'These scans cannot be compared: different scanner serial.'
     );
@@ -389,7 +434,7 @@ describe('two scans', () => {
       pct_fat: 23.2,
     });
     mockQuery = { data: [later(), middle, scan()] };
-    render(<BodyCompScansCard />);
+    renderCard();
     fireEvent.change(screen.getByLabelText('From'), {
       target: { value: '00000000-0000-4000-a000-0000000000a1' },
     });
@@ -408,7 +453,7 @@ describe('two scans', () => {
       pct_fat: 23.2,
     });
     mockQuery = { data: [later(), middle, scan()] };
-    render(<BodyCompScansCard />);
+    renderCard();
     // From is the middle scan by default; choosing the oldest as To puts it before From.
     fireEvent.change(screen.getByLabelText('To'), {
       target: { value: '00000000-0000-4000-a000-0000000000a1' },
@@ -420,7 +465,7 @@ describe('two scans', () => {
   });
 
   it('is not shown when the same scan is chosen twice', () => {
-    render(<BodyCompScansCard />);
+    renderCard();
     fireEvent.change(screen.getByLabelText('From'), {
       target: { value: '00000000-0000-4000-a000-0000000000a2' },
     });
@@ -437,7 +482,7 @@ describe('two scans', () => {
         dose('2026-09-01', 'Cagrilintide', 0.25),
       ],
     };
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(mockEntriesHook).toHaveBeenCalledWith({
       fromDate: '2026-08-10',
       toDate: '2026-11-02',
@@ -456,7 +501,7 @@ describe('two scans', () => {
   });
 
   it('says so when no dose was logged in the window, and leaves the section out while loading', () => {
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(
       within(compare()).getByText('No doses were logged in this window.')
     ).toBeInTheDocument();
@@ -464,13 +509,13 @@ describe('two scans', () => {
 
   it('shows nothing about doses while they load or if they cannot be read', () => {
     mockEntries = { isLoading: true };
-    const { unmount } = render(<BodyCompScansCard />);
+    const { unmount } = renderCard();
     expect(
       screen.queryByText('Taken between these scans')
     ).not.toBeInTheDocument();
     unmount();
     mockEntries = { isError: true };
-    render(<BodyCompScansCard />);
+    renderCard();
     expect(
       screen.queryByText('Taken between these scans')
     ).not.toBeInTheDocument();
@@ -480,7 +525,7 @@ describe('two scans', () => {
     mockRemove.mockImplementation(
       (_id: string, options: { onSuccess: () => void }) => options.onSuccess()
     );
-    render(<BodyCompScansCard />);
+    renderCard();
     fireEvent.change(screen.getByLabelText('From'), {
       target: { value: '00000000-0000-4000-a000-0000000000a1' },
     });
@@ -491,5 +536,160 @@ describe('two scans', () => {
       })
     );
     await waitFor(() => expect(mockRemove).toHaveBeenCalled());
+  });
+});
+
+describe('Pitstop’s Body page extras', () => {
+  const position = (a: Element, b: Element) =>
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+
+  it('shows none of them with no scans', () => {
+    renderCard();
+    expect(screen.queryByText('Regional distribution')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Scan series with noise bands')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Nearest bloodwork panel')
+    ).not.toBeInTheDocument();
+  });
+
+  it('stacks the figure and series, then the comparison, then bloodwork, then the scans', () => {
+    mockQuery = { data: [later(), scan()] };
+    renderCard();
+    const header = screen.getByText(/A repeat scan is worth taking/);
+    const figure = screen.getByRole('heading', {
+      name: 'Regional distribution',
+    });
+    const series = screen.getByRole('heading', {
+      name: 'Scan series with noise bands',
+    });
+    const compare = screen.getByRole('region', { name: 'Compare two scans' });
+    const exposure = screen.getByText('Taken between these scans');
+    const labs = screen.getByRole('heading', {
+      name: 'Nearest bloodwork panel',
+    });
+    const list = document.querySelector('details') as HTMLElement;
+    for (const [a, b] of [
+      [header, figure],
+      [figure, series],
+      [series, compare],
+      [compare, exposure],
+      [exposure, labs],
+      [labs, list],
+    ] as const)
+      expect(position(a, b)).toBeTruthy();
+  });
+
+  it('looks for bloodwork near the latest scan', () => {
+    mockQuery = { data: [later(), scan()] };
+    mockLabPanels = {
+      data: {
+        panels: [
+          {
+            id: 'p',
+            collected_on: '2026-10-30',
+            lab_name: 'City lab',
+            notes: null,
+            origin: 'manual',
+            created_at: '2026-10-30T00:00:00.000Z',
+            results: [],
+          },
+        ],
+      },
+    };
+    renderCard();
+    expect(
+      screen.getByText('Within ± 30 days of the scan on UK:2026-11-02.')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('3 days before the scan · City lab')
+    ).toBeInTheDocument();
+  });
+
+  it('feeds the series the metabolic tests and life events', () => {
+    mockQuery = { data: [later(), scan()] };
+    mockMetabolicTests = [
+      { tested_day: '2026-08-12', measured_rmr_kcal: 1800 },
+    ];
+    mockLifeEvents = [
+      {
+        id: 'e',
+        kind: 'travel',
+        start_day: '2026-09-01',
+        end_day: '2026-09-04',
+        label: null,
+        notes: null,
+      },
+    ];
+    renderCard();
+    expect(
+      screen.getByRole('img', {
+        name: 'Resting metabolic rate, 1 point(s) with noise bands',
+      })
+    ).toBeInTheDocument();
+    expect(document.querySelector('[data-shade="travel"]')).not.toBeNull();
+  });
+
+  it('adds each scan’s printed report figures to its detail', () => {
+    mockQuery = {
+      data: [
+        scan({
+          age_years: 52,
+          pct_fat_yn: 60,
+          bmd_z_score: 0.5,
+          bmd_t_score: -0.2,
+          scan_mode: 'Fast array',
+          reference_population: 'NHANES',
+        }),
+      ],
+    };
+    renderCard();
+    const detail = inDetail();
+    expect(
+      within(
+        detail.getByText('% fat percentile (young-normal)').parentElement!
+      ).getByText('60')
+    ).toBeInTheDocument();
+    expect(
+      within(
+        detail.getByText('% fat percentile (age-matched)').parentElement!
+      ).getByText('not printed')
+    ).toBeInTheDocument();
+    expect(detail.getByText('BMD T-score')).toBeInTheDocument();
+    expect(detail.getByText('Fast array')).toBeInTheDocument();
+    expect(detail.getByText('NHANES')).toBeInTheDocument();
+    expect(
+      detail.getByText(/Population position, not a target\./)
+    ).toBeInTheDocument();
+    // Everything the card already showed is still there.
+    expect(detail.getByText('Fat-free mass')).toBeInTheDocument();
+  });
+
+  it('adds percentile and BMD columns to the region table only when a region has them', () => {
+    mockQuery = { data: [scan()] };
+    const { unmount } = renderCard();
+    expect(inDetail().queryByText('YN %ile')).not.toBeInTheDocument();
+    expect(inDetail().queryByText('BMD g/cm²')).not.toBeInTheDocument();
+    unmount();
+    mockQuery = {
+      data: [
+        scan({
+          regions: regions.map((r) =>
+            r.region === 'trunk'
+              ? { ...r, pct_fat_yn: 71.2, bmd_gcm2: 1.05 }
+              : r
+          ),
+        }),
+      ],
+    };
+    renderCard();
+    const detail = inDetail();
+    expect(detail.getByText('YN %ile')).toBeInTheDocument();
+    expect(detail.getByText('BMD g/cm²')).toBeInTheDocument();
+    expect(detail.queryByText('AM %ile')).not.toBeInTheDocument();
+    const trunk = detail.getByText('Trunk').closest('tr') as HTMLElement;
+    expect(within(trunk).getByText('71')).toBeInTheDocument();
+    expect(within(trunk).getByText('1.050')).toBeInTheDocument();
   });
 });

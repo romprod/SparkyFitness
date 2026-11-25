@@ -20,9 +20,17 @@ const text = (value: unknown): string | null =>
 
 /** pg returns NUMERIC columns as text; the API carries numbers. */
 export function toBodyCompScan(row: Row): BodyCompScan {
-  const regions = Array.isArray(row['regions'])
-    ? (row['regions'] as BodyCompRegionValues[])
-    : [];
+  // Regions saved before the report fields existed lack them: they read back as not recorded.
+  const regions = (
+    Array.isArray(row['regions'])
+      ? (row['regions'] as BodyCompRegionValues[])
+      : []
+  ).map((region) => ({
+    ...region,
+    pct_fat_yn: region.pct_fat_yn ?? null,
+    pct_fat_am: region.pct_fat_am ?? null,
+    bmd_gcm2: region.bmd_gcm2 ?? null,
+  }));
   return {
     id: String(row['id']),
     scanned_day: String(row['scanned_day']),
@@ -60,6 +68,19 @@ export function toBodyCompScan(row: Row): BodyCompScan {
     ) as BodyCompScan['carb_pattern_48h'],
     regions,
     notes: text(row['notes']),
+    scan_mode: text(row['scan_mode']),
+    reference_population: text(row['reference_population']),
+    bmd_t_score: num(row['bmd_t_score']),
+    bmd_z_score: num(row['bmd_z_score']),
+    bmd_cv_pct: num(row['bmd_cv_pct']),
+    pct_fat_yn: num(row['pct_fat_yn']),
+    pct_fat_am: num(row['pct_fat_am']),
+    fmi_yn: num(row['fmi_yn']),
+    fmi_am: num(row['fmi_am']),
+    lmi_yn: num(row['lmi_yn']),
+    lmi_am: num(row['lmi_am']),
+    almi_yn: num(row['almi_yn']),
+    almi_am: num(row['almi_am']),
   };
 }
 
@@ -76,7 +97,9 @@ export async function listBodyCompScans(
               total_bmc_g, total_mass_g, pct_fat, vat_mass_g, vat_volume_cm3, vat_area_cm2,
               total_bmd_gcm2, prep_fasted, prep_fasting_hours, prep_no_caffeine,
               prep_no_training_prior_day, prep_active_travel, prep_euhydrated_voided,
-              prep_illness_free_14d, creatine_status, carb_pattern_48h, regions, notes
+              prep_illness_free_14d, creatine_status, carb_pattern_48h, regions, notes,
+              scan_mode, reference_population, bmd_t_score, bmd_z_score, bmd_cv_pct,
+              pct_fat_yn, pct_fat_am, fmi_yn, fmi_am, lmi_yn, lmi_am, almi_yn, almi_am
          FROM body_comp_scans
         WHERE user_id = $1
         ORDER BY scanned_day DESC, created_at DESC`,
@@ -103,9 +126,12 @@ export async function createBodyCompScan(
          total_mass_g, pct_fat, vat_mass_g, vat_volume_cm3, vat_area_cm2, total_bmd_gcm2,
          prep_fasted, prep_fasting_hours, prep_no_caffeine, prep_no_training_prior_day,
          prep_active_travel, prep_euhydrated_voided, prep_illness_free_14d, creatine_status,
-         carb_pattern_48h, regions, notes)
+         carb_pattern_48h, regions, notes, scan_mode, reference_population, bmd_t_score,
+         bmd_z_score, bmd_cv_pct, pct_fat_yn, pct_fat_am, fmi_yn, fmi_am, lmi_yn, lmi_am,
+         almi_yn, almi_am)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-               $23,$24,$25,$26,$27,$28,$29::jsonb,$30)
+               $23,$24,$25,$26,$27,$28,$29::jsonb,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,
+               $41,$42,$43)
        RETURNING id`,
       [
         owner,
@@ -139,6 +165,19 @@ export async function createBodyCompScan(
         scan.carb_pattern_48h,
         JSON.stringify(scan.regions),
         scan.notes,
+        scan.scan_mode,
+        scan.reference_population,
+        scan.bmd_t_score,
+        scan.bmd_z_score,
+        scan.bmd_cv_pct,
+        scan.pct_fat_yn,
+        scan.pct_fat_am,
+        scan.fmi_yn,
+        scan.fmi_am,
+        scan.lmi_yn,
+        scan.lmi_am,
+        scan.almi_yn,
+        scan.almi_am,
       ]
     );
     return (rows[0] as { id: string }).id;

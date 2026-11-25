@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save } from 'lucide-react';
+import { FileText, Save } from 'lucide-react';
 import {
   BODY_COMP_REGIONS,
   CARB_PATTERNS,
+  BODY_COMP_REPORT_FAILURES,
   CREATINE_STATUSES,
   bodyCompScanInputSchema,
   todayInZone,
   type BodyCompRegion,
+  type BodyCompReportFailure,
+  type BodyCompReportPrefill,
   type BodyCompScanInput,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
@@ -15,7 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { usePreferences } from '@/contexts/PreferencesContext';
-import { useAddBodyCompScanMutation } from '@/hooks/Labs/useBodyCompScans';
+import {
+  useAddBodyCompScanMutation,
+  useReadBodyCompReportMutation,
+} from '@/hooks/Labs/useBodyCompScans';
+import { useUploadHealthDocumentMutation } from '@/hooks/Labs/useHealthDocuments';
+import { readFileAsBase64 } from '@/pages/Labs/labFormat';
 
 type Answer = '' | 'yes' | 'no';
 const SELECT_CLASS =
@@ -26,6 +34,50 @@ const toNumber = (text: string): number | null =>
 const toAnswer = (answer: Answer): boolean | null =>
   answer === '' ? null : answer === 'yes';
 const round1 = (n: number) => Math.round(n * 10) / 10;
+const fromNumber = (value: number | null | undefined): string =>
+  value === null || value === undefined ? '' : String(value);
+
+/** A report PDF is read in memory by the server, which takes up to 10 MB. */
+const REPORT_MAX_BYTES = 10 * 1024 * 1024;
+
+type RegionPart = 'fat' | 'lean' | 'bmc' | 'pctYn' | 'pctAm' | 'bmd';
+type RegionRow = Record<RegionPart, string>;
+const EMPTY_REGION: RegionRow = {
+  fat: '',
+  lean: '',
+  bmc: '',
+  pctYn: '',
+  pctAm: '',
+  bmd: '',
+};
+const REGION_PARTS: readonly RegionPart[] = [
+  'fat',
+  'lean',
+  'bmc',
+  'pctYn',
+  'pctAm',
+  'bmd',
+];
+
+/** The reason a report could not be read, when the server refused it with one (a 422 and its code). */
+function reportFailureOf(failure: unknown): BodyCompReportFailure | null {
+  const { status, code } = (failure ?? {}) as {
+    status?: number;
+    code?: string;
+  };
+  return status === 422 &&
+    (BODY_COMP_REPORT_FAILURES as readonly string[]).includes(code ?? '')
+    ? (code as BodyCompReportFailure)
+    : null;
+}
+
+/** What the review of a read report shows: the confidence, the checks that failed and what was not found. */
+interface ReportReview {
+  ok: boolean;
+  confidence: number;
+  failed: { name: string; detail: string }[];
+  missing: string[];
+}
 
 const REGION_FALLBACK: Record<BodyCompRegion, string> = {
   l_arm: 'Left arm',
@@ -48,13 +100,25 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
   const { t } = useTranslation();
   const { timezone } = usePreferences();
   const add = useAddBodyCompScanMutation();
+  const readReport = useReadBodyCompReportMutation();
+  const uploadDocument = useUploadHealthDocumentMutation();
   const [day, setDay] = useState(() => todayInZone(timezone));
   const [sex, setSex] = useState('');
   const [text, setText] = useState<Record<string, string>>({});
   const [prep, setPrep] = useState<Record<string, Answer>>({});
   const [regions, setRegions] = useState<
-    Partial<Record<BodyCompRegion, { fat: string; lean: string; bmc: string }>>
+    Partial<Record<BodyCompRegion, RegionRow>>
   >({});
+  // The report PDF the form was filled from, and whether to keep it with the scan.
+  const [reportFile, setReportFile] = useState<File | null>(null);
+  const [keepReport, setKeepReport] = useState(true);
+  const [review, setReview] = useState<ReportReview | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  // The scan is saved but its report PDF was not stored: the form stays, closed to a second save.
+  const [stored, setStored] = useState<{ id: string; problem: string } | null>(
+    null
+  );
   const [creatine, setCreatine] = useState('');
   const [carbs, setCarbs] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -62,19 +126,175 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
   const setField = (key: string, value: string) =>
     setText((current) => ({ ...current, [key]: value }));
   const answer = (key: string): Answer => prep[key] ?? '';
-  const regionValue = (name: BodyCompRegion) =>
-    regions[name] ?? { fat: '', lean: '', bmc: '' };
-  const setRegion = (
-    name: BodyCompRegion,
-    part: 'fat' | 'lean' | 'bmc',
-    value: string
-  ) =>
+  const regionValue = (name: BodyCompRegion): RegionRow =>
+    regions[name] ?? EMPTY_REGION;
+  const setRegion = (name: BodyCompRegion, part: RegionPart, value: string) =>
     setRegions((current) => ({
       ...current,
       [name]: { ...regionValue(name), [part]: value },
     }));
   const regionLabel = (name: BodyCompRegion) =>
     t(`labs.bodyComp.region.${name}`, REGION_FALLBACK[name]);
+
+  const regionPartLabel = (part: RegionPart) =>
+    ({
+      fat: t('labs.bodyComp.regionFat', 'Fat (g)'),
+      lean: t('labs.bodyComp.regionLean', 'Lean (g)'),
+      bmc: t('labs.bodyComp.regionBmc', 'Bone mineral (g)'),
+      pctYn: t('labs.bodyComp.regionPctYn', '% fat YN percentile'),
+      pctAm: t('labs.bodyComp.regionPctAm', '% fat AM percentile'),
+      bmd: t('labs.bodyComp.regionBmd', 'BMD (g/cm²)'),
+    })[part];
+
+  const failureText = (reason: BodyCompReportFailure) =>
+    ({
+      no_text_layer: t(
+        'labs.bodyComp.import.noTextLayer',
+        'This PDF has no text to read, so it is probably a scan or a photo. Enter the values by hand from the printed report.'
+      ),
+      not_hologic: t(
+        'labs.bodyComp.import.notHologic',
+        'This does not look like a Hologic whole-body report, so nothing was filled in.'
+      ),
+      unreadable: t(
+        'labs.bodyComp.import.unreadable',
+        'This PDF could not be opened. Try the original file from the clinic.'
+      ),
+      too_many_pages: t(
+        'labs.bodyComp.import.tooManyPages',
+        'This PDF has too many pages to be one body composition report. Send just the report.'
+      ),
+    })[reason];
+
+  /** Puts what the report printed into the form. Every field stays editable; nothing is saved. */
+  function fillFrom(prefill: BodyCompReportPrefill) {
+    if (prefill.scanned_day) setDay(prefill.scanned_day);
+    if (prefill.sex) setSex(prefill.sex);
+    setText((current) => ({
+      ...current,
+      deviceLabel: prefill.device_label ?? '',
+      deviceSerial: prefill.device_serial ?? '',
+      softwareVersion: prefill.software_version ?? '',
+      scanMode: prefill.scan_mode ?? '',
+      referencePopulation: prefill.reference_population ?? '',
+      ageYears: fromNumber(prefill.age_years),
+      heightCm: fromNumber(prefill.height_cm),
+      clinicWeightKg: fromNumber(prefill.clinic_weight_kg),
+      totalFatG: fromNumber(prefill.total_fat_g),
+      totalLeanG: fromNumber(prefill.total_lean_g),
+      totalBmcG: fromNumber(prefill.total_bmc_g),
+      totalMassG: fromNumber(prefill.total_mass_g),
+      pctFat: fromNumber(prefill.pct_fat),
+      vatMassG: fromNumber(prefill.vat_mass_g),
+      vatVolumeCm3: fromNumber(prefill.vat_volume_cm3),
+      vatAreaCm2: fromNumber(prefill.vat_area_cm2),
+      totalBmd: fromNumber(prefill.total_bmd_gcm2),
+      bmdTScore: fromNumber(prefill.bmd_t_score),
+      bmdZScore: fromNumber(prefill.bmd_z_score),
+      bmdCvPct: fromNumber(prefill.bmd_cv_pct),
+      pctFatYn: fromNumber(prefill.pct_fat_yn),
+      pctFatAm: fromNumber(prefill.pct_fat_am),
+      fmiYn: fromNumber(prefill.fmi_yn),
+      fmiAm: fromNumber(prefill.fmi_am),
+      lmiYn: fromNumber(prefill.lmi_yn),
+      lmiAm: fromNumber(prefill.lmi_am),
+      almiYn: fromNumber(prefill.almi_yn),
+      almiAm: fromNumber(prefill.almi_am),
+    }));
+    const next: Partial<Record<BodyCompRegion, RegionRow>> = {};
+    for (const row of prefill.regions ?? [])
+      next[row.region] = {
+        fat: fromNumber(row.fat_g),
+        lean: fromNumber(row.lean_g),
+        bmc: fromNumber(row.bmc_g),
+        pctYn: fromNumber(row.pct_fat_yn),
+        pctAm: fromNumber(row.pct_fat_am),
+        bmd: fromNumber(row.bmd_gcm2),
+      };
+    setRegions(next);
+  }
+
+  async function readReportFile(changed: React.ChangeEvent<HTMLInputElement>) {
+    const file = changed.target.files?.[0];
+    changed.target.value = '';
+    if (!file) return;
+    setImportError(null);
+    if (file.size > REPORT_MAX_BYTES) {
+      setImportError(
+        t('labs.bodyComp.import.tooBig', 'The file is larger than 10 MB.')
+      );
+      return;
+    }
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+      setImportError(t('labs.bodyComp.import.notPdf', 'Choose a PDF file.'));
+      return;
+    }
+    try {
+      const result = await readReport.mutateAsync(await readFileAsBase64(file));
+      fillFrom(result.prefill);
+      setReportFile(file);
+      setKeepReport(true);
+      setReportOpen(true);
+      setError(null);
+      setReview({
+        ok: result.ok,
+        confidence: result.confidence,
+        failed: result.checks.filter((c) => !c.pass),
+        missing: result.missing,
+      });
+    } catch (failure) {
+      // The form is left as it was.
+      const reason = reportFailureOf(failure);
+      setImportError(
+        reason
+          ? failureText(reason)
+          : t(
+              'labs.bodyComp.import.failed',
+              'The report could not be read: {{reason}}',
+              {
+                reason:
+                  failure instanceof Error && failure.message
+                    ? failure.message
+                    : t('labs.bodyComp.import.tryAgain', 'please try again.'),
+              }
+            )
+      );
+    }
+  }
+
+  /** Stores the report PDF as a health document linked to the saved scan. */
+  async function storeReport(scanId: string): Promise<boolean> {
+    if (!reportFile) return true;
+    try {
+      await uploadDocument.mutateAsync({
+        file: reportFile,
+        fields: {
+          kind: 'dexa_report',
+          document_day: day,
+          body_comp_scan_id: scanId,
+        },
+      });
+      return true;
+    } catch (failure) {
+      setStored({
+        id: scanId,
+        problem:
+          failure instanceof Error && failure.message
+            ? failure.message
+            : t(
+                'labs.bodyComp.import.storeFailed',
+                'Could not store the file. Please try again.'
+              ),
+      });
+      return false;
+    }
+  }
+
+  async function retryStoring() {
+    if (!stored) return;
+    setStored(null);
+    if (await storeReport(stored.id)) onSaved();
+  }
 
   async function submit(submitted: React.FormEvent) {
     submitted.preventDefault();
@@ -95,6 +315,17 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
       ],
       ['vatAreaCm2', t('labs.bodyComp.vatArea', 'Visceral fat area (cm²)')],
       ['totalBmd', t('labs.bodyComp.bmd', 'Bone density (g/cm²)')],
+      ['bmdTScore', t('labs.bodyComp.bmdTScore', 'T-score')],
+      ['bmdZScore', t('labs.bodyComp.bmdZScore', 'Z-score')],
+      ['bmdCvPct', t('labs.bodyComp.bmdCv', 'Site CV %')],
+      ['pctFatYn', t('labs.bodyComp.pctFatYn', '% fat YN percentile')],
+      ['pctFatAm', t('labs.bodyComp.pctFatAm', '% fat AM percentile')],
+      ['fmiYn', t('labs.bodyComp.fmiYn', 'FMI YN percentile')],
+      ['fmiAm', t('labs.bodyComp.fmiAm', 'FMI AM percentile')],
+      ['lmiYn', t('labs.bodyComp.lmiYn', 'LMI YN percentile')],
+      ['lmiAm', t('labs.bodyComp.lmiAm', 'LMI AM percentile')],
+      ['almiYn', t('labs.bodyComp.almiYn', 'ALMI YN percentile')],
+      ['almiAm', t('labs.bodyComp.almiAm', 'ALMI AM percentile')],
       ['fastingHours', t('labs.bodyComp.fastingHours', 'Hours fasted')],
     ];
     for (const [key, label] of numbers) {
@@ -131,16 +362,12 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
     const regionRows: NonNullable<BodyCompScanInput['regions']> = [];
     for (const name of BODY_COMP_REGIONS) {
       const row = regionValue(name);
-      const filled = [row.fat, row.lean, row.bmc].filter(
-        (v) => v.trim() !== ''
-      );
+      const filled = REGION_PARTS.filter((part) => row[part].trim() !== '');
       if (filled.length === 0) continue;
       if (
         row.fat.trim() === '' ||
         row.lean.trim() === '' ||
-        [row.fat, row.lean, row.bmc].some(
-          (v) => v.trim() !== '' && !Number.isFinite(Number(v))
-        )
+        filled.some((part) => !Number.isFinite(Number(row[part])))
       ) {
         setError(
           t(
@@ -172,6 +399,9 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
         bmc_g: bmc,
         total_g: total,
         pct_fat: round1((fat / total) * 100),
+        ...(row.pctYn.trim() !== '' && { pct_fat_yn: Number(row.pctYn) }),
+        ...(row.pctAm.trim() !== '' && { pct_fat_am: Number(row.pctAm) }),
+        ...(row.bmd.trim() !== '' && { bmd_gcm2: Number(row.bmd) }),
       });
     }
 
@@ -195,6 +425,19 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
       vat_volume_cm3: toNumber(field('vatVolumeCm3')),
       vat_area_cm2: toNumber(field('vatAreaCm2')),
       total_bmd_gcm2: toNumber(field('totalBmd')),
+      scan_mode: optional(field('scanMode')),
+      reference_population: optional(field('referencePopulation')),
+      bmd_t_score: toNumber(field('bmdTScore')),
+      bmd_z_score: toNumber(field('bmdZScore')),
+      bmd_cv_pct: toNumber(field('bmdCvPct')),
+      pct_fat_yn: toNumber(field('pctFatYn')),
+      pct_fat_am: toNumber(field('pctFatAm')),
+      fmi_yn: toNumber(field('fmiYn')),
+      fmi_am: toNumber(field('fmiAm')),
+      lmi_yn: toNumber(field('lmiYn')),
+      lmi_am: toNumber(field('lmiAm')),
+      almi_yn: toNumber(field('almiYn')),
+      almi_am: toNumber(field('almiAm')),
       prep: {
         fasted: toAnswer(answer('fasted')),
         fasting_hours:
@@ -224,7 +467,11 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
       return;
     }
     try {
-      await add.mutateAsync(input);
+      const { id } = await add.mutateAsync(input);
+      if (reportFile && keepReport) {
+        // The scan is saved; a report that cannot be stored is said so beside it, not lost.
+        if (!(await storeReport(id))) return;
+      }
       onSaved();
     } catch (failure) {
       setError(
@@ -306,6 +553,121 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
       className="space-y-5 rounded-md border p-4"
       aria-label={t('labs.bodyComp.formLabel', 'Add a DEXA scan')}
     >
+      {section(
+        t('labs.bodyComp.import.title', 'Read a Hologic report (PDF)'),
+        null,
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label htmlFor="dexa-report-file">
+              {t(
+                'labs.bodyComp.import.file',
+                'Hologic report (PDF, up to 10 MB)'
+              )}
+            </Label>
+            <Input
+              id="dexa-report-file"
+              type="file"
+              accept="application/pdf,.pdf"
+              disabled={readReport.isPending || stored !== null}
+              onChange={readReportFile}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'labs.bodyComp.import.hint',
+                'Values are read from its text layer and shown here for review; nothing is saved until you confirm.'
+              )}
+            </p>
+          </div>
+          {readReport.isPending && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t('labs.bodyComp.import.reading', 'Reading the report…')}
+            </p>
+          )}
+          {importError && (
+            <p role="alert" className="text-sm text-destructive">
+              {importError}
+            </p>
+          )}
+          {review && (
+            <div
+              role="status"
+              aria-label={t('labs.bodyComp.import.review', 'Report review')}
+              className="space-y-1 rounded-md bg-muted/40 p-2 text-xs"
+            >
+              <p className="font-medium">
+                <FileText className="mr-1 inline h-3.5 w-3.5" />
+                {t(
+                  'labs.bodyComp.import.confidence',
+                  'Read · {{percent}} % confidence',
+                  { percent: Math.round(review.confidence * 100) }
+                )}
+              </p>
+              <p className="text-muted-foreground">
+                {review.ok
+                  ? t(
+                      'labs.bodyComp.import.pass',
+                      'Every required row was found and every check matched. Review the values below against the printed report before saving.'
+                    )
+                  : t(
+                      'labs.bodyComp.import.fail',
+                      'The report was not read in full. Check each value below against the printed report before saving.'
+                    )}{' '}
+                {t(
+                  'labs.bodyComp.import.confidenceNote',
+                  'Confidence = rows found × checks passed.'
+                )}
+              </p>
+              {review.failed.length > 0 && (
+                <div>
+                  <p className="font-medium">
+                    {t(
+                      'labs.bodyComp.import.failedChecks',
+                      'Checks that did not match'
+                    )}
+                  </p>
+                  <ul className="list-disc pl-4">
+                    {review.failed.map((check) => (
+                      <li key={check.name}>
+                        {check.name}: {check.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {review.missing.length > 0 && (
+                <p>
+                  <span className="font-medium">
+                    {t(
+                      'labs.bodyComp.import.missing',
+                      'Not found in the report:'
+                    )}
+                  </span>{' '}
+                  {review.missing.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+          {reportFile && (
+            <div className="flex items-center gap-2">
+              <input
+                id="dexa-keep-report"
+                type="checkbox"
+                className="h-4 w-4"
+                checked={keepReport}
+                disabled={stored !== null}
+                onChange={(e) => setKeepReport(e.target.checked)}
+              />
+              <Label htmlFor="dexa-keep-report" className="font-normal">
+                {t(
+                  'labs.bodyComp.import.keep',
+                  'Keep the report PDF with this scan'
+                )}
+              </Label>
+            </div>
+          )}
+        </div>
+      )}
+
       {section(
         t('labs.bodyComp.sectionScan', 'Scan'),
         null,
@@ -427,38 +789,94 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
 
+      <details
+        className="rounded-md border p-2"
+        open={reportOpen}
+        onToggle={(e) => setReportOpen(e.currentTarget.open)}
+      >
+        <summary className="cursor-pointer text-sm font-medium">
+          {t('labs.bodyComp.sectionReport', 'Report percentiles and bone')}
+        </summary>
+        <div className="mt-2 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'labs.bodyComp.reportHint',
+              'As the report prints them: the reference population is what the scores are taken against, percentiles are a position in that population and not a target, and the site CV % only if the clinic prints its own.'
+            )}
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {textField('scanMode', t('labs.bodyComp.scanMode', 'Scan mode'))}
+            {textField(
+              'referencePopulation',
+              t('labs.bodyComp.referencePopulation', 'Reference population')
+            )}
+            {numberField('bmdTScore', t('labs.bodyComp.bmdTScore', 'T-score'))}
+            {numberField('bmdZScore', t('labs.bodyComp.bmdZScore', 'Z-score'))}
+            {numberField('bmdCvPct', t('labs.bodyComp.bmdCv', 'Site CV %'))}
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {numberField(
+              'pctFatYn',
+              t('labs.bodyComp.pctFatYn', '% fat YN percentile')
+            )}
+            {numberField(
+              'pctFatAm',
+              t('labs.bodyComp.pctFatAm', '% fat AM percentile')
+            )}
+            {numberField(
+              'fmiYn',
+              t('labs.bodyComp.fmiYn', 'FMI YN percentile')
+            )}
+            {numberField(
+              'fmiAm',
+              t('labs.bodyComp.fmiAm', 'FMI AM percentile')
+            )}
+            {numberField(
+              'lmiYn',
+              t('labs.bodyComp.lmiYn', 'LMI YN percentile')
+            )}
+            {numberField(
+              'lmiAm',
+              t('labs.bodyComp.lmiAm', 'LMI AM percentile')
+            )}
+            {numberField(
+              'almiYn',
+              t('labs.bodyComp.almiYn', 'ALMI YN percentile')
+            )}
+            {numberField(
+              'almiAm',
+              t('labs.bodyComp.almiAm', 'ALMI AM percentile')
+            )}
+          </div>
+        </div>
+      </details>
+
       {section(
         t('labs.bodyComp.sectionRegions', 'Regions (optional)'),
         t(
           'labs.bodyComp.regionsHint',
-          'Grams as printed. With all six body regions the report can be checked against itself, and arm and leg lean mass gives appendicular lean mass. Leave a region blank to skip it.'
+          'Grams as printed, with the region’s percentiles and bone density if the report prints them. With all six body regions the report can be checked against itself, and arm and leg lean mass gives appendicular lean mass. Leave a region blank to skip it.'
         ),
-        <div className="space-y-2">
-          <div className="hidden grid-cols-[8rem_1fr_1fr_1fr] gap-2 text-xs text-muted-foreground sm:grid">
+        <div className="space-y-2 overflow-x-auto">
+          <div className="hidden min-w-[44rem] grid-cols-[8rem_repeat(6,minmax(0,1fr))] gap-2 text-xs text-muted-foreground sm:grid">
             <span />
-            <span>{t('labs.bodyComp.regionFat', 'Fat (g)')}</span>
-            <span>{t('labs.bodyComp.regionLean', 'Lean (g)')}</span>
-            <span>{t('labs.bodyComp.regionBmc', 'Bone mineral (g)')}</span>
+            {REGION_PARTS.map((part) => (
+              <span key={part}>{regionPartLabel(part)}</span>
+            ))}
           </div>
           {BODY_COMP_REGIONS.map((name) => (
             <div
               key={name}
-              className="grid grid-cols-3 items-center gap-2 sm:grid-cols-[8rem_1fr_1fr_1fr]"
+              className="grid grid-cols-3 items-center gap-2 sm:min-w-[44rem] sm:grid-cols-[8rem_repeat(6,minmax(0,1fr))]"
             >
               <span className="col-span-3 text-sm sm:col-span-1">
                 {regionLabel(name)}
               </span>
-              {(['fat', 'lean', 'bmc'] as const).map((part) => (
+              {REGION_PARTS.map((part) => (
                 <Input
                   key={part}
                   inputMode="decimal"
-                  aria-label={`${regionLabel(name)} ${
-                    part === 'fat'
-                      ? t('labs.bodyComp.regionFat', 'Fat (g)')
-                      : part === 'lean'
-                        ? t('labs.bodyComp.regionLean', 'Lean (g)')
-                        : t('labs.bodyComp.regionBmc', 'Bone mineral (g)')
-                  }`}
+                  aria-label={`${regionLabel(name)} ${regionPartLabel(part)}`}
                   value={regionValue(name)[part]}
                   onChange={(e) => setRegion(name, part, e.target.value)}
                 />
@@ -552,7 +970,31 @@ export default function BodyCompScanForm({ onSaved }: { onSaved: () => void }) {
           {error}
         </p>
       )}
-      <Button type="submit" disabled={add.isPending}>
+      {stored && (
+        <div role="alert" className="space-y-2 text-sm text-destructive">
+          <p>
+            {t(
+              'labs.bodyComp.import.partial',
+              'Scan saved. The report PDF was not stored: {{reason}}',
+              { reason: stored.problem }
+            )}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={uploadDocument.isPending}
+              onClick={retryStoring}
+            >
+              {t('labs.bodyComp.import.retry', 'Try storing it again')}
+            </Button>
+            <Button type="button" variant="outline" onClick={onSaved}>
+              {t('labs.bodyComp.import.done', 'Done')}
+            </Button>
+          </div>
+        </div>
+      )}
+      <Button type="submit" disabled={add.isPending || stored !== null}>
         <Save className="mr-2 h-4 w-4" />
         {t('labs.bodyComp.save', 'Save scan')}
       </Button>

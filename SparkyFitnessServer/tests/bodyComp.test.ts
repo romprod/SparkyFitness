@@ -448,6 +448,93 @@ describe('CSV', () => {
     );
   });
 
+  it('appends the report fields at the end: the whole body’s on the total row, a region’s own percentiles and bone density on its row', () => {
+    const headers = [...BODY_COMP_EXPORT_HEADERS];
+    expect(headers.slice(0, 23)).toEqual([
+      'date',
+      'scan',
+      'region',
+      'device',
+      'facility',
+      'sex',
+      'age_years',
+      'height_cm',
+      'clinic_weight_kg',
+      'fat_g',
+      'lean_g',
+      'bmc_g',
+      'total_g',
+      'pct_fat',
+      'vat_mass_g',
+      'vat_volume_cm3',
+      'vat_area_cm2',
+      'total_bmd_gcm2',
+      'fasted',
+      'no_caffeine',
+      'no_training_prior_day',
+      'active_travel',
+      'creatine_status',
+    ]);
+    expect(headers.slice(23)).toEqual([
+      'scan_mode',
+      'reference_population',
+      'bmd_t_score',
+      'bmd_z_score',
+      'bmd_cv_pct',
+      'pct_fat_yn',
+      'pct_fat_am',
+      'fmi_yn',
+      'fmi_am',
+      'lmi_yn',
+      'lmi_am',
+      'almi_yn',
+      'almi_am',
+      'region_bmd_gcm2',
+    ]);
+    const rows = bodyCompExportRows([
+      scan({
+        scan_mode: 'Whole Body',
+        reference_population: 'NHANES Male',
+        bmd_t_score: -0.4,
+        bmd_z_score: 0.2,
+        bmd_cv_pct: 1,
+        pct_fat_yn: 50,
+        pct_fat_am: 40,
+        fmi_yn: 45,
+        almi_am: 58,
+        regions: [
+          { ...regions[0]!, pct_fat_yn: 55, pct_fat_am: 45, bmd_gcm2: 0.8 },
+        ],
+      }),
+    ]);
+    const at = (name: string) =>
+      BODY_COMP_EXPORT_HEADERS.indexOf(name as never);
+    const [armRow, total] = rows as [
+      (string | number | null)[],
+      (string | number | null)[],
+    ];
+    expect(armRow[at('pct_fat_yn')]).toBe(55);
+    expect(armRow[at('pct_fat_am')]).toBe(45);
+    expect(armRow[at('region_bmd_gcm2')]).toBe(0.8);
+    expect(armRow[at('scan_mode')]).toBeNull();
+    expect(armRow[at('bmd_t_score')]).toBeNull();
+    expect(armRow[at('fmi_yn')]).toBeNull();
+    expect(total[at('scan_mode')]).toBe('Whole Body');
+    expect(total[at('reference_population')]).toBe('NHANES Male');
+    expect(total[at('bmd_t_score')]).toBe(-0.4);
+    expect(total[at('bmd_z_score')]).toBe(0.2);
+    expect(total[at('bmd_cv_pct')]).toBe(1);
+    expect(total[at('pct_fat_yn')]).toBe(50);
+    expect(total[at('fmi_yn')]).toBe(45);
+    expect(total[at('almi_am')]).toBe(58);
+    expect(total[at('region_bmd_gcm2')]).toBeNull();
+  });
+
+  it('writes an old scan with none of the report fields as empty cells', () => {
+    const [row] = bodyCompExportRows([scan()]).slice(-1);
+    expect(row!.slice(23)).toEqual(Array(14).fill(null));
+  });
+
   it('leaves out the serial number, software and notes', () => {
     const cells = bodyCompExportRows([scan({ notes: 'private note' })]).flat();
     expect(cells).not.toContain('S1');
