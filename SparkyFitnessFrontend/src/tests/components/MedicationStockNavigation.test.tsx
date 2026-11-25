@@ -75,6 +75,10 @@ jest.mock('@/pages/Medications/MedicationSupplyTile', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/pages/Medications/MedicationPlanDayTile', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/pages/Medications/TodayMedications', () => ({
   __esModule: true,
   default: () => <p>Daily log</p>,
