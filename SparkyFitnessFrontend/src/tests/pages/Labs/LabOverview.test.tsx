@@ -19,6 +19,7 @@ jest.mock('recharts', () => {
     Line: () => null,
     CartesianGrid: () => null,
     ReferenceArea: () => null,
+    ReferenceLine: () => null,
     XAxis: () => null,
     YAxis: () => null,
     Tooltip: () => null,
@@ -133,6 +134,32 @@ describe('Lab overview', () => {
       screen.getByText('0 markers improving vs prior panel')
     ).toBeVisible();
     expect(screen.queryByText(/Trend/)).toBeNull();
+  });
+
+  it('adds a borderline count only when a counted result is outside its optimal band', () => {
+    overview([
+      panel('new', '2026-03-01', [
+        hba1c('a', 5.5), // in range (4 - 5.6) but over the optimal 5.4
+        result({
+          id: 'b',
+          marker_key: 'hdl',
+          value_numeric: 1.31,
+          unit: 'mmol/L',
+          ref_range_low: 1,
+          ref_range_high: null,
+        }),
+      ]),
+    ]);
+    expect(screen.getByTestId('lab-overview-in-range')).toHaveTextContent(
+      '2 of 2 in range, 1 borderline'
+    );
+  });
+
+  it('shows no borderline text when none is borderline', () => {
+    overview([panel('new', '2026-03-01', [hba1c('a', 5.1)])]);
+    expect(screen.getByTestId('lab-overview-in-range')).not.toHaveTextContent(
+      'borderline'
+    );
   });
 
   it('shows nothing without a panel or without any judged number', () => {
@@ -272,6 +299,65 @@ describe('Lab trends', () => {
     expect(ldl).toHaveTextContent('110 mg/dL');
     expect(ldl).toHaveTextContent('(High)');
     expect(screen.queryByRole('button', { name: /Show all/ })).toBeNull();
+  });
+
+  it('shows the band caption only when a shown chart has an optimal band', () => {
+    const { rerender } = render(
+      <LabTrends
+        panels={history}
+        customMarkers={[]}
+        labels={labels}
+        sex={null}
+      />
+    );
+    expect(screen.getByTestId('lab-band-caption')).toHaveTextContent(
+      'Shaded band = optimal target. Grey band = lab reference.'
+    );
+    const noBand = ['p1', 'p2'].map((id, i) =>
+      panel(id, `2026-0${i + 1}-01`, [
+        result({
+          id: `${id}-alt`,
+          marker_key: 'alt',
+          value_numeric: 20 + i,
+          unit: 'U/L',
+        }),
+      ])
+    );
+    rerender(
+      <LabTrends
+        panels={noBand}
+        customMarkers={[]}
+        labels={labels}
+        sex={null}
+      />
+    );
+    expect(screen.queryByTestId('lab-band-caption')).toBeNull();
+  });
+
+  it('says only the optimal part when no chart has a reference band', () => {
+    const noRange = ['p1', 'p2'].map((id, i) =>
+      panel(id, `2026-0${i + 1}-01`, [
+        result({
+          id: `${id}-ldl`,
+          marker_key: 'ldl',
+          value_numeric: 3 + i,
+          unit: 'mmol/L',
+          ref_range_low: null,
+          ref_range_high: null,
+        }),
+      ])
+    );
+    render(
+      <LabTrends
+        panels={noRange}
+        customMarkers={[]}
+        labels={labels}
+        sex={null}
+      />
+    );
+    expect(screen.getByTestId('lab-band-caption')).toHaveTextContent(
+      /^Shaded band = optimal target\.$/
+    );
   });
 
   it('renders nothing when no marker has two readings', () => {

@@ -224,4 +224,29 @@ describe('Latest panel comparison', () => {
     expect(range).toHaveClass('md:hidden');
     expect(screen.getByText('Ref')).toHaveClass('hidden', 'md:table-cell');
   });
+
+  it('marks a cell outside its optimal band as Borderline, with accessible text', () => {
+    show([
+      panel('new', '2026-03-01', [
+        result({ value_numeric: 5.5 }), // inside 4 - 5.6, above the optimal 5.4
+        result({
+          id: 'ldl',
+          marker_key: 'ldl',
+          value_numeric: null,
+          value_text: '<3',
+          unit: 'mmol/L',
+          ref_range_low: null,
+          ref_range_high: null,
+        }),
+      ]),
+    ]);
+    expect(screen.getAllByText('(Borderline)')).toHaveLength(1);
+    expect(screen.getByText('(Borderline)')).toHaveClass('sr-only');
+    expect(screen.getByText('(B)')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('adds no Borderline mark inside the optimal band', () => {
+    show([panel('new', '2026-03-01', [result({ value_numeric: 5.1 })])]);
+    expect(screen.queryByText('(Borderline)')).toBeNull();
+  });
 });

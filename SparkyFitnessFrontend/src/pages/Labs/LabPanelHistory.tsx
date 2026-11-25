@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   labPanelMarkerOptions,
-  labResultStatus,
   type LabComparisonPanel,
   type LabMarkerLabels,
   type LabMarkerResponse,
@@ -15,6 +14,7 @@ import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDeleteLabPanel } from '@/hooks/Labs/useLabResults';
 import { formatLabRange, labResultText } from './labFormat';
+import { BORDERLINE_BADGE_CLASS, labResultFlag } from './labOptimal';
 
 interface Props {
   panels: LabComparisonPanel[];
@@ -125,7 +125,7 @@ const LabPanelHistory = ({
                       result.ref_range_high,
                       result.unit
                     );
-                    const status = labResultStatus(result, {
+                    const status = labResultFlag(result, {
                       ref_range_low: null,
                       ref_range_high: null,
                     });
@@ -153,16 +153,28 @@ const LabPanelHistory = ({
                             {status !== 'unknown' && (
                               <Badge
                                 variant={
-                                  status === 'in_range'
-                                    ? 'secondary'
-                                    : 'destructive'
+                                  status === 'borderline'
+                                    ? 'outline'
+                                    : status === 'in_range'
+                                      ? 'secondary'
+                                      : 'destructive'
+                                }
+                                className={
+                                  status === 'borderline'
+                                    ? BORDERLINE_BADGE_CLASS
+                                    : undefined
                                 }
                               >
                                 {status === 'high'
                                   ? t('labs.status.high', 'High')
                                   : status === 'low'
                                     ? t('labs.status.low', 'Low')
-                                    : t('labs.status.inRange', 'In range')}
+                                    : status === 'borderline'
+                                      ? t(
+                                          'labs.status.borderline',
+                                          'Borderline'
+                                        )
+                                      : t('labs.status.inRange', 'In range')}
                               </Badge>
                             )}
                           </div>

@@ -20,6 +20,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { buildLabTrends, type LabTrend } from './labTrendData';
 import { formatLabValue, labNumber } from './labFormat';
+import { labOptimalText } from './labOptimal';
+import { hasOptimalBand, optimalBandElements } from './labOptimalChart';
+import LabBandCaption from './LabBandCaption';
 
 /** Cards shown before "Show all": a long history can have dozens of markers. */
 export const LAB_TRENDS_INITIAL = 6;
@@ -36,6 +39,10 @@ const outOfRange = (status: string) => status === 'low' || status === 'high';
 const TrendCard = ({ trend }: { trend: LabTrend }) => {
   const { t } = useTranslation();
   const flagged = outOfRange(trend.latest.status);
+  const optimal = labOptimalText(trend.markerKey, trend.unit);
+  const optimalLabel = optimal
+    ? t('labs.optimalTarget', 'Optimal target: {{range}}', { range: optimal })
+    : '';
   return (
     <Card data-testid="lab-trend-card">
       <CardContent className="space-y-2 p-4">
@@ -61,11 +68,13 @@ const TrendCard = ({ trend }: { trend: LabTrend }) => {
         <div
           className="h-28 w-full"
           role="img"
-          aria-label={t('labs.trends.chartLabel', {
-            name: trend.name,
-            count: trend.points.length,
-            defaultValue: '{{name}} trend, {{count}} readings',
-          })}
+          aria-label={
+            t('labs.trends.chartLabel', {
+              name: trend.name,
+              count: trend.points.length,
+              defaultValue: '{{name}} trend, {{count}} readings',
+            }) + (optimalLabel ? `. ${optimalLabel}` : '')
+          }
         >
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
@@ -94,6 +103,7 @@ const TrendCard = ({ trend }: { trend: LabTrend }) => {
                   ifOverflow="extendDomain"
                 />
               )}
+              {optimalBandElements(trend.markerKey, trend.unit, optimalLabel)}
               <Tooltip
                 formatter={(value) => [
                   formatLabValue(Number(value), trend.unit),
@@ -140,6 +150,13 @@ const LabTrends = ({ panels, customMarkers, labels, sex }: LabTrendsProps) => {
           <TrendCard key={trend.id} trend={trend} />
         ))}
       </div>
+      {shown.some((trend) => hasOptimalBand(trend.markerKey, trend.unit)) && (
+        <LabBandCaption
+          showReference={shown.some(
+            (trend) => trend.low !== null || trend.high !== null
+          )}
+        />
+      )}
       {trends.length > LAB_TRENDS_INITIAL && (
         <Button
           variant="outline"

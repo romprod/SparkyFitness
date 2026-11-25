@@ -79,6 +79,10 @@ const LabOverview = ({
               inRange: summary.inRange,
               total: summary.judged,
             })}
+            {summary.borderline > 0 &&
+              t('labs.overview.borderline', ', {{borderline}} borderline', {
+                borderline: summary.borderline,
+              })}
           </div>
           <div className="mt-0.5 font-mono text-xs tabular-nums text-green-600 dark:text-green-400">
             {t('labs.overview.improving', {

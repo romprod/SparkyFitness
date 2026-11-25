@@ -48,6 +48,7 @@ jest.mock('recharts', () => {
     Line: () => null,
     CartesianGrid: () => null,
     ReferenceArea: () => null,
+    ReferenceLine: () => null,
     XAxis: () => null,
     YAxis: () => null,
     Tooltip: () => null,
@@ -313,6 +314,62 @@ describe('Labs page', () => {
     expect(screen.getByText('Manual panel')).toBeInTheDocument();
     expect(screen.getByText('Manual note')).toBeInTheDocument();
     expect(api.deleteLabPanel).not.toHaveBeenCalled();
+  });
+
+  it('shows a Borderline badge and the optimal target for a result outside its band', async () => {
+    api.listLatestLabResults.mockResolvedValue([
+      result({
+        id: 'r3',
+        marker_key: 'ldl',
+        value_numeric: 4.0,
+        unit: 'mmol/L',
+        ref_range_low: null,
+        ref_range_high: null,
+      }),
+    ]);
+    api.listLabResults.mockResolvedValue([
+      result({
+        id: 'r3',
+        marker_key: 'ldl',
+        value_numeric: 4.0,
+        unit: 'mmol/L',
+        ref_range_low: null,
+        ref_range_high: null,
+      }),
+    ]);
+    renderPage();
+    expect(await screen.findByText('Borderline')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^LDL/ }));
+    expect(
+      await screen.findByText('Optimal target: ≤ 2.6 mmol/L')
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId('lab-band-caption')).toHaveTextContent(
+      'Shaded band = optimal target.'
+    );
+  });
+
+  it('shows a Borderline badge in the panel history', async () => {
+    api.listLabPanels.mockResolvedValue({
+      panels: [
+        {
+          id: 'p1',
+          collected_on: '2026-09-12',
+          lab_name: null,
+          created_at: '2026-09-12T00:00:00Z',
+          results: [
+            result({
+              id: 'h1',
+              value_numeric: 39,
+              unit: 'mmol/mol',
+              ref_range_low: 20,
+              ref_range_high: 48,
+            }),
+          ],
+        },
+      ],
+    });
+    renderPage();
+    expect(await screen.findAllByText('Borderline')).not.toHaveLength(0);
   });
 
   it('lists the markers with their latest result and range status', async () => {

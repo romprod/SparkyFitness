@@ -10,7 +10,6 @@ import {
   labHistoryPoints,
   labMarkerQueryFromId,
   labPlottedResults,
-  labResultStatus,
   labSexFromGender,
   type LabMarker,
   type LabMarkerLabels,
@@ -54,6 +53,11 @@ import HealthDocumentsCard from './HealthDocumentsCard';
 import LabMarkerChart from './LabMarkerChart';
 import LabResultDialog from './LabResultDialog';
 import { formatLabRange, labResultText } from './labFormat';
+import {
+  BORDERLINE_BADGE_CLASS,
+  labOptimalText,
+  labResultFlag,
+} from './labOptimal';
 
 const statusVariant = (status: string) =>
   status === 'in_range' ? 'secondary' : 'destructive';
@@ -143,14 +147,24 @@ const Labs = () => {
       })
     : { low: null, high: null };
 
+  const optimalTarget = selected
+    ? labOptimalText(selected.markerKey, selected.unit)
+    : null;
+
   const statusLabel = (result: LabResultResponse, marker: LabMarker) => {
-    const status = labResultStatus(result, {
+    const status = labResultFlag(result, {
       ref_range_low: marker.ref_range_low,
       ref_range_high: marker.ref_range_high,
       ref_range_unit: marker.ref_range_unit,
       markerKey: marker.markerKey,
     });
     if (status === 'unknown') return null;
+    if (status === 'borderline')
+      return (
+        <Badge variant="outline" className={BORDERLINE_BADGE_CLASS}>
+          {t('labs.status.borderline', 'Borderline')}
+        </Badge>
+      );
     const text =
       status === 'low'
         ? t('labs.status.low', 'Low')
@@ -375,6 +389,13 @@ const Labs = () => {
                     })}
                   </p>
                 )}
+                {optimalTarget && (
+                  <p className="text-sm text-muted-foreground">
+                    {t('labs.optimalTarget', 'Optimal target: {{range}}', {
+                      range: optimalTarget,
+                    })}
+                  </p>
+                )}
                 {history.isLoading ? (
                   <Skeleton className="h-64 w-full" />
                 ) : history.isError ? (
@@ -385,6 +406,7 @@ const Labs = () => {
                   <LabMarkerChart
                     points={points}
                     unit={selected.unit}
+                    markerKey={selected.markerKey}
                     low={range.low}
                     high={range.high}
                   />

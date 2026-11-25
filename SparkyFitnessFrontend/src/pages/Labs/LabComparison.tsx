@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import {
   buildLabComparison,
+  exactLabResultValue,
   sameLabUnit,
   type LabMarkerLabels,
   type LabMarkerResponse,
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatLabRange, labResultText } from './labFormat';
+import { labOptimalFlag } from './labOptimal';
 
 interface LabComparisonProps {
   panels: Parameters<typeof buildLabComparison>[0];
@@ -174,6 +176,14 @@ const LabComparison = ({
                       {row.cells.map((cell, index) => {
                         const flagged =
                           cell.status === 'high' || cell.status === 'low';
+                        const borderline =
+                          cell.result !== null &&
+                          labOptimalFlag(
+                            cell.result.marker_key,
+                            cell.unit,
+                            exactLabResultValue(cell.result),
+                            cell.status
+                          ) === 'borderline';
                         const sameUnitAsRow = sameLabUnit(
                           cell.unit,
                           row.unit,
@@ -234,6 +244,19 @@ const LabComparison = ({
                                         {cell.status === 'high'
                                           ? t('labs.status.high', 'High')
                                           : t('labs.status.low', 'Low')}
+                                        )
+                                      </span>
+                                    </span>
+                                  )}
+                                  {borderline && (
+                                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                                      <span aria-hidden="true">(B)</span>
+                                      <span className="sr-only">
+                                        (
+                                        {t(
+                                          'labs.status.borderline',
+                                          'Borderline'
+                                        )}
                                         )
                                       </span>
                                     </span>

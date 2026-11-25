@@ -8,6 +8,7 @@ import {
   type LabRangeStatus,
   type LabSex,
 } from '@workspace/shared';
+import { labOptimalFlag } from './labOptimal';
 
 /** How the newest panel's exact numbers sit against their reference ranges. */
 export interface LabSummary {
@@ -17,6 +18,8 @@ export interface LabSummary {
   outOfRange: number;
   /** Exact numbers with no range to judge them by; never counted as in range. */
   noRange: number;
+  /** Of the in-range results, how many sit outside the marker's optimal band. */
+  borderline: number;
   /** inRange + outOfRange: the figure "N of M in range" is out of. */
   judged: number;
   /** Markers whose newest reading is closer to its range than the prior panel's. */
@@ -33,6 +36,7 @@ export const summariseLatestPanel = (
 ): LabSummary => {
   const summary: LabSummary = {
     inRange: 0,
+    borderline: 0,
     outOfRange: 0,
     noRange: 0,
     judged: 0,
@@ -41,8 +45,16 @@ export const summariseLatestPanel = (
   for (const row of rows) {
     const cell = row.cells[0];
     if (!cell?.result || exactLabResultValue(cell.result) === null) continue;
-    if (cell.status === 'in_range') summary.inRange += 1;
-    else if (cell.status === 'low' || cell.status === 'high')
+    if (cell.status === 'in_range') {
+      summary.inRange += 1;
+      const flag = labOptimalFlag(
+        cell.result.marker_key,
+        cell.unit,
+        exactLabResultValue(cell.result),
+        cell.status
+      );
+      if (flag === 'borderline') summary.borderline += 1;
+    } else if (cell.status === 'low' || cell.status === 'high')
       summary.outOfRange += 1;
     else summary.noRange += 1;
     if (cell.improved) summary.improving += 1;
@@ -60,6 +72,8 @@ export interface LabTrendPoint {
 /** One marker's exact readings across every saved panel, oldest first. */
 export interface LabTrend {
   id: string;
+  /** Built-in marker key, null for a custom marker. */
+  markerKey: string | null;
   name: string;
   unit: string;
   low: number | null;
@@ -119,6 +133,7 @@ export const buildLabTrends = (
     if (same.length < 2) continue;
     trends.push({
       id,
+      markerKey: key,
       name,
       unit: newest.unit,
       low: newest.low,
