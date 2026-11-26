@@ -266,6 +266,32 @@ describe('explicit owner prescription cost estimates', () => {
     expect(repository.getVialCosts).toHaveBeenCalledExactlyOnceWith(owner);
     expect(analytics.getMedicationPrescriptionVialCosts).not.toHaveBeenCalled();
   });
+  it('shows a share of a prescription total as a per-vial unit price to a client without the model header', async () => {
+    const vial = (basis: string | null) => ({
+      pen_id: owner,
+      is_costed: basis !== null,
+      estimate_basis: basis,
+    });
+    analytics.getMedicationPrescriptionVialCosts.mockResolvedValue({
+      cost_basis: 'with_prescription_estimates',
+      vials: [vial('per_prescription'), vial('per_vial'), vial(null)],
+    });
+    const url = '/api/v2/medication-purchases/vial-costs';
+    const query = { cost_basis: 'with_prescription_estimates' };
+    const old = await request(routed()).get(url).query(query);
+    expect(
+      old.body.vials.map((v: { estimate_basis: unknown }) => v.estimate_basis)
+    ).toEqual(['per_vial', 'per_vial', null]);
+    const modern = await request(routed())
+      .get(url)
+      .query(query)
+      .set('X-Prescription-Model-Version', '2');
+    expect(
+      modern.body.vials.map(
+        (v: { estimate_basis: unknown }) => v.estimate_basis
+      )
+    ).toEqual(['per_prescription', 'per_vial', null]);
+  });
   it('routes only explicit estimates to the labelled financial loaders', async () => {
     const vials = { cost_basis: 'with_prescription_estimates', vials: [] };
     analytics.getMedicationPrescriptionVialCosts.mockResolvedValue(vials);

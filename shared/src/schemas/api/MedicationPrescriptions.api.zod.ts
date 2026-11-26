@@ -70,6 +70,11 @@ export const medicationPrescriptionStatusSchema = z.enum([
   'expired',
   'cancelled',
 ]);
+/** per_vial: the cost is one vial's price. per_prescription: the cost is the whole fill, split across its linked vials. */
+export const medicationPrescriptionCostBasisSchema = z.enum([
+  'per_vial',
+  'per_prescription',
+]);
 const fields = z.object({
   cost_basis: z.literal('per_vial').nullable().optional(),
   source: text,
@@ -127,6 +132,10 @@ export const medicationPrescriptionUpdateSchema = fields
         message: 'Confirm per-vial basis with an explicit cost',
       });
   });
+/** Model 2 knows every cost basis; model 1 only ever sees or sends the original per-vial one. */
+const fieldsV2 = fields.extend({
+  cost_basis: medicationPrescriptionCostBasisSchema.nullable().optional(),
+});
 const medicationIds = z
   .array(uuid)
   .min(1)
@@ -139,7 +148,7 @@ const medicationIds = z
  * body) or `medication_ids`, never both. Key order matches model 1 so a
  * legacy body parses to the same JSON and keeps its operation hash.
  */
-export const medicationPrescriptionCreateSchemaV2 = fields
+export const medicationPrescriptionCreateSchemaV2 = fieldsV2
   .extend({
     operation_id: uuid,
     medication_id: uuid.optional(),
@@ -156,15 +165,15 @@ export const medicationPrescriptionCreateSchemaV2 = fields
         path: ['medication_ids'],
         message: 'Send either medication_id or medication_ids',
       });
-    if (value.cost_basis === 'per_vial' && value.cost === null)
+    if (value.cost_basis != null && value.cost === null)
       context.addIssue({
         code: 'custom',
         path: ['cost'],
-        message: 'Confirm per-vial basis with an explicit cost',
+        message: 'Confirm a price basis with an explicit cost',
       });
   });
 /** Model 2 update: `medication_ids` replaces the covered set; omitted preserves it. */
-export const medicationPrescriptionUpdateSchemaV2 = fields
+export const medicationPrescriptionUpdateSchemaV2 = fieldsV2
   .partial()
   .extend({
     status: medicationPrescriptionStatusSchema.optional(),
@@ -182,13 +191,13 @@ export const medicationPrescriptionUpdateSchemaV2 = fields
         message: 'Send either medication_id or medication_ids',
       });
     if (
-      value.cost_basis === 'per_vial' &&
+      value.cost_basis != null &&
       (value.cost === undefined || value.cost === null)
     )
       context.addIssue({
         code: 'custom',
         path: ['cost'],
-        message: 'Confirm per-vial basis with an explicit cost',
+        message: 'Confirm a price basis with an explicit cost',
       });
   });
 export const medicationPrescriptionDeleteSchema = z
@@ -246,11 +255,13 @@ export const medicationPrescriptionCoverageSchema = z
 /** Model 2 response: model 1 plus the covered medicines in display order (primary first). */
 export const medicationPrescriptionSchemaV2 =
   medicationPrescriptionSchema.extend({
+    cost_basis: medicationPrescriptionCostBasisSchema.nullable().optional(),
     medications: z.array(medicationPrescriptionCoverageSchema).min(1),
   });
 /** What a model 2 client parses: an older server omits `medications`, so it is optional. */
 export const medicationPrescriptionClientSchema =
   medicationPrescriptionSchema.extend({
+    cost_basis: medicationPrescriptionCostBasisSchema.nullable().optional(),
     medications: z
       .array(medicationPrescriptionCoverageSchema)
       .min(1)

@@ -412,3 +412,67 @@ describe('prescriptions that cover several medicines: contracts', () => {
     );
   });
 });
+
+describe('whole-prescription cost basis contracts', () => {
+  const base = { operation_id: id, currency: 'GBP', medication_id: med };
+  it('lets only model 2 name the per-prescription basis, and always with a cost', () => {
+    const withBasis = { ...base, cost: '30', cost_basis: 'per_prescription' };
+    expect(
+      medicationPrescriptionCreateSchema.safeParse(withBasis).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionCreateSchemaV2.safeParse(withBasis).success
+    ).toBe(true);
+    expect(
+      medicationPrescriptionCreateSchemaV2.safeParse({
+        ...withBasis,
+        cost: undefined,
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionUpdateSchema.safeParse({
+        ...update,
+        cost: '1',
+        cost_basis: 'per_prescription',
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionUpdateSchemaV2.safeParse({
+        ...update,
+        cost: '1',
+        cost_basis: 'per_prescription',
+      }).success
+    ).toBe(true);
+    expect(
+      medicationPrescriptionUpdateSchemaV2.safeParse({
+        ...update,
+        cost_basis: 'per_prescription',
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionCreateSchemaV2.safeParse({
+        ...withBasis,
+        cost_basis: 'per_dose',
+      }).success
+    ).toBe(false);
+  });
+  it('keeps the model 1 response strict to per_vial while model 2 knows both', () => {
+    const covered = [
+      { medication_id: med, medication_name: 'Synthetic one', position: 0 },
+    ];
+    const marked = { ...row(), cost: '30', cost_basis: 'per_prescription' };
+    expect(medicationPrescriptionSchema.safeParse(marked).success).toBe(false);
+    expect(
+      medicationPrescriptionSchemaV2.safeParse({
+        ...marked,
+        medications: covered,
+      }).success
+    ).toBe(true);
+    expect(
+      medicationPrescriptionClientSchema.safeParse({
+        ...marked,
+        medications: covered,
+      }).success
+    ).toBe(true);
+  });
+});

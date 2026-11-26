@@ -10,6 +10,12 @@ import { endPool } from '../db/poolManager.js';
 import * as rx from '../models/medicationPrescriptionRepository.js';
 import * as pens from '../models/medicationPenRepository.js';
 import * as medications from '../models/medicationRepository.js';
+import * as purchases from '../models/medicationPurchaseRepository.js';
+import {
+  getMedicationCostAnalytics,
+  getMedicationPrescriptionVialCosts,
+} from '../models/medicationCostAnalyticsRepository.js';
+import { getMedicationCourseCosts } from '../models/medicationCourseCostsRepository.js';
 import {
   editMedicationCourse,
   getMedicationCourse,
@@ -759,6 +765,151 @@ describe.runIf(
       ]);
       expect(concurrent[0]).toEqual(created);
       expect(concurrent[1]).toEqual(created);
+    });
+  });
+  describe('whole-prescription price (per_prescription)', () => {
+    const vialCosts = async () =>
+      (await getMedicationPrescriptionVialCosts(owner)).vials;
+    const priceOf = async (id: string) =>
+      (await vialCosts()).find((v) => v.pen_id === id)!;
+    it('stores the basis only with a cost, shows it to model 2 and hides it from model 1', async () => {
+      const a = await medication(),
+        b = await medication(),
+        made = await create([a, b], {
+          cost: '90',
+          currency: 'GBP',
+          cost_basis: 'per_prescription',
+        });
+      expect(await read(made.id)).toMatchObject({
+        cost: '90',
+        cost_basis: 'per_prescription',
+      });
+      const old = await rx.getMedicationPrescription(owner, made.id);
+      expect(old).not.toHaveProperty('cost_basis');
+      expect(old.cost).toBe('90');
+      await expect(
+        admin((c) =>
+          c.query('UPDATE medication_prescriptions SET cost=NULL WHERE id=$1', [
+            made.id,
+          ])
+        )
+      ).rejects.toThrow(/cost_basis_check/);
+      await expect(
+        admin((c) =>
+          c.query(
+            "UPDATE medication_prescriptions SET cost_basis='per_dose' WHERE id=$1",
+            [made.id]
+          )
+        )
+      ).rejects.toThrow(/cost_basis_check/);
+      // An unrelated model 1 edit keeps it; changing the money clears it.
+      await rx.updateMedicationPrescription(owner, made.id, {
+        operation_id: randomUUID(),
+        expected_version: 1,
+        pharmacy: 'Synthetic pharmacy',
+      });
+      expect(await read(made.id)).toMatchObject({
+        cost_basis: 'per_prescription',
+      });
+      await rx.updateMedicationPrescription(owner, made.id, {
+        operation_id: randomUUID(),
+        expected_version: 2,
+        cost: '95',
+      });
+      expect(await read(made.id)).not.toHaveProperty('cost_basis');
+    });
+    it('splits one total evenly across the linked vials of every covered medicine, and moves the shares as vials come and go', async () => {
+      const a = await medication(),
+        b = await medication(),
+        made = await create([a, b], {
+          cost: '90',
+          currency: 'GBP',
+          cost_basis: 'per_prescription',
+        });
+      const v1 = await stock(a, made.id),
+        v2 = await stock(a, made.id),
+        v3 = await stock(b, made.id);
+      for (const v of [v1, v2, v3])
+        expect(await priceOf(v.id)).toMatchObject({
+          cost_source: 'prescription',
+          unit_cost: '30',
+          currency: 'GBP',
+          estimate_basis: 'per_prescription',
+          prescription_id: made.id,
+        });
+      const unlinked = await stock(a);
+      expect(await priceOf(unlinked.id)).toMatchObject({ is_costed: false });
+      await pens.updatePen(owner, unlinked.id, { prescription_id: made.id });
+      expect((await priceOf(v1.id)).unit_cost).toBe('22.5');
+      await pens.updatePen(owner, unlinked.id, { prescription_id: null });
+      await pens.updatePen(owner, v3.id, { prescription_id: null });
+      expect((await priceOf(v1.id)).unit_cost).toBe('45');
+      // The report counts the total once, not once per vial.
+      const report = await getMedicationCostAnalytics(
+        owner,
+        'all',
+        now,
+        'with_prescription_estimates'
+      );
+      const estimate = report.accounted.find((x) => x.currency === 'GBP');
+      expect(estimate?.prescription_estimate).toBe('90.00');
+    });
+    it('lets a vial with its own invoice price take the invoice and leaves its share unspent', async () => {
+      const a = await medication(),
+        made = await create([a], {
+          cost: '60',
+          currency: 'GBP',
+          cost_basis: 'per_prescription',
+        }),
+        estimated = await stock(a, made.id),
+        invoiced = await stock(a, made.id);
+      await purchases.createPurchase(owner, {
+        operation_id: randomUUID(),
+        expected_owner_id: owner,
+        ordered_date: '2026-11-02',
+        currency: 'GBP',
+        items: [
+          {
+            kind: 'medication',
+            medication_id: a,
+            quantity: 1,
+            unit_cost: '7',
+            vial_ids: [invoiced.id],
+          },
+        ],
+      });
+      expect(await priceOf(estimated.id)).toMatchObject({
+        cost_source: 'prescription',
+        unit_cost: '30',
+      });
+      expect(await priceOf(invoiced.id)).toMatchObject({
+        cost_source: 'invoice',
+        unit_cost: '7',
+      });
+    });
+    it('prices the same share in the vial read, the cost report and the course costs', async () => {
+      const a = await medication(),
+        made = await create([a], {
+          cost: '10',
+          currency: 'GBP',
+          cost_basis: 'per_prescription',
+        }),
+        first = await stock(a, made.id);
+      await stock(a, made.id);
+      expect((await priceOf(first.id)).unit_cost).toBe('5');
+      const report = await getMedicationCostAnalytics(
+        owner,
+        'all',
+        now,
+        'with_prescription_estimates'
+      );
+      expect(report.accounted.find((x) => x.currency === 'GBP')).toMatchObject({
+        estimated_vials: expect.any(Number),
+      });
+      // The course report reads the same snapshot and resolver, so it must at least build from it.
+      expect(await getMedicationCourseCosts(owner, now)).toHaveProperty(
+        'unattributed'
+      );
     });
   });
 });

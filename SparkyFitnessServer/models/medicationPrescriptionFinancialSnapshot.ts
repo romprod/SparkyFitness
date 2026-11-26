@@ -29,7 +29,7 @@ export async function loadMedicationPrescriptionFinancialSnapshot(
   );
   // Prescriptions with a linked vial of a medicine they still cover, with every live covered medicine.
   const prescriptions = await client.query<MedicationCostPrescription>(
-    "SELECT r.id,(SELECT COALESCE(array_agg(j.medication_id ORDER BY j.position,j.created_at,j.id),ARRAY[]::uuid[]) FROM medication_prescription_medications j WHERE j.prescription_id=r.id AND j.user_id=r.user_id AND j.medication_id IS NOT NULL) AS medication_ids,r.cost::text,r.currency,r.date_written::text,r.cost_basis FROM medication_prescriptions r WHERE r.user_id=$1 AND EXISTS(SELECT 1 FROM medication_pens p JOIN medication_prescription_medications j ON j.prescription_id=r.id AND j.user_id=r.user_id AND j.medication_id=p.medication_id WHERE p.prescription_id=r.id AND p.user_id=r.user_id AND p.kind='vial') ORDER BY r.id",
+    "SELECT r.id,(SELECT COALESCE(array_agg(j.medication_id ORDER BY j.position,j.created_at,j.id),ARRAY[]::uuid[]) FROM medication_prescription_medications j WHERE j.prescription_id=r.id AND j.user_id=r.user_id AND j.medication_id IS NOT NULL) AS medication_ids,r.cost::text,r.currency,r.date_written::text,r.cost_basis,(SELECT count(*) FROM medication_pens x WHERE x.prescription_id=r.id AND x.user_id=r.user_id AND x.kind='vial')::int AS linked_vial_count FROM medication_prescriptions r WHERE r.user_id=$1 AND EXISTS(SELECT 1 FROM medication_pens p JOIN medication_prescription_medications j ON j.prescription_id=r.id AND j.user_id=r.user_id AND j.medication_id=p.medication_id WHERE p.prescription_id=r.id AND p.user_id=r.user_id AND p.kind='vial') ORDER BY r.id",
     [owner]
   );
   return {

@@ -7,6 +7,9 @@ import {
   medicationPrescriptionCostAnalyticsQuerySchema,
   medicationCourseCostsQuerySchema,
   medicationPrescriptionVialCostsQuerySchema,
+  PRESCRIPTION_MODEL_VERSION,
+  PRESCRIPTION_MODEL_VERSION_HEADER,
+  type MedicationPrescriptionVialCosts,
 } from '@workspace/shared';
 import * as purchases from '../../models/medicationPurchaseRepository.js';
 import { getMedicationCourseCosts } from '../../models/medicationCourseCostsRepository.js';
@@ -74,6 +77,22 @@ router.get('/editor-data', async (req, res, next) => {
     next(error);
   }
 });
+/** A price that is a share of a whole prescription is still a unit price per vial to a client that predates it. */
+const forModel = (
+  req: express.Request,
+  costs: MedicationPrescriptionVialCosts
+): MedicationPrescriptionVialCosts =>
+  (Number(req.header(PRESCRIPTION_MODEL_VERSION_HEADER)) || 1) >=
+  PRESCRIPTION_MODEL_VERSION
+    ? costs
+    : {
+        ...costs,
+        vials: costs.vials.map((vial) =>
+          vial.estimate_basis === 'per_prescription'
+            ? { ...vial, estimate_basis: 'per_vial' as const }
+            : vial
+        ),
+      };
 router.get('/vial-costs', async (req, res, next) => {
   try {
     const query = medicationPrescriptionVialCostsQuerySchema.safeParse(
@@ -89,7 +108,7 @@ router.get('/vial-costs', async (req, res, next) => {
     });
     res.json(
       query.data.cost_basis === 'with_prescription_estimates'
-        ? await getMedicationPrescriptionVialCosts(req.userId)
+        ? forModel(req, await getMedicationPrescriptionVialCosts(req.userId))
         : { vials: await purchases.getVialCosts(req.userId) }
     );
   } catch (error) {

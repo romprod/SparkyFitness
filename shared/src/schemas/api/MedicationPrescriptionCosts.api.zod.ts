@@ -46,7 +46,7 @@ export const medicationPrescriptionVialCostSchema = z
     purchase_id: uuid.nullable(),
     purchase_item_id: uuid.nullable(),
     prescription_id: uuid.nullable(),
-    estimate_basis: z.literal('per_vial').nullable(),
+    estimate_basis: z.enum(['per_vial', 'per_prescription']).nullable(),
     prescription_date_written: medicationCourseDaySchema.nullable(),
   })
   .strict()
@@ -86,7 +86,8 @@ export const medicationPrescriptionVialCostSchema = z
     if (
       price.cost_source === 'prescription' &&
       (!price.prescription_id ||
-        price.estimate_basis !== 'per_vial' ||
+        (price.estimate_basis !== 'per_vial' &&
+          price.estimate_basis !== 'per_prescription') ||
         price.purchase_id !== null ||
         price.purchase_item_id !== null ||
         (price.unit_cost !== null &&

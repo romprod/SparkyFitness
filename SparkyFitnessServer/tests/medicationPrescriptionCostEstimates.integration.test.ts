@@ -337,6 +337,7 @@ describe.runIf(
           'currency',
           'date_written',
           'cost_basis',
+          'linked_vial_count',
         ].sort()
       );
       expect(selected).toMatchObject({
