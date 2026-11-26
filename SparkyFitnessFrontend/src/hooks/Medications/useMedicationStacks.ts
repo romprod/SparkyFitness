@@ -15,11 +15,12 @@ import {
   useMedicationCourseScope,
 } from './useMedicationCourses';
 
-const stackKeys = { all: ['medication-stacks'] as const };
+export const stackKeys = { all: ['medication-stacks'] as const };
 
-/** Stacks of the active profile's medications and supplements. */
-export const useMedicationStacks = () => {
-  const scope = useMedicationCourseScope();
+type StackScope = ReturnType<typeof useMedicationCourseScope>;
+
+/** Stacks for a scope the caller already holds (the plan editor is handed one). */
+export const useStacksForScope = (scope: StackScope) => {
   const query = useQuery({
     queryKey: [...stackKeys.all, scope.key],
     queryFn: ({ signal }) => listMedicationStacks(signal),
@@ -31,6 +32,10 @@ export const useMedicationStacks = () => {
     data: scope.ready && scope.isCurrent() ? query.data : undefined,
   };
 };
+
+/** Stacks of the active profile's medications and supplements. */
+export const useMedicationStacks = () =>
+  useStacksForScope(useMedicationCourseScope());
 
 const useInvalidateStacks = () => {
   const client = useQueryClient();

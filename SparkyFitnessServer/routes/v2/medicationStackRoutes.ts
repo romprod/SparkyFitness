@@ -1,6 +1,9 @@
 import express from 'express';
 import {
   medicationStackInputSchema,
+  medicationStackScheduleClearInputSchema,
+  medicationStackScheduleReviewInputSchema,
+  medicationStackScheduleSaveInputSchema,
   medicationStackSetupInputSchema,
 } from '@workspace/shared';
 import { authenticate } from '../../middleware/authMiddleware.js';
@@ -9,6 +12,12 @@ import checkPermissionMiddleware from '../../middleware/checkPermissionMiddlewar
 import { UuidParamSchema } from '../../schemas/measurementSchemas.js';
 import * as stacks from '../../models/medicationStackRepository.js';
 import { setupPremixedStack } from '../../services/medicationStackSetupService.js';
+import {
+  bindAddedStackMembers,
+  clearStackSchedule,
+  reviewStackSchedule,
+  saveStackSchedule,
+} from '../../services/medicationStackScheduleService.js';
 
 /**
  * Stacks of medications and supplements. Same access as the medication APIs:
@@ -75,10 +84,82 @@ router.put('/:id', async (req, res, next) => {
     if (!params.success) return void invalid(res, params.error);
     const body = medicationStackInputSchema.safeParse(req.body);
     if (!body.success) return void invalid(res, body.error);
-    if (!(await stacks.updateStack(req.userId, params.data.id, body.data))) {
+    if (
+      !(await stacks.updateStack(
+        req.userId,
+        params.data.id,
+        body.data,
+        (client, added) =>
+          bindAddedStackMembers(client, req.userId, params.data.id, added)
+      ))
+    ) {
       res.status(404).json({ error: 'Stack not found' });
       return;
     }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /v2/medication-stacks/{id}/schedule/review:
+ *   post:
+ *     summary: Preview a stack schedule
+ *     description: >
+ *       Read-only. For each member, says whether saving the schedule changes
+ *       its plan in place, writes a successor revision, leaves it alone, waits
+ *       for a plan or cannot follow, with the fingerprint the save must echo.
+ */
+router.post('/:id/schedule/review', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return void invalid(res, params.error);
+    const body = medicationStackScheduleReviewInputSchema.safeParse(req.body);
+    if (!body.success) return void invalid(res, body.error);
+    res.json(await reviewStackSchedule(req.userId, params.data.id, body.data));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /v2/medication-stacks/{id}/schedule:
+ *   put:
+ *     summary: Set a stack's schedule and apply it to every follower
+ *     description: >
+ *       One schedule per stack. Atomic: every follower's timing changes, or
+ *       nothing does. A retry with the same operation_id returns the first result.
+ *   delete:
+ *     summary: Remove a stack's schedule
+ *     description: Plans keep the rules they have.
+ */
+router.put('/:id/schedule', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return void invalid(res, params.error);
+    const body = medicationStackScheduleSaveInputSchema.safeParse(req.body);
+    if (!body.success) return void invalid(res, body.error);
+    const { result, created } = await saveStackSchedule(
+      req.userId,
+      params.data.id,
+      body.data
+    );
+    res.status(created ? 201 : 200).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:id/schedule', async (req, res, next) => {
+  try {
+    const params = UuidParamSchema.safeParse(req.params);
+    if (!params.success) return void invalid(res, params.error);
+    const body = medicationStackScheduleClearInputSchema.safeParse(req.body);
+    if (!body.success) return void invalid(res, body.error);
+    await clearStackSchedule(req.userId, params.data.id, body.data);
     res.status(204).send();
   } catch (error) {
     next(error);

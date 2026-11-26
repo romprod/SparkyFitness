@@ -987,3 +987,109 @@ describe('blend components across the ladder', () => {
     expect(screen.getAllByRole('row')[1]).toHaveTextContent('20 units——');
   });
 });
+
+describe('timing set by a stack schedule', () => {
+  const stackId = '00000000-0000-4000-8000-0000000000a1';
+  const binding = {
+    stack: {
+      id: stackId,
+      name: 'Morning',
+      notes: null,
+      created_at: '2026-11-19T00:00:00.000Z',
+      members: [
+        {
+          medication_id: courseIds.med,
+          name: 'Example medication',
+          is_supplement: false,
+          is_active: true,
+          schedule_status: 'following' as const,
+          schedule_bound: true,
+        },
+      ],
+    },
+    schedule: {
+      schedule_type_id: 'specific_days' as const,
+      time_of_day: '20:00',
+      days_of_week: [1, 4],
+      interval_days: null,
+      cycle_on_days: null,
+      cycle_off_days: null,
+      start_date: null,
+      version: 2,
+      updated_at: '2026-11-20T00:00:00Z',
+    },
+  };
+  const setupBound = (mode: 'create' | 'edit' = 'create') => {
+    const course = courseFixture();
+    return render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MedicationCourseEditor
+          med={courseMedication}
+          today="2026-11-16"
+          timezone="Europe/London"
+          scope={scope}
+          mode={mode}
+          stackBinding={{
+            stack: { ...binding.stack, schedule: binding.schedule },
+            schedule: binding.schedule,
+          }}
+          {...(mode === 'edit'
+            ? { course, revision: course.revisions[0] }
+            : {})}
+          onClose={close}
+          onRefresh={refresh}
+        />
+      </QueryClientProvider>
+    );
+  };
+
+  it('shows the banner and locks the timing of a new plan, which starts from the stack', async () => {
+    setupBound();
+    expect(
+      screen.getByText('Timing is set by the Morning stack.')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Rule 1 type')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Thu' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Thu' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+    fireEvent.change(screen.getByLabelText('Rule 1 dose override'), {
+      target: { value: '3' },
+    });
+    expect(screen.getByLabelText('Rule 1 dose override')).toHaveValue('3');
+    review();
+    await screen.findByRole('button', { name: 'Confirm course' });
+    expect(mockReview.mock.calls[0]![2].rules[0]).toMatchObject({
+      schedule_type_id: 'specific_days',
+      days_of_week: [1, 4],
+      time_of_day: '20:00',
+      dose_amount: '3',
+    });
+  });
+
+  it('locks timing but not the plan name when editing', () => {
+    setupBound('edit');
+    expect(
+      screen.getByText('Timing is set by the Morning stack.')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Rule 1 type')).toBeDisabled();
+    expect(screen.getByLabelText('Course name')).toBeEnabled();
+  });
+
+  it('opens the stack schedule from "Change on the stack"', () => {
+    setupBound();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change on the stack' })
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Stack schedule' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows no banner and leaves timing editable without a binding', () => {
+    setup();
+    expect(screen.queryByText(/Timing is set by/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Rule 1 type')).toBeEnabled();
+  });
+});

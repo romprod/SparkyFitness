@@ -1726,7 +1726,9 @@
       },
       "perWeekEstimate": "≈ {{amount}} {{unit}} per administration at {{count}}×/week",
       "perWeekNeedsSchedule": "Set a weekly schedule first. Per-week dosing needs a known injection frequency.",
-      "perWeekNeedsRhythm": "Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration."
+      "perWeekNeedsRhythm": "Per-week doses need a steady weekly schedule (daily, weekdays, every N days or an on/off cycle) to work out an amount per administration.",
+      "stackTiming": "Timing is set by the {{stack}} stack.",
+      "stackTimingChange": "Change on the stack"
     },
     "forecasts": {
       "limitations": {
@@ -2071,7 +2073,8 @@
       "confirmMove": "Move schedule",
       "managed": "follows a course plan, not moved here",
       "notWeekly": "not a weekly pattern",
-      "endsSoon": "schedule ends within a week"
+      "endsSoon": "schedule ends within a week",
+      "inStackSchedule": "In a stack with its own schedule"
     },
     "reminders": {
       "title": "Dose reminders",
@@ -2191,6 +2194,84 @@
         "summaryRamp": "Daily plan with a {{phases}}-phase titration ramp.",
         "summaryPlan": "Daily plan: {{volume}} mL = {{dose}}.",
         "failed": "Could not set up the stack. Nothing was saved. Please try again."
+      },
+      "schedule": {
+        "ack": "{{name}} has several slots; the stack schedule replaces them with one",
+        "action": {
+          "blocked": "Left out: {{why}}",
+          "edit": "Will change",
+          "pending": "Waiting for a plan",
+          "revise": "Will start a new revision on {{date}}",
+          "same": "Same",
+          "skipped": "Plan finished, left as is"
+        },
+        "back": "Back",
+        "col": {
+          "medicine": "Medicine",
+          "new": "New",
+          "result": "Result",
+          "today": "Today"
+        },
+        "confirmNone": "No plan needs to change right now. Plans you add later will follow this schedule.",
+        "daysOff": "Days off",
+        "daysOn": "Days on",
+        "edit": "Edit schedule",
+        "effectiveEarly": "Choose today or a later day.",
+        "effectiveFrom": "Effective from",
+        "following": "Following",
+        "howOften": "How often",
+        "interval": "Days between doses",
+        "leaveOut": "Leave these out for now: {{names}}",
+        "noPlan": "No plan yet",
+        "none": "No stack schedule. Each medicine keeps its own.",
+        "notFollowing": {
+          "asNeeded": "Not following: only as needed",
+          "hasOwn": "Not following: has its own schedule",
+          "latest": "Not following the latest schedule",
+          "notBound": "Not following: not tied to the schedule yet",
+          "otherStack": "Not following: follows {{stack}}",
+          "paused": "Not following: paused"
+        },
+        "otherStack": "another stack",
+        "remove": "Remove schedule",
+        "removeBody": "Plans keep the timing they have now, and each medicine can be edited on its own again. Doses already logged and your history stay as they are.",
+        "removeConfirm": "Remove schedule",
+        "removeFailed": "Could not remove the stack schedule. Please try again.",
+        "removeTitle": "Remove the stack schedule?",
+        "review": "Review",
+        "reviewAgain": "Review again",
+        "reviewCaption": "What the schedule does to each plan",
+        "reviewFailed": "Could not review the schedule. Please try again.",
+        "rowLabel": "Stack schedule",
+        "save": "Save stack schedule",
+        "saveFailed": "Could not save the stack schedule. Please try again.",
+        "set": "Set schedule",
+        "stale": "The stack or its plans changed since this review. Review again to continue; your draft is kept.",
+        "start": "Start date",
+        "startOptional": "Start date (optional)",
+        "subtitle": "Applies to every plan in this stack.",
+        "summary": {
+          "at": "at {{time}}",
+          "cycle": "{{on}} days on, {{off}} off",
+          "daily": "Daily",
+          "everyN": "Every {{days}} days",
+          "from": "from {{date}}",
+          "monthly": "Monthly",
+          "noDays": "No days chosen",
+          "prn": "As needed"
+        },
+        "time": "Time of day (optional)",
+        "title": "Stack schedule",
+        "type": {
+          "cyclic": "Cycle on/off",
+          "daily": "Daily",
+          "everyN": "Every N days",
+          "specificDays": "Specific days"
+        },
+        "waiting": "Waiting for a plan",
+        "weekdays": "Weekdays",
+        "confirm_one": "Saving rewrites the timing of {{count}} plan. Doses and titration steps stay as they are. Doses already logged and your history stay as they are.",
+        "confirm_other": "Saving rewrites the timing of {{count}} plans. Doses and titration steps stay as they are. Doses already logged and your history stay as they are."
       }
     },
     "minInterval": {

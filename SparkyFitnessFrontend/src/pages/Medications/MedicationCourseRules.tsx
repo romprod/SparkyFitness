@@ -16,12 +16,19 @@ export default function MedicationCourseRules({
   rules,
   onChange,
   disabled = false,
+  lockTiming = false,
 }: {
   rules: MedicationCourseRuleInput[];
   onChange: (rules: MedicationCourseRuleInput[]) => void;
   disabled?: boolean;
+  /**
+   * A stack schedule sets the timing (type, weekdays, interval, cycle, time and
+   * anchor); the dose, meal hint, rule start and end stay editable.
+   */
+  lockTiming?: boolean;
 }) {
   const { t } = useTranslation();
+  const timingLocked = disabled || lockTiming;
   const change = (index: number, patch: Partial<MedicationCourseRuleInput>) =>
     onChange(
       rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule))
@@ -46,7 +53,7 @@ export default function MedicationCourseRules({
             <div className="space-y-1">
               <Label>{t('medications.schedule.type', 'Schedule Type')}</Label>
               <Select
-                disabled={disabled}
+                disabled={timingLocked}
                 value={rule.schedule_type_id}
                 onValueChange={(value) =>
                   change(index, {
@@ -107,6 +114,7 @@ export default function MedicationCourseRules({
               <div className="space-y-1">
                 <Label>{t('medications.schedule.time', 'Time of Day')}</Label>
                 <TimeInput
+                  disabled={timingLocked}
                   aria-label={t(
                     'medications.courses.ruleTime',
                     'Rule {{number}} time',
@@ -197,6 +205,7 @@ export default function MedicationCourseRules({
                     key={day}
                     type="button"
                     size="sm"
+                    disabled={timingLocked}
                     variant={
                       rule.days_of_week?.includes(dayIndex)
                         ? 'secondary'
@@ -255,6 +264,7 @@ export default function MedicationCourseRules({
                 <Input
                   type="number"
                   step="1"
+                  disabled={timingLocked}
                   min={field === 'cycle_off_days' ? '0' : '1'}
                   aria-label={t(
                     `medications.courses.${field}`,
@@ -306,6 +316,7 @@ export default function MedicationCourseRules({
                   </Label>
                   <Input
                     type="date"
+                    disabled={timingLocked && field === 'anchor_date'}
                     aria-label={t(
                       `medications.courses.rule.${field}`,
                       {
@@ -327,6 +338,7 @@ export default function MedicationCourseRules({
             type="button"
             variant="ghost"
             size="sm"
+            disabled={lockTiming}
             onClick={() => onChange(rules.filter((_, i) => i !== index))}
           >
             {t('medications.courses.removeRule', 'Remove rule')}
@@ -335,7 +347,7 @@ export default function MedicationCourseRules({
       ))}
       <Button
         type="button"
-        disabled={disabled}
+        disabled={timingLocked}
         variant="outline"
         size="sm"
         onClick={() =>

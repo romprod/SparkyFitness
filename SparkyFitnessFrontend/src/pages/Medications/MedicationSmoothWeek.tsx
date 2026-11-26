@@ -22,6 +22,7 @@ import {
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useManagedMedicationIds } from '@/hooks/Medications/useManagedMedicationIds';
+import { useScheduledStackMedicationIds } from '@/hooks/Medications/useScheduledStackMedicationIds';
 import { useMedicationLogWeek } from '@/hooks/Medications/useMedicationLogWeek';
 import {
   usePinSmoothWeekMedication,
@@ -33,7 +34,8 @@ import { useMoveSchedulesMutation } from '@/hooks/useMedications';
 import type { MedicationDetail, MedicationSchedule } from '@/types/medications';
 import { asMovable } from './asMovable';
 
-type Skipped = 'managed_course' | 'not_weekly' | 'ends_soon';
+type Skipped =
+  'managed_course' | 'not_weekly' | 'ends_soon' | 'in_stack_schedule';
 
 interface ApplyAllResult {
   applied: number;
@@ -66,6 +68,8 @@ export default function MedicationSmoothWeek({
   const { t } = useTranslation();
   const { timezone, formatDate } = usePreferences();
   const managed = useManagedMedicationIds();
+  // Medicines in a stack that has its own schedule: only the stack moves them.
+  const scheduledStackMedicationIds = useScheduledStackMedicationIds();
   const move = useMoveSchedulesMutation();
   const quietMove = useMoveSchedulesMutation({ quiet: true });
   const { pinnedIds } = useSmoothWeekPins();
@@ -96,6 +100,8 @@ export default function MedicationSmoothWeek({
     const fixed = [0, 0, 0, 0, 0, 0, 0];
     for (const med of medications) {
       if (!med.is_active || med.type_id !== 'injection') continue;
+      // Only the stack's schedule moves these; counted as fixed doses so the rest of the week still balances.
+      const inStack = scheduledStackMedicationIds.has(med.id);
       if (managed.has(med.id)) {
         // A course plan owns these doses: count its slots in the week (all but skipped) as fixed.
         let slots = 0;
@@ -119,7 +125,7 @@ export default function MedicationSmoothWeek({
         if (slots > 0 || live)
           skipped.push({
             name: med.display_name || med.name,
-            reason: 'managed_course',
+            reason: inStack ? 'in_stack_schedule' : 'managed_course',
           });
         continue;
       }
@@ -142,7 +148,8 @@ export default function MedicationSmoothWeek({
         (s) => s.end_date !== null && s.end_date < addDays(weekStart, 7)
       );
       let reason: Skipped | null = null;
-      if (!weekly) reason = 'not_weekly';
+      if (inStack) reason = 'in_stack_schedule';
+      else if (!weekly) reason = 'not_weekly';
       else if (endsSoon) reason = 'ends_soon';
       const isPinned = pinnedIds.has(med.id);
       if (reason === null && !isPinned) {
@@ -166,7 +173,16 @@ export default function MedicationSmoothWeek({
       kept,
       counts: new Map(movable.map((item) => [item.id, item.counts])),
     };
-  }, [medications, managed, pinnedIds, weekData, weekLoading, days, weekStart]);
+  }, [
+    medications,
+    managed,
+    pinnedIds,
+    weekData,
+    weekLoading,
+    days,
+    weekStart,
+    scheduledStackMedicationIds,
+  ]);
   if (weekLoading)
     return (
       <Card>
@@ -327,6 +343,10 @@ export default function MedicationSmoothWeek({
     ends_soon: t(
       'medications.smoothWeek.endsSoon',
       'schedule ends within a week'
+    ),
+    in_stack_schedule: t(
+      'medications.smoothWeek.inStackSchedule',
+      'In a stack with its own schedule'
     ),
   };
   const { result } = plan;

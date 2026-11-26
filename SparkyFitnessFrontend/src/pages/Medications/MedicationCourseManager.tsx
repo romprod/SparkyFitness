@@ -11,6 +11,7 @@ import {
   type MedicationCourseBucket,
 } from '@workspace/shared';
 import { useMedicationCourses } from '@/hooks/Medications/useMedicationCourses';
+import { useStacksForScope } from '@/hooks/Medications/useMedicationStacks';
 import { useMedicationInjections } from '@/hooks/useMedications';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import type { MedicationDetail } from '@/types/medications';
@@ -18,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import MedicationCourseEditor from './MedicationCourseEditor';
+import { stackBindingFor } from './stackScheduleText';
 import MedicationCourseHistory from './MedicationCourseHistory';
 import MedicationCourseCycles from './MedicationCourseCycles';
 import MedicationCourseCycleAction from './MedicationCourseCycleAction';
@@ -64,6 +66,8 @@ function CourseManagerContent({
 }) {
   const { t } = useTranslation();
   const { scope, query, data } = result;
+  const stacks = useStacksForScope(scope);
+  const stackBinding = stackBindingFor(stacks.data?.stacks, med.id);
   const [editor, setEditor] = useState<
     | (
         | { mode: 'create' | 'handoff' }
@@ -513,6 +517,7 @@ function CourseManagerContent({
           timezone={data.timezone}
           scope={scope}
           mode={editor.mode}
+          stackBinding={stackBinding}
           {...('course' in editor
             ? { course: editor.course, revision: editor.revision }
             : {})}

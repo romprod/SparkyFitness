@@ -16,6 +16,20 @@ jest.mock('@/hooks/Medications/useMedicationStacks', () => ({
   useSetupStackMutation: jest.fn(),
 }));
 jest.mock('@/hooks/useMedications', () => ({ useMedications: jest.fn() }));
+jest.mock('@/hooks/Medications/useStackSchedule', () => ({
+  useReviewStackScheduleMutation: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+  }),
+  useSaveStackScheduleMutation: () => ({ mutate: jest.fn(), isPending: false }),
+  useClearStackScheduleMutation: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+  }),
+}));
+jest.mock('@/contexts/PreferencesContext', () => ({
+  usePreferences: () => ({ timeFormat: 'HH:mm', formatDate: (d: string) => d }),
+}));
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -143,4 +157,123 @@ it('opens the premixed stack setup from the header', () => {
   expect(screen.getByRole('dialog')).toHaveTextContent(
     'Set up a premixed stack'
   );
+});
+
+describe('stack schedule', () => {
+  const schedule = (patch: object = {}) => ({
+    schedule_type_id: 'daily',
+    time_of_day: '08:00',
+    days_of_week: null,
+    interval_days: null,
+    cycle_on_days: null,
+    cycle_off_days: null,
+    start_date: null,
+    version: 1,
+    updated_at: '2026-11-20T00:00:00.000Z',
+    ...patch,
+  });
+  const scheduled = (
+    patch: object = {},
+    members: ReturnType<typeof member>[] = stack.members
+  ) => ({ ...stack, schedule: schedule(patch), members });
+  const section = () => screen.getByRole('region', { name: 'Morning stack' });
+
+  it('renders a stack without a schedule field exactly as before', () => {
+    setup();
+    expect(section()).not.toHaveTextContent('Stack schedule');
+    expect(
+      screen.queryByRole('button', { name: /schedule/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('says there is no stack schedule and offers Set schedule', () => {
+    setup(undefined, true, [{ ...stack, schedule: null } as typeof stack]);
+    expect(section()).toHaveTextContent(
+      'Stack schedule: No stack schedule. Each medicine keeps its own.'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Set schedule' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Applies to every plan in this stack.'
+    );
+  });
+
+  it('hides the schedule button for read-only access', () => {
+    setup(undefined, false, [{ ...stack, schedule: null } as typeof stack]);
+    expect(
+      screen.queryByRole('button', { name: 'Set schedule' })
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [{}, 'Daily at 08:00'],
+    [
+      {
+        schedule_type_id: 'specific_days',
+        days_of_week: [1, 4],
+        time_of_day: '20:00',
+      },
+      'Mon, Thu at 20:00',
+    ],
+    [
+      {
+        schedule_type_id: 'every_n_days',
+        interval_days: 3,
+        start_date: '2026-12-01',
+      },
+      'Every 3 days at 08:00 from 1 Dec',
+    ],
+    [
+      {
+        schedule_type_id: 'cyclic',
+        cycle_on_days: 5,
+        cycle_off_days: 2,
+        time_of_day: null,
+        start_date: '2026-12-01',
+      },
+      '5 days on, 2 off from 1 Dec',
+    ],
+  ])('summarises the schedule %j', (patch, text) => {
+    setup(undefined, true, [scheduled(patch) as unknown as typeof stack]);
+    expect(section()).toHaveTextContent(`Stack schedule: ${text}`);
+    expect(
+      screen.getByRole('button', { name: 'Edit schedule' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows how each member relates to the schedule', () => {
+    setup(undefined, true, [
+      scheduled({}, [
+        member(1, 'Omega 3', {
+          schedule_status: 'following',
+          schedule_bound: true,
+        }),
+        member(2, 'Magnesium', { schedule_status: 'pending' }),
+        member(3, 'Retatrutide', {
+          schedule_status: 'not_following',
+          schedule_note: 'has_own_schedule',
+        }),
+        member(4, 'Vitamin D', {
+          schedule_status: 'not_following',
+          schedule_note: 'follows_other_stack',
+          schedule_note_stack_name: 'Evening stack',
+        }),
+        member(5, 'Zinc', {
+          schedule_status: 'not_following',
+          schedule_note: 'paused',
+        }),
+        member(6, 'Iron', {
+          schedule_status: 'not_following',
+          schedule_note: 'latest_not_applied',
+        }),
+      ]) as unknown as typeof stack,
+    ]);
+    const text = section();
+    expect(text).toHaveTextContent('Omega 3');
+    expect(text).toHaveTextContent('Following');
+    expect(text).toHaveTextContent('Waiting for a plan');
+    expect(text).toHaveTextContent('Not following: has its own schedule');
+    expect(text).toHaveTextContent('Not following: follows Evening stack');
+    expect(text).toHaveTextContent('Not following: paused');
+    expect(text).toHaveTextContent('Not following the latest schedule');
+  });
 });

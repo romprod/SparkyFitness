@@ -21,7 +21,10 @@ import {
   type MedicationCourseEditInput,
   type MedicationCourseReviseInput,
   type MedicationCourseHandoffCandidate,
+  type MedicationStack,
+  type MedicationStackSchedule,
   type TitrationStep,
+  stackRuleFor,
 } from '@workspace/shared';
 import {
   useCourseHandoffRules,
@@ -50,6 +53,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import MedicationCourseRules from './MedicationCourseRules';
+import MedicationStackScheduleDialog from './MedicationStackScheduleDialog';
 import MedicationCourseCycleDates from './MedicationCourseCycleDates';
 import MedicationCourseRampGenerator from './MedicationCourseRampGenerator';
 import MedicationCourseRampChart from './MedicationCourseRampChart';
@@ -67,7 +71,8 @@ type Attempt =
 function initialPlan(
   med: MedicationDetail,
   today: string,
-  revision?: MedicationCourseRevision
+  revision?: MedicationCourseRevision,
+  stackSchedule?: MedicationStackSchedule
 ): MedicationCoursePlanInput {
   if (!revision)
     return {
@@ -77,7 +82,14 @@ function initialPlan(
       target_dose: null,
       dose_unit: med.dose_unit ?? '',
       dose_basis: 'per_injection',
-      rules: [{ schedule_type_id: 'daily', time_of_day: null }],
+      rules: [
+        stackSchedule
+          ? stackRuleFor(stackSchedule, {
+              schedule_type_id: 'daily',
+              time_of_day: null,
+            })
+          : { schedule_type_id: 'daily', time_of_day: null },
+      ],
       steps: [],
       notes: null,
     };
@@ -126,6 +138,7 @@ export default function MedicationCourseEditor({
   course,
   revision,
   advance,
+  stackBinding,
   onClose,
   onRefresh,
 }: {
@@ -141,6 +154,14 @@ export default function MedicationCourseEditor({
    * the phases from that one on; nothing is saved without the normal review.
    */
   advance?: CourseAdvanceProposal;
+  /**
+   * The scheduled stack that sets this medicine's timing. Its timing controls
+   * are locked and a new plan starts from the stack's schedule.
+   */
+  stackBinding?: {
+    stack: MedicationStack;
+    schedule: MedicationStackSchedule;
+  } | null;
   onClose: () => void;
   onRefresh: () => Promise<MedicationCourse | undefined>;
 }) {
@@ -168,8 +189,16 @@ export default function MedicationCourseEditor({
   );
   const client = useQueryClient();
   const [mode, setMode] = useState(initialMode);
+  // A legacy hand-off copies the medicine's own rules, so only plans authored here follow the stack.
+  const stackLocked = !!stackBinding && initialMode !== 'handoff';
+  const [stackDialog, setStackDialog] = useState(false);
   const [draft, setDraft] = useState(() => ({
-    ...initialPlan(med, today, revision),
+    ...initialPlan(
+      med,
+      today,
+      revision,
+      stackLocked ? stackBinding?.schedule : undefined
+    ),
     ...(initialMode === 'revise' ? { start_date: today } : {}),
     ...(initialMode === 'revise' && advance ? { steps: advance.steps } : {}),
   }));
@@ -803,9 +832,35 @@ export default function MedicationCourseEditor({
                 )}
               </div>
             )}
+            {stackLocked && stackBinding && (
+              <div
+                role="status"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/20 p-3 text-sm"
+              >
+                <span>
+                  {t(
+                    'medications.courses.stackTiming',
+                    'Timing is set by the {{stack}} stack.',
+                    { stack: stackBinding.stack.name }
+                  )}
+                </span>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0"
+                  onClick={() => setStackDialog(true)}
+                >
+                  {t(
+                    'medications.courses.stackTimingChange',
+                    'Change on the stack'
+                  )}
+                </Button>
+              </div>
+            )}
             <MedicationCourseRules
               rules={draft.rules}
               disabled={locked}
+              lockTiming={stackLocked}
               onChange={(rules) => change({ rules })}
             />
             <div className="space-y-3 rounded-md border p-3">
@@ -1461,6 +1516,12 @@ export default function MedicationCourseEditor({
             </Button>
           )}
         </DialogFooter>
+        {stackDialog && stackBinding && (
+          <MedicationStackScheduleDialog
+            stack={stackBinding.stack}
+            onClose={() => setStackDialog(false)}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

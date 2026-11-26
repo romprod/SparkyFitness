@@ -54,7 +54,7 @@ interface ResolvedMedicine {
   is_active: boolean;
 }
 
-/** The owner's medicine whose name or display name matches, ignoring case and outer spaces; locked for the transaction. */
+/** The owner's medicine whose name or display name matches, ignoring case and outer spaces. Not locked: see lockMedicines. */
 async function findMedicine(
   client: PoolClient,
   owner: string,
@@ -65,11 +65,35 @@ async function findMedicine(
      WHERE user_id = $1
        AND (lower(btrim(name)) = lower(btrim($2)) OR lower(btrim(display_name)) = lower(btrim($2)))
      ORDER BY is_active DESC, created_at, id
-     LIMIT 1
-     FOR UPDATE`,
+     LIMIT 1`,
     [owner, name]
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Locks the resolved medicines in ascending id order, whatever order the
+ * components named them in, so two set-ups (or a stack schedule save) that
+ * share medicines cannot take the same locks in opposite orders. The archived
+ * flag is read again under the lock.
+ */
+async function lockMedicines(
+  client: PoolClient,
+  owner: string,
+  found: (ResolvedMedicine | null)[]
+) {
+  const ids = [
+    ...new Set(found.flatMap((item) => (item ? [item.id!] : []))),
+  ].sort();
+  for (const id of ids) {
+    const { rows } = await client.query<{ is_active: boolean }>(
+      'SELECT is_active FROM medications WHERE user_id = $1 AND id = $2 FOR UPDATE',
+      [owner, id]
+    );
+    if (rows[0])
+      for (const item of found)
+        if (item?.id === id) item.is_active = rows[0].is_active;
+  }
 }
 
 async function work(
@@ -91,6 +115,7 @@ async function work(
   const found: (ResolvedMedicine | null)[] = [];
   for (const component of input.components)
     found.push(await findMedicine(client, owner, component.medication_name));
+  await lockMedicines(client, owner, found);
   const foundIds = found.flatMap((item) => (item ? [item.id!] : []));
   if (new Set(foundIds).size !== foundIds.length)
     throw courseProblem(
