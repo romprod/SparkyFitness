@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Check,
+  CalendarClock,
   CircleDashed,
   Droplet,
   Layers,
@@ -21,7 +22,9 @@ import {
 import { useMedicationStacks } from '@/hooks/Medications/useMedicationStacks';
 import { useDeleteStackMutation } from '@/hooks/Medications/useMedicationStacks';
 import MedicationStackDialog from './MedicationStackDialog';
+import MedicationStackScheduleDialog from './MedicationStackScheduleDialog';
 import MedicationStackSetupDialog from './MedicationStackSetupDialog';
+import { describeStackSchedule, memberScheduleChip } from './stackScheduleText';
 import {
   stackProgress,
   type StackMemberState,
@@ -57,6 +60,7 @@ export default function MedicationStacksCard<
   const remove = useDeleteStackMutation();
   const [editing, setEditing] = useState<MedicationStack | 'new' | null>(null);
   const [settingUp, setSettingUp] = useState(false);
+  const [scheduling, setScheduling] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notices, setNotices] = useState<Record<string, string>>({});
 
@@ -182,6 +186,45 @@ export default function MedicationStacksCard<
                             due: progress.due,
                           })}
                     </p>
+                    {stack.schedule !== undefined && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        <CalendarClock
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <span className="text-muted-foreground">
+                          {t(
+                            'medications.stacks.schedule.rowLabel',
+                            'Stack schedule'
+                          )}
+                          :{' '}
+                          {stack.schedule
+                            ? describeStackSchedule(t, stack.schedule)
+                            : t(
+                                'medications.stacks.schedule.none',
+                                'No stack schedule. Each medicine keeps its own.'
+                              )}
+                        </span>
+                        {canWrite && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setScheduling(stack.id)}
+                          >
+                            {stack.schedule
+                              ? t(
+                                  'medications.stacks.schedule.edit',
+                                  'Edit schedule'
+                                )
+                              : t(
+                                  'medications.stacks.schedule.set',
+                                  'Set schedule'
+                                )}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {canWrite && (
                     <div className="flex shrink-0 gap-1">
@@ -224,46 +267,65 @@ export default function MedicationStacksCard<
                   )}
                 </div>
                 <ul className="space-y-1 text-sm">
-                  {progress.members.map(({ member, state }) => (
-                    <li
-                      key={member.medication_id}
-                      className="flex items-center justify-between gap-2"
-                    >
-                      <span
-                        className={
-                          state === 'not-due'
-                            ? 'break-words text-muted-foreground'
-                            : 'break-words'
-                        }
+                  {progress.members.map(({ member, state }) => {
+                    const chip = memberScheduleChip(t, stack, member);
+                    return (
+                      <li
+                        key={member.medication_id}
+                        className="flex items-center justify-between gap-2"
                       >
-                        {member.name}
-                        {!member.is_active && (
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            {t('medications.stacks.inactiveTag', '(inactive)')}
-                          </span>
-                        )}
-                      </span>
-                      <span
-                        className={`flex shrink-0 items-center gap-1 text-xs ${
-                          state === 'logged'
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : state === 'own-log'
-                              ? 'text-amber-700 dark:text-amber-300'
-                              : 'text-muted-foreground'
-                        }`}
-                      >
-                        {state === 'logged' ? (
-                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                        ) : (
-                          <CircleDashed
-                            className="h-3.5 w-3.5"
-                            aria-hidden="true"
-                          />
-                        )}
-                        {stateLabel[state]}
-                      </span>
-                    </li>
-                  ))}
+                        <span
+                          className={
+                            state === 'not-due'
+                              ? 'break-words text-muted-foreground'
+                              : 'break-words'
+                          }
+                        >
+                          {member.name}
+                          {!member.is_active && (
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              {t(
+                                'medications.stacks.inactiveTag',
+                                '(inactive)'
+                              )}
+                            </span>
+                          )}
+                          {chip && (
+                            <span
+                              className={`block text-xs ${
+                                chip.tone === 'ok'
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : chip.tone === 'warn'
+                                    ? 'text-amber-700 dark:text-amber-300'
+                                    : 'text-muted-foreground'
+                              }`}
+                            >
+                              {chip.text}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`flex shrink-0 items-center gap-1 text-xs ${
+                            state === 'logged'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : state === 'own-log'
+                                ? 'text-amber-700 dark:text-amber-300'
+                                : 'text-muted-foreground'
+                          }`}
+                        >
+                          {state === 'logged' ? (
+                            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                          ) : (
+                            <CircleDashed
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {stateLabel[state]}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 {canWrite && (
                   <Button
@@ -302,6 +364,13 @@ export default function MedicationStacksCard<
       </Card>
       {settingUp && (
         <MedicationStackSetupDialog onClose={() => setSettingUp(false)} />
+      )}
+      {scheduling && list.find((stack) => stack.id === scheduling) && (
+        <MedicationStackScheduleDialog
+          key={scheduling}
+          stack={list.find((stack) => stack.id === scheduling)!}
+          onClose={() => setScheduling(null)}
+        />
       )}
       {editing && (
         <MedicationStackDialog
