@@ -44,6 +44,8 @@ export const medicationStackMemberSchema = z.object({
   schedule_note: stackNotFollowingReasonSchema.nullable().optional(),
   /** The other stack, when the note is follows_other_stack. */
   schedule_note_stack_name: z.string().nullable().optional(),
+  /** The medicine follows this stack's schedule, so its plan's timing is set by the stack. */
+  schedule_bound: z.boolean().optional(),
 });
 export type MedicationStackMember = z.infer<typeof medicationStackMemberSchema>;
 
