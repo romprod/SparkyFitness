@@ -103,6 +103,23 @@ describe('deleteMedication guard', () => {
     expect(counts).toContain('FROM medication_prescriptions');
   });
 
+  it('counts a prescription once, through its coverage rows or its primary column', async () => {
+    script({});
+    await medicationRepository.deleteMedication(owner, med);
+    const counts = sql().find((q) => q.includes('AS stock'))!;
+    const rx = counts.slice(
+      counts.indexOf('FROM medication_prescriptions'),
+      counts.indexOf('AS prescriptions')
+    );
+    expect(rx).toContain('rx.medication_id = $1');
+    expect(rx).toContain('FROM medication_prescription_medications cov');
+    expect(rx).toContain('cov.medication_id = $1');
+    expect(rx).toContain('rx.user_id = $2');
+    // One row per prescription, never one per coverage row.
+    expect(rx).not.toContain('JOIN');
+    expect(rx).toMatch(/^FROM medication_prescriptions rx WHERE/);
+  });
+
   it('answers false and deletes nothing when the medicine is not the owner’s', async () => {
     mocks.query.mockResolvedValue(rows());
     await expect(

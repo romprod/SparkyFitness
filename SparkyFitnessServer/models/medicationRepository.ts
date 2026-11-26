@@ -326,7 +326,13 @@ async function deleteMedication(userId: string, id: string) {
                SELECT 1 FROM medication_course_handoffs h
                  JOIN medication_courses c ON c.id = h.course_id AND c.user_id = h.user_id
                 WHERE h.schedule_id = s.id AND h.user_id = s.user_id AND c.deleted_at IS NULL)) AS schedules,
-         (SELECT COUNT(*)::int FROM medication_prescriptions WHERE medication_id = $1 AND user_id = $2) AS prescriptions,
+         (SELECT COUNT(*)::int FROM medication_prescriptions rx
+           WHERE rx.user_id = $2
+             AND (rx.medication_id = $1
+               OR EXISTS (
+                 SELECT 1 FROM medication_prescription_medications cov
+                  WHERE cov.prescription_id = rx.id AND cov.user_id = rx.user_id
+                    AND cov.medication_id = $1))) AS prescriptions,
          (SELECT COUNT(*)::int FROM medication_entries WHERE medication_id = $1 AND user_id = $2)
          + (SELECT COUNT(*)::int FROM injection_entries WHERE medication_id = $1 AND user_id = $2) AS doses`,
       [id, userId]

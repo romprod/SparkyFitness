@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getClient, getSystemClient, endPool } from '../db/poolManager.js';
 import medications from '../models/medicationRepository.js';
+import { createMedicationPrescription } from '../models/medicationPrescriptionRepository.js';
+import { medicationPrescriptionCreateSchemaV2 } from '@workspace/shared';
 import stock from '../models/medicationPenRepository.js';
 import injections from '../models/injectionRepository.js';
 import { saveSyringe } from '../models/medicationSyringeRepository.js';
@@ -135,6 +137,54 @@ describe.runIf(process.env.MEDICATION_CASCADE_INTEGRATION === '1')(
         type_id: 'injection',
       });
       expect(await medications.deleteMedication(owner, unused.id)).toBe(true);
+    });
+    it('refuses a medicine covered only as the second medicine on a prescription, and deletes it once it is off', async () => {
+      const first = await medications.createMedication(owner, {
+        name: 'Synthetic first covered medicine',
+        type_id: 'injection',
+      });
+      const second = await medications.createMedication(owner, {
+        name: 'Synthetic second covered medicine',
+        type_id: 'injection',
+      });
+      const made = await createMedicationPrescription(
+        owner,
+        medicationPrescriptionCreateSchemaV2.parse({
+          medication_ids: [first.id, second.id],
+          operation_id: randomUUID(),
+          currency: 'AUD',
+        })
+      );
+      // The deprecated primary column only mirrors the first medicine, so this
+      // medicine is on the prescription through its coverage row alone.
+      await expect(
+        medications.deleteMedication(owner, second.id)
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        in_use: {
+          stock: 0,
+          plans: 0,
+          schedules: 0,
+          prescriptions: 1,
+          doses: 0,
+        },
+      });
+      const client = await getClient(owner);
+      try {
+        const left = await client.query(
+          'SELECT 1 FROM medications WHERE id=$1 AND user_id=$2',
+          [second.id, owner]
+        );
+        expect(left.rowCount).toBe(1);
+        // Taken off the prescription (as its owner), it is no longer in use.
+        await client.query(
+          'DELETE FROM medication_prescription_medications WHERE prescription_id=$1 AND medication_id=$2',
+          [made.id, second.id]
+        );
+      } finally {
+        client.release();
+      }
+      expect(await medications.deleteMedication(owner, second.id)).toBe(true);
     });
     it.each(['manual', 'prepared', 'calculated'] as const)(
       'normal medication deletion preserves %s injection history and clears only nullable links',
