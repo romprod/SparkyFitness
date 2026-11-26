@@ -145,6 +145,10 @@ The selected chart extension is implemented and source-tested. Cabinet and Diary
 
 Existing custom-profile fallback values remain part of model resolution; the notice does not turn a missing/zero/non-numeric custom setting that already uses those defaults into an unavailable model. The selected diagnostic distinguishes an unresolved profile or invalid effective parameters from an otherwise available model with no logged history.
 
+## Prescriptions that cover several medicines
+
+A prescription can cover up to 20 medicines, for example one compounded fill for a stack, and a medicine can have several prescriptions. Pick the medicines on the prescription form (the first is the primary); the list shows them all, a deleted medicine stays as a named chip, and vial and plan pickers offer every prescription that covers the medicine. A medicine cannot be removed from a prescription while stock or a plan still uses it; unlink those first. A total price for several medicines is not a per-vial price: choose "Whole prescription" and each vial linked to it gets an equal share, rounded down. A vial with its own invoice price keeps the invoice and its share is not given to the others.
+
 ## Selected opt-in course history
 
 The selected website course-history extension is implemented and source-tested inside existing Cabinet schedule/titration tools. You explicitly opt into a course; old schedules and doses are not converted automatically. A review step identifies which existing schedule rules will be bounded before the new course supplies future dues. Unselected rules remain unchanged. Material revisions keep prior course history rather than rewriting it.
