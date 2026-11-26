@@ -234,8 +234,8 @@ export const DataManagementSettings = () => {
         </h3>
         <p className="text-sm text-muted-foreground">
           {t(
-            'settings.dataManagement.medication.description',
-            "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, your daily journal, or your DEXA body composition scans as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule; a dose of a blend is followed by a derived row for each compound in it. The journal holds weight, mood, energy, focus, sleep, water and notes."
+            'settings.dataManagement.medication.descriptionWithFood',
+            "Download every recorded dose and injection, every lab result, every resting metabolic rate test, your wearable's daily figures, your daily journal, or your DEXA body composition scans as a CSV file for a spreadsheet or your clinician. Doses include supplements, the vial and plan each came from, and the time against its schedule; a dose of a blend is followed by a derived row for each compound in it. The journal holds weight, mood, energy, focus, sleep, calories and protein from the food diary, water, side effects from your symptom log, and notes."
           )}
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">

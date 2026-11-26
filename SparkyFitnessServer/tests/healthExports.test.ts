@@ -86,6 +86,8 @@ describe('journal CSV', () => {
     moods: [],
     water: [],
     sleep: [],
+    nutrition: [],
+    symptoms: [],
     ...patch,
   });
 
@@ -228,6 +230,88 @@ describe('journal CSV', () => {
     });
   });
 
+  it('rounds calories to whole kcal and protein to one decimal', () => {
+    const [record] = journalExportRecords(
+      parts({
+        nutrition: [{ day: '2026-11-22', calories: 2149.5, protein_g: 151.26 }],
+      })
+    );
+    expect(record).toMatchObject({ calories: 2150, protein_g: 151.3 });
+  });
+
+  it('gives a day with only food, or only symptoms, its own row', () => {
+    const records = journalExportRecords(
+      parts({
+        nutrition: [{ day: '2026-11-21', calories: 1800, protein_g: 120 }],
+        symptoms: [
+          {
+            day: '2026-11-20',
+            at: '2026-11-20T09:00:00Z',
+            name: 'Nausea',
+            severity_label: null,
+          },
+        ],
+      })
+    );
+    expect(records.map((r) => r.entry_date)).toEqual([
+      '2026-11-21',
+      '2026-11-20',
+    ]);
+    expect(records[0]).toMatchObject({ calories: 1800, side_effects: null });
+    expect(records[1]).toMatchObject({
+      calories: null,
+      protein_g: null,
+      side_effects: 'Nausea',
+    });
+  });
+
+  it('leaves a missing or non-finite food figure empty, never zero', () => {
+    const records = journalExportRecords(
+      parts({
+        nutrition: [
+          { day: '2026-11-22', calories: 1900, protein_g: null },
+          { day: '2026-11-21', calories: null, protein_g: 90 },
+          { day: '2026-11-20', calories: null, protein_g: null },
+          { day: '2026-11-19', calories: NaN, protein_g: Infinity },
+        ],
+      })
+    );
+    expect(records.map((r) => r.entry_date)).toEqual([
+      '2026-11-22',
+      '2026-11-21',
+    ]);
+    expect(records[0]).toMatchObject({ calories: 1900, protein_g: null });
+    expect(records[1]).toMatchObject({ calories: null, protein_g: 90 });
+  });
+
+  it('lists side effects oldest first, severity lower-cased, skipping blank names', () => {
+    const [record] = journalExportRecords(
+      parts({
+        symptoms: [
+          {
+            day: '2026-11-22',
+            at: '2026-11-22T18:00:00Z',
+            name: 'Headache',
+            severity_label: '  ',
+          },
+          {
+            day: '2026-11-22',
+            at: '2026-11-22T09:00:00Z',
+            name: ' Nausea ',
+            severity_label: ' Moderate ',
+          },
+          {
+            day: '2026-11-22',
+            at: '2026-11-22T12:00:00Z',
+            name: '   ',
+            severity_label: 'Mild',
+          },
+        ],
+      })
+    );
+    expect(record?.side_effects).toBe('Nausea (moderate), Headache');
+  });
+
   it('writes rows under the headers, with blanks for what was not recorded', () => {
     const rows = journalExportRows(
       journalExportRecords(
@@ -245,7 +329,7 @@ describe('journal CSV', () => {
       )
     );
     expect(toCsv(JOURNAL_EXPORT_HEADERS, rows)).toBe(
-      'date,weight_kg,body_fat_percent,muscle_mass_kg,mood,energy,focus,sleep_hours,water_ml,notes\r\n2026-11-22,79.9,,,,,,,,\r\n'
+      'date,weight_kg,body_fat_percent,muscle_mass_kg,mood,energy,focus,sleep_hours,calories,protein_g,water_ml,side_effects,notes\r\n2026-11-22,79.9,,,,,,,,,,,\r\n'
     );
   });
 });

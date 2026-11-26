@@ -4,8 +4,12 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   release: vi.fn(),
   getClient: vi.fn(),
+  nutrition: vi.fn(),
 }));
 vi.mock('../db/poolManager.js', () => ({ getClient: mocks.getClient }));
+vi.mock('../models/reportRepository.js', () => ({
+  getNutritionData: mocks.nutrition,
+}));
 import {
   listWearableExportRecords,
   loadJournalExportParts,
@@ -22,6 +26,7 @@ beforeEach(() => {
     query: mocks.query,
     release: mocks.release,
   });
+  mocks.nutrition.mockResolvedValue([]);
 });
 
 describe('wearable records', () => {
@@ -162,7 +167,22 @@ describe('journal parts', () => {
         ])
       )
       .mockResolvedValueOnce(rows([{ day: '2026-11-22', water_ml: '1500' }]))
-      .mockResolvedValueOnce(rows([{ day: '2026-11-22', seconds: '24600' }]));
+      .mockResolvedValueOnce(rows([{ day: '2026-11-22', seconds: '24600' }]))
+      .mockResolvedValueOnce(
+        rows([
+          {
+            day: '2026-11-22',
+            at: new Date('2026-11-22T09:00:00Z'),
+            name: 'Nausea',
+            severity_label: 'Moderate',
+          },
+          { day: '2026-11-21', at: 'bad', name: null, severity_label: null },
+        ])
+      );
+    mocks.nutrition.mockResolvedValue([
+      { date: '2026-11-22', calories: '2149.6', protein: 151.26 },
+      { date: '2026-11-21', calories: null, protein: undefined },
+    ]);
     const parts = await loadJournalExportParts(owner, owner);
     expect(parts.measurements).toEqual([
       {
@@ -192,14 +212,50 @@ describe('journal parts', () => {
     ]);
     expect(parts.water).toEqual([{ day: '2026-11-22', water_ml: 1500 }]);
     expect(parts.sleep).toEqual([{ day: '2026-11-22', seconds: 24600 }]);
+    expect(parts.nutrition).toEqual([
+      { day: '2026-11-22', calories: 2149.6, protein_g: 151.26 },
+      { day: '2026-11-21', calories: null, protein_g: null },
+    ]);
+    expect(parts.symptoms).toEqual([
+      {
+        day: '2026-11-22',
+        at: '2026-11-22T09:00:00.000Z',
+        name: 'Nausea',
+        severity_label: 'Moderate',
+      },
+      { day: '2026-11-21', at: '', name: '', severity_label: null },
+    ]);
     expect(mocks.release).toHaveBeenCalledTimes(1);
   });
 
-  it('never reads symptoms, which need their own permission', async () => {
+  it('reads symptoms and food under the caregiver’s identity when acting for the owner', async () => {
+    const caregiver = '00000000-0000-4000-a000-0000000000c1';
+    const client = { query: mocks.query, release: mocks.release };
+    mocks.getClient.mockResolvedValue(client);
     mocks.query.mockResolvedValue(rows());
-    await loadJournalExportParts(owner);
-    expect(sql()).toHaveLength(4);
-    expect(sql().join(' ')).not.toContain('symptom');
+    await loadJournalExportParts(owner, caregiver);
+    expect(mocks.getClient).toHaveBeenCalledTimes(1);
+    expect(mocks.getClient).toHaveBeenCalledWith(owner, caregiver);
+    expect(mocks.nutrition.mock.calls[0]?.[4]).toBe(client);
+    expect(mocks.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the food totals on its own client and the symptoms by user', async () => {
+    const client = { query: mocks.query, release: mocks.release };
+    mocks.getClient.mockResolvedValue(client);
+    mocks.query.mockResolvedValue(rows());
+    await loadJournalExportParts(owner, owner);
+    expect(mocks.nutrition).toHaveBeenCalledWith(
+      owner,
+      '1900-01-01',
+      '9999-12-31',
+      [],
+      client
+    );
+    expect(mocks.getClient).toHaveBeenCalledTimes(1);
+    expect(sql()).toHaveLength(5);
+    expect(sql().join(' ')).toContain('symptom_entries');
     for (const text of sql()) expect(text).toContain('user_id=$1');
+    expect(mocks.release).toHaveBeenCalledTimes(1);
   });
 });

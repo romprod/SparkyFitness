@@ -1,5 +1,6 @@
 import type { JournalParts, WearableExportRecord } from '@workspace/shared';
 import { getClient } from '../db/poolManager.js';
+import { getNutritionData } from './reportRepository.js';
 
 /**
  * The owner's daily records for the CSV downloads. Reads only; nothing is written. Wearable rows
@@ -146,7 +147,7 @@ export async function loadJournalExportParts(
 ): Promise<JournalParts> {
   const client = await getClient(userId, authenticatedUserId);
   try {
-    const [measurements, moods, water, sleep] = await Promise.all([
+    const [measurements, moods, water, sleep, symptoms] = await Promise.all([
       client.query(
         `SELECT entry_date::text AS day, COALESCE(updated_at, created_at) AS at, weight,
                 body_fat_percentage, muscle_mass_kg
@@ -176,7 +177,22 @@ export async function loadJournalExportParts(
           GROUP BY entry_date`,
         [userId]
       ),
+      client.query(
+        `SELECT entry_date::text AS day, COALESCE(started_at, logged_at, created_at) AS at,
+                symptom_name_snapshot AS name, severity_label
+           FROM symptom_entries
+          WHERE user_id=$1`,
+        [userId]
+      ),
     ]);
+    // The same daily totals the food diary shows, read on this client; it is released below.
+    const nutrition = (await getNutritionData(
+      userId,
+      '1900-01-01',
+      '9999-12-31',
+      [],
+      client
+    )) as Record<string, Raw>[];
     return {
       // A weight of zero or less is not a reading.
       measurements: (measurements.rows as Record<string, Raw>[]).map((r) => {
@@ -204,6 +220,18 @@ export async function loadJournalExportParts(
       sleep: (sleep.rows as Record<string, Raw>[]).map((r) => ({
         day: String(r['day']),
         seconds: num(r['seconds']),
+      })),
+      nutrition: nutrition.map((r) => ({
+        day: String(r['date']),
+        calories: num(r['calories']),
+        protein_g: num(r['protein']),
+      })),
+      symptoms: (symptoms.rows as Record<string, Raw>[]).map((r) => ({
+        day: String(r['day']),
+        at: instant(r['at']) ?? '',
+        name: r['name'] === null ? '' : String(r['name']),
+        severity_label:
+          r['severity_label'] === null ? null : String(r['severity_label']),
       })),
     };
   } finally {

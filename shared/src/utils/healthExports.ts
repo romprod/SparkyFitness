@@ -2,7 +2,7 @@ import type { CsvCell } from './csv.ts';
 
 /**
  * The two daily-record CSVs Pitstop offers beside doses and labs: the wearable's daily figures
- * and the journal of a day's weight, mood, sleep and water. Pure row builders: the server reads
+ * and the journal of a day's weight, mood, sleep, calories, protein, water and side effects. Pure row builders: the server reads
  * the records, these lay them out, and `toCsv` writes them. Numbers stay numbers, so a spreadsheet
  * can total them, and a figure that was not recorded is an empty cell, never a zero.
  */
@@ -145,6 +145,15 @@ export interface JournalParts {
   }[];
   water: { day: string; water_ml: Num }[];
   sleep: { day: string; seconds: Num }[];
+  /** The food diary's daily totals; a figure the diary does not know is null. */
+  nutrition: { day: string; calories: Num; protein_g: Num }[];
+  /** Symptom log entries; `at` orders a day's entries. */
+  symptoms: {
+    day: string;
+    at: string;
+    name: string;
+    severity_label: string | null;
+  }[];
 }
 
 export interface JournalExportRecord {
@@ -157,7 +166,13 @@ export interface JournalExportRecord {
   focus: Num;
   /** Hours of the longest night, to one decimal. */
   sleep_hours: Num;
+  /** The day's food diary total, whole kcal. */
+  calories: Num;
+  /** The day's food diary protein, to one decimal. */
+  protein_g: Num;
   water_ml: Num;
+  /** The day's symptoms, oldest first, as "Nausea (moderate), Headache". */
+  side_effects: string | null;
   /** Every note of the day, oldest first, joined with " | ". */
   notes: string | null;
 }
@@ -171,7 +186,10 @@ export const JOURNAL_EXPORT_HEADERS = [
   'energy',
   'focus',
   'sleep_hours',
+  'calories',
+  'protein_g',
   'water_ml',
+  'side_effects',
   'notes',
 ] as const;
 
@@ -198,7 +216,10 @@ export function journalExportRecords(
         energy: null,
         focus: null,
         sleep_hours: null,
+        calories: null,
+        protein_g: null,
         water_ml: null,
+        side_effects: null,
         notes: null,
       };
       days.set(day, record);
@@ -239,6 +260,25 @@ export function journalExportRecords(
       round1(row.seconds / 3600)
     );
   }
+  for (const row of parts.nutrition) {
+    const calories = row.calories !== null && Number.isFinite(row.calories);
+    const protein = row.protein_g !== null && Number.isFinite(row.protein_g);
+    if (!calories && !protein) continue;
+    const record = dayOf(row.day);
+    if (calories) record.calories = Math.round(row.calories as number);
+    if (protein) record.protein_g = round1(row.protein_g as number);
+  }
+  const effects = new Map<string, string[]>();
+  for (const row of oldestFirst(parts.symptoms)) {
+    const name = row.name?.trim();
+    if (!name) continue;
+    const label = row.severity_label?.trim().toLowerCase();
+    effects.set(row.day, [
+      ...(effects.get(row.day) ?? []),
+      label ? `${name} (${label})` : name,
+    ]);
+  }
+  for (const [day, list] of effects) dayOf(day).side_effects = list.join(', ');
   return [...days.values()].sort((a, b) =>
     b.entry_date.localeCompare(a.entry_date)
   );
@@ -256,7 +296,10 @@ export function journalExportRows(
     record.energy,
     record.focus,
     record.sleep_hours,
+    record.calories,
+    record.protein_g,
     record.water_ml,
+    record.side_effects,
     record.notes,
   ]);
 }

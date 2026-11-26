@@ -126,6 +126,15 @@ describe('daily record CSV downloads', () => {
       ],
       water: [{ day: '2026-11-22', water_ml: 1500 }],
       sleep: [{ day: '2026-11-22', seconds: 24600 }],
+      nutrition: [{ day: '2026-11-22', calories: 2149.6, protein_g: 151.26 }],
+      symptoms: [
+        {
+          day: '2026-11-22',
+          at: '2026-11-22T09:00:00Z',
+          name: 'Nausea',
+          severity_label: 'Moderate',
+        },
+      ],
     });
   });
 
@@ -150,8 +159,8 @@ describe('daily record CSV downloads', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-disposition']).toMatch(/journal-/);
     expect(response.text.split('\r\n').slice(0, 2)).toEqual([
-      'date,weight_kg,body_fat_percent,muscle_mass_kg,mood,energy,focus,sleep_hours,water_ml,notes',
-      '2026-11-22,79.9,,,4,3,,6.8,1500,"\'=HYPERLINK(""x"")"',
+      'date,weight_kg,body_fat_percent,muscle_mass_kg,mood,energy,focus,sleep_hours,calories,protein_g,water_ml,side_effects,notes',
+      '2026-11-22,79.9,,,4,3,,6.8,2150,151.3,1500,Nausea (moderate),"\'=HYPERLINK(""x"")"',
     ]);
     expect(mocks.journal).toHaveBeenCalledWith(owner, owner);
   });

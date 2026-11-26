@@ -19,8 +19,10 @@ import { sendCsvDownload } from '../../utils/csvResponse.js';
 
 /**
  * CSV downloads of daily health records. Same access as the check-in APIs: the owner, or a
- * caregiver with check-in access acting on their behalf. Symptoms are not here: they need their
- * own permission and have their own report.
+ * caregiver with check-in access acting on their behalf. The journal also carries the food diary's
+ * daily calories and protein and the symptom log's side effects. Row-level security limits a
+ * caregiver to the rows their own permissions allow (symptoms need symptom access, food needs
+ * diary access); without them those cells are empty.
  */
 const router = express.Router();
 router.use(authenticate);
@@ -64,7 +66,7 @@ router.get('/wearable', async (req, res, next) => {
  * @openapi
  * /v2/health-exports/journal:
  *   get:
- *     summary: Download the daily journal (weight, mood, energy, focus, sleep, water, notes) as CSV
+ *     summary: Download the daily journal (weight, mood, energy, focus, sleep, calories, protein, water, side effects, notes) as CSV
  *     tags: [Check-in]
  *     security:
  *       - cookieAuth: []
