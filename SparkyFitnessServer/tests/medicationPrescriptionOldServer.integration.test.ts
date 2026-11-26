@@ -12,13 +12,35 @@ describe.runIf(
   process.env.MEDICATION_PRESCRIPTION_COVERAGE_INTEGRATION === '1'
 )('older server on the prescription coverage schema PostgreSQL', () => {
   const h = prescriptionCoverageHarness('old-server');
-  const { owner, admin, actor, medication, create, stock, coverage, mirror } =
-    h;
+  const {
+    owner,
+    admin,
+    actor,
+    sql,
+    medication,
+    create,
+    stock,
+    coverage,
+    mirror,
+  } = h;
   beforeAll(h.setup);
   afterAll(async () => {
     await h.teardown();
     await endPool();
   });
+  // The repository refuses a covered medicine (in-use guard, 26 Nov); this tests what the database does when one goes.
+  const deleteCovered = async (id: string) => {
+    await expect(
+      actor(owner, () => medications.deleteMedication(owner, id))
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const result = await sql((client) =>
+      client.query('DELETE FROM medications WHERE id=$1 AND user_id=$2', [
+        id,
+        owner,
+      ])
+    );
+    expect(result.rowCount).toBe(1);
+  };
   const legacyInput = (
     medication_id: string,
     patch: Record<string, unknown> = {}
@@ -117,7 +139,7 @@ describe.runIf(
     const a = await medication('Synthetic Gone'),
       b = await medication('Synthetic Stays'),
       made = await create([a, b]);
-    await medications.deleteMedication(owner, a);
+    await deleteCovered(a);
     expect(await mirror(made.id)).toBe(b);
     expect(
       (
@@ -126,7 +148,7 @@ describe.runIf(
         )
       ).medication_name
     ).toBe('Synthetic Stays');
-    await medications.deleteMedication(owner, b);
+    await deleteCovered(b);
     expect(await mirror(made.id)).toBeNull();
     expect(
       await actor(owner, () => legacy.getMedicationPrescription(owner, made.id))

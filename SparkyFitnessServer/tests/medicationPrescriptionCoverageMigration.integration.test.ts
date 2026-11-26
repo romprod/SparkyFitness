@@ -28,6 +28,19 @@ describe.runIf(
     await h.teardown();
     await endPool();
   });
+  // The repository refuses a covered medicine (in-use guard, 26 Nov); this tests what the database does when one goes.
+  const deleteCovered = async (id: string) => {
+    await expect(
+      actor(owner, () => medications.deleteMedication(owner, id))
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const result = await sql((client) =>
+      client.query('DELETE FROM medications WHERE id=$1 AND user_id=$2', [
+        id,
+        owner,
+      ])
+    );
+    expect(result.rowCount).toBe(1);
+  };
   const migration = () =>
     readFile(
       new URL(
@@ -168,7 +181,7 @@ describe.runIf(
         [owner, a, v1.id]
       )
     );
-    await medications.deleteMedication(owner, gone);
+    await deleteCovered(gone);
     // Every figure a person can read, taken while the legacy-shaped data is whole.
     const wasCovered = await coverage(orphan.id);
     expect(wasCovered).toHaveLength(1);

@@ -53,6 +53,21 @@ describe.runIf(
     await h.teardown();
     await endPool();
   });
+  // The repository refuses a covered medicine (in-use guard, 26 Nov); this tests what the database does when one goes.
+  const deleteCovered = async (id: string, as = owner) => {
+    await expect(
+      actor(as, () => medications.deleteMedication(owner, id))
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const result = await sql(
+      (client) =>
+        client.query('DELETE FROM medications WHERE id=$1 AND user_id=$2', [
+          id,
+          owner,
+        ]),
+      as
+    );
+    expect(result.rowCount).toBe(1);
+  };
   const successor = async (id: string, expected: number, as = owner) =>
     actor(as, async () => {
       const draft = {
@@ -324,7 +339,7 @@ describe.runIf(
         made = await create([a, b]);
       const vialB = await stock(b, made.id),
         planB = await course(b, made.id);
-      expect(await medications.deleteMedication(owner, a)).toBe(true);
+      await deleteCovered(a);
       let rows = await coverage(made.id);
       expect(rows.map((r) => r.medication_id)).toEqual([null, b]);
       expect(rows[0]!.medication_name_snapshot).toBe('Synthetic Alpha');
@@ -378,7 +393,7 @@ describe.runIf(
       expect(rows.map((r) => r.medication_id)).toEqual([b, null]);
       // A deleted medicine's plan can still pass the link to its successor, but nothing can freshly link a tombstone.
       expect(await binding('medication_pens', vialB.id)).toBe(made.id);
-      expect(await medications.deleteMedication(owner, b)).toBe(true);
+      await deleteCovered(b);
       expect(
         (await getMedicationCourse(owner, planB.course_id)).course.medication_id
       ).toBeNull();
@@ -419,7 +434,7 @@ describe.runIf(
         made = await create([a, b]);
       await stock(a, made.id);
       await course(b, made.id);
-      await actor(delegate, () => medications.deleteMedication(owner, a));
+      await deleteCovered(a, delegate);
       expect((await coverage(made.id)).map((r) => r.medication_id)).toEqual([
         null,
         b,
