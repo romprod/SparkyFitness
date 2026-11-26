@@ -133,6 +133,8 @@ BEGIN
     'medication_purchase_packs',
     'medication_stacks',
     'medication_stack_members',
+    'medication_stack_schedules',
+    'medication_stack_schedule_bindings',
     'medication_blend_components',
     'life_events',
     'medication_reminder_settings',
@@ -1139,6 +1141,8 @@ SELECT create_medication_policy('medication_pens');
 SELECT create_medication_policy('medication_packs');
 SELECT create_medication_policy('medication_stacks');
 SELECT create_medication_policy('medication_stack_members');
+SELECT create_medication_policy('medication_stack_schedules');
+SELECT create_medication_policy('medication_stack_schedule_bindings');
 SELECT create_medication_policy('medication_blend_components');
 SELECT create_medication_policy('life_events');
 CREATE POLICY select_policy ON public.medication_syringes FOR SELECT TO PUBLIC
