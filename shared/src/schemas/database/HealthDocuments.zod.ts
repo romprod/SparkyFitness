@@ -36,8 +36,13 @@ export const healthDocumentsInitializerSchema = z.object({
   updated_at: z.date().optional(),
 });
 
-export const healthDocumentsMutatorSchema = healthDocumentsInitializerSchema.partial();
+export const healthDocumentsMutatorSchema =
+  healthDocumentsInitializerSchema.partial();
 
 export type HealthDocuments = z.infer<typeof healthDocumentsSchema>;
-export type HealthDocumentsInitializer = z.infer<typeof healthDocumentsInitializerSchema>;
-export type HealthDocumentsMutator = z.infer<typeof healthDocumentsMutatorSchema>;
+export type HealthDocumentsInitializer = z.infer<
+  typeof healthDocumentsInitializerSchema
+>;
+export type HealthDocumentsMutator = z.infer<
+  typeof healthDocumentsMutatorSchema
+>;

@@ -24,8 +24,15 @@ export const medicationBlendComponentsInitializerSchema = z.object({
   updated_at: z.date().optional(),
 });
 
-export const medicationBlendComponentsMutatorSchema = medicationBlendComponentsInitializerSchema.partial();
+export const medicationBlendComponentsMutatorSchema =
+  medicationBlendComponentsInitializerSchema.partial();
 
-export type MedicationBlendComponents = z.infer<typeof medicationBlendComponentsSchema>;
-export type MedicationBlendComponentsInitializer = z.infer<typeof medicationBlendComponentsInitializerSchema>;
-export type MedicationBlendComponentsMutator = z.infer<typeof medicationBlendComponentsMutatorSchema>;
+export type MedicationBlendComponents = z.infer<
+  typeof medicationBlendComponentsSchema
+>;
+export type MedicationBlendComponentsInitializer = z.infer<
+  typeof medicationBlendComponentsInitializerSchema
+>;
+export type MedicationBlendComponentsMutator = z.infer<
+  typeof medicationBlendComponentsMutatorSchema
+>;

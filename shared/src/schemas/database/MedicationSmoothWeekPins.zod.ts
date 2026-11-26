@@ -14,8 +14,15 @@ export const medicationSmoothWeekPinsInitializerSchema = z.object({
   created_at: z.date().optional(),
 });
 
-export const medicationSmoothWeekPinsMutatorSchema = medicationSmoothWeekPinsInitializerSchema.partial();
+export const medicationSmoothWeekPinsMutatorSchema =
+  medicationSmoothWeekPinsInitializerSchema.partial();
 
-export type MedicationSmoothWeekPins = z.infer<typeof medicationSmoothWeekPinsSchema>;
-export type MedicationSmoothWeekPinsInitializer = z.infer<typeof medicationSmoothWeekPinsInitializerSchema>;
-export type MedicationSmoothWeekPinsMutator = z.infer<typeof medicationSmoothWeekPinsMutatorSchema>;
+export type MedicationSmoothWeekPins = z.infer<
+  typeof medicationSmoothWeekPinsSchema
+>;
+export type MedicationSmoothWeekPinsInitializer = z.infer<
+  typeof medicationSmoothWeekPinsInitializerSchema
+>;
+export type MedicationSmoothWeekPinsMutator = z.infer<
+  typeof medicationSmoothWeekPinsMutatorSchema
+>;

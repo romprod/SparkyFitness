@@ -100,8 +100,11 @@ export const bodyCompScansInitializerSchema = z.object({
   almi_am: z.number().nullable().optional(),
 });
 
-export const bodyCompScansMutatorSchema = bodyCompScansInitializerSchema.partial();
+export const bodyCompScansMutatorSchema =
+  bodyCompScansInitializerSchema.partial();
 
 export type BodyCompScans = z.infer<typeof bodyCompScansSchema>;
-export type BodyCompScansInitializer = z.infer<typeof bodyCompScansInitializerSchema>;
+export type BodyCompScansInitializer = z.infer<
+  typeof bodyCompScansInitializerSchema
+>;
 export type BodyCompScansMutator = z.infer<typeof bodyCompScansMutatorSchema>;

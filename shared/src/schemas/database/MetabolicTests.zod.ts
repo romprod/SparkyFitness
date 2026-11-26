@@ -78,8 +78,11 @@ export const metabolicTestsInitializerSchema = z.object({
   updated_at: z.date().optional(),
 });
 
-export const metabolicTestsMutatorSchema = metabolicTestsInitializerSchema.partial();
+export const metabolicTestsMutatorSchema =
+  metabolicTestsInitializerSchema.partial();
 
 export type MetabolicTests = z.infer<typeof metabolicTestsSchema>;
-export type MetabolicTestsInitializer = z.infer<typeof metabolicTestsInitializerSchema>;
+export type MetabolicTestsInitializer = z.infer<
+  typeof metabolicTestsInitializerSchema
+>;
 export type MetabolicTestsMutator = z.infer<typeof metabolicTestsMutatorSchema>;
