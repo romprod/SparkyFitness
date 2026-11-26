@@ -57,6 +57,9 @@ jest.mock('@/hooks/Medications/useMedicationInventoryForecast', () => ({
     data: undefined,
   }),
 }));
+jest.mock('@/hooks/Medications/useLastUsedMedicationCurrency', () => ({
+  useLastUsedMedicationCurrency: () => 'GBP',
+}));
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescriptionScope: () => ({
     ready: false,

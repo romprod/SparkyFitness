@@ -10,6 +10,9 @@ import type { Medication, MedicationPen } from '@/types/medications';
 let mockRxReady = false;
 let mockRxKey = 'owner:1';
 const mockRxId = '00000000-0000-4000-8000-000000000071';
+jest.mock('@/hooks/Medications/useLastUsedMedicationCurrency', () => ({
+  useLastUsedMedicationCurrency: () => 'GBP',
+}));
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescriptionScope: () => ({
     key: mockRxKey,
