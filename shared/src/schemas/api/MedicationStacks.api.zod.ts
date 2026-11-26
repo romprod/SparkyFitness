@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  medicationStackScheduleSchema,
+  stackMemberScheduleStatusSchema,
+  stackNotFollowingReasonSchema,
+} from './MedicationStackSchedule.api.zod.ts';
 
 export const MAX_STACK_MEMBERS = 30;
 
@@ -34,6 +39,11 @@ export const medicationStackMemberSchema = z.object({
   name: z.string(),
   is_supplement: z.boolean(),
   is_active: z.boolean(),
+  /** Absent from older servers; only a stack with a schedule reports more than `no_schedule`. */
+  schedule_status: stackMemberScheduleStatusSchema.optional(),
+  schedule_note: stackNotFollowingReasonSchema.nullable().optional(),
+  /** The other stack, when the note is follows_other_stack. */
+  schedule_note_stack_name: z.string().nullable().optional(),
 });
 export type MedicationStackMember = z.infer<typeof medicationStackMemberSchema>;
 
@@ -43,6 +53,7 @@ export const medicationStackSchema = z.object({
   notes: z.string().nullable(),
   members: z.array(medicationStackMemberSchema),
   created_at: z.string(),
+  schedule: medicationStackScheduleSchema.nullable().optional(),
 });
 export type MedicationStack = z.infer<typeof medicationStackSchema>;
 
