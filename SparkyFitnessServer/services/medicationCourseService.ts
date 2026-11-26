@@ -16,6 +16,8 @@ import {
   courseRevisionBoundary,
   courseCarryCyclicAnchors,
   courseSlotsForDay,
+  stackPlanFor,
+  stackTimingViolatesSchedule,
   courseEntryMatchesSlot,
   computeCourseAdherence,
   medicationCourseReviewSchema,
@@ -62,6 +64,10 @@ import {
   storeCourseChildren,
   type CourseActual,
 } from '../models/medicationCourseRepository.js';
+import {
+  followedSchedule,
+  markApplied,
+} from '../models/medicationStackScheduleRepository.js';
 
 export async function assertWrite(owner: string) {
   if (
@@ -168,7 +174,7 @@ export function publicCourseReviewPlan(
   return plan;
 }
 
-function tip(course: MedicationCourse): MedicationCourseRevision {
+export function tip(course: MedicationCourse): MedicationCourseRevision {
   const current = course.revisions.find(
     (r) => r.id === course.current_revision_id && !r.deleted_at
   );
@@ -211,7 +217,7 @@ function reviewFingerprint(
     phase_actuals: phaseActuals,
   });
 }
-async function revisionReview(
+export async function revisionReview(
   client: PoolClient,
   owner: string,
   course: MedicationCourse,
@@ -383,6 +389,16 @@ async function createReviewState(
       rules: selected.map(legacyAuthoredRule),
     });
   }
+  // A medicine that follows a stack schedule starts every new plan on it.
+  const followed = await followedSchedule(client, owner, medicationId);
+  if (followed) {
+    if (input.handoff)
+      throw courseProblem(
+        `${medication.name} follows the schedule of the stack '${followed.stack_name}'. Take it out of the stack before handing a legacy schedule over.`,
+        422
+      );
+    plan = authoredPlan(stackPlanFor(followed, plan));
+  }
   const context = await loadCourseOwnerContext(client, owner, now);
   const device = await loadCourseDevice(client, owner, medicationId, plan);
   const fingerprint = reviewFingerprint(null, plan, [], {
@@ -403,6 +419,7 @@ async function createReviewState(
     medication,
     selected,
     device,
+    followed,
     review: medicationCourseReviewSchema.parse({
       expected_version: 0,
       device_binding: device.binding,
@@ -494,6 +511,40 @@ export async function reviewMedicationCourse(
       context.today
     );
   });
+}
+/**
+ * A medicine that follows a stack schedule takes its timing from the stack. Its
+ * own plan editor may change doses, steps, end date and the rest, but not the
+ * timing. Medicines that follow nothing cost one primary-key probe. The
+ * medicine is locked first (the lock the work takes next anyway) so a stack
+ * save cannot bind it between this check and the write.
+ */
+async function assertTimingNotStackControlled(
+  client: PoolClient,
+  owner: string,
+  courseId: string,
+  input: MedicationCoursePlanInput
+) {
+  const target = await client.query<{ medication_id: string | null }>(
+    'SELECT medication_id FROM medication_courses WHERE id=$1 AND user_id=$2',
+    [courseId, owner]
+  );
+  const medicationId = target.rows[0]?.medication_id;
+  if (!medicationId) return;
+  await lockCourseMedication(client, owner, medicationId);
+  const followed = await followedSchedule(client, owner, medicationId);
+  if (!followed) return;
+  const course = await lockMedicationCourse(client, owner, courseId);
+  const old = tip(course);
+  const proposed = authoredPlan(
+    courseCarryCyclicAnchors(old, authoredPlan(input, old)),
+    old
+  );
+  if (stackTimingViolatesSchedule(followed, coursePlan(old), proposed))
+    throw courseProblem(
+      `Timing for this plan is set by the stack '${followed.stack_name}'. Change it on the stack, or take the medicine out of the stack.`,
+      422
+    );
 }
 async function operation<T extends MedicationCourseMutationResult>(
   owner: string,
@@ -621,6 +672,13 @@ export async function createCourseInTransaction(
       );
     }
   }
+  if (state.followed)
+    await markApplied(
+      client,
+      owner,
+      input.medication_id,
+      state.followed.version
+    );
   return {
     course_id: id,
     revision_id: revisionId,
@@ -635,9 +693,10 @@ export async function editMedicationCourse(
   _now = new Date()
 ): Promise<MedicationCourseMutationResult> {
   if (input.prescription_id !== undefined) assertPrescriptionOwner(owner);
-  return operation(owner, 'edit', input, { id }, (client) =>
-    editCourseInTransaction(client, owner, id, input)
-  );
+  return operation(owner, 'edit', input, { id }, async (client) => {
+    await assertTimingNotStackControlled(client, owner, id, input);
+    return editCourseInTransaction(client, owner, id, input);
+  });
 }
 /** The edit work itself, on a client whose transaction (and receipt, if any) the caller owns. */
 export async function editCourseInTransaction(
@@ -722,9 +781,10 @@ export async function reviseMedicationCourse(
   input: MedicationCourseReviseInput,
   now = new Date()
 ): Promise<MedicationCourseMutationResult> {
-  return operation(owner, 'revise', input, { id }, (client) =>
-    reviseCourseInTransaction(client, owner, id, input, now)
-  );
+  return operation(owner, 'revise', input, { id }, async (client) => {
+    await assertTimingNotStackControlled(client, owner, id, input);
+    return reviseCourseInTransaction(client, owner, id, input, now);
+  });
 }
 /** The revise work itself, on a client whose transaction (and receipt, if any) the caller owns. */
 export async function reviseCourseInTransaction(
