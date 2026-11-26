@@ -66,15 +66,31 @@ async function replaceMembers(
   );
   if (known.rowCount !== medicationIds.length)
     throw fail('One or more medications were not found.', 400);
+  // Diff against the current rows so unchanged members keep their row: other
+  // tables hang ON DELETE CASCADE rows off a member. (stack_id, position) has
+  // no unique constraint, so positions can be rewritten in one statement.
   await client.query(
-    'DELETE FROM medication_stack_members WHERE stack_id = $1',
-    [stackId]
+    'DELETE FROM medication_stack_members WHERE stack_id = $1 AND NOT (medication_id = ANY($2::uuid[]))',
+    [stackId, medicationIds]
   );
-  for (const [position, medicationId] of medicationIds.entries())
-    await client.query(
-      'INSERT INTO medication_stack_members(stack_id, user_id, medication_id, position) VALUES($1,$2,$3,$4)',
-      [stackId, owner, medicationId, position]
-    );
+  await client.query(
+    `UPDATE medication_stack_members sm SET position = want.position - 1
+     FROM unnest($2::uuid[]) WITH ORDINALITY AS want(medication_id, position)
+     WHERE sm.stack_id = $1 AND sm.medication_id = want.medication_id
+       AND sm.position <> want.position - 1`,
+    [stackId, medicationIds]
+  );
+  await client.query(
+    `INSERT INTO medication_stack_members(stack_id, user_id, medication_id, position)
+     SELECT $1::uuid, $2::uuid, want.medication_id, want.position - 1
+     FROM unnest($3::uuid[]) WITH ORDINALITY AS want(medication_id, position)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM medication_stack_members sm
+       WHERE sm.stack_id = $1 AND sm.medication_id = want.medication_id
+     )
+     ORDER BY want.position`,
+    [stackId, owner, medicationIds]
+  );
 }
 
 const duplicateName = (error: unknown) =>
