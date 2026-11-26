@@ -6,6 +6,7 @@ import {
   within,
 } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { MedicationDetail } from '@/types/medications';
 import MedicationSmoothWeek from '@/pages/Medications/MedicationSmoothWeek';
 
@@ -445,4 +446,61 @@ it('draws a before and after grid for each move', () => {
     expect(within(grid).getByText('After')).toBeInTheDocument();
     expect(within(grid).getAllByText('1').length).toBeGreaterThanOrEqual(2);
   }
+});
+
+describe('medicines in a stack with its own schedule', () => {
+  const stackWith = (schedule: object | null, ...ids: string[]) => ({
+    stacks: [
+      {
+        id: 's1',
+        name: 'Morning',
+        notes: null,
+        created_at: '2026-11-01T00:00:00Z',
+        schedule,
+        members: ids.map((id) => ({ medication_id: id, name: id })),
+      },
+    ],
+  });
+  const renderWithStacks = (data: unknown, medications: MedicationDetail[]) => {
+    const client = new QueryClient();
+    client.setQueryData(['medication-stacks', 'owner'], data);
+    return render(
+      <QueryClientProvider client={client}>
+        <MedicationSmoothWeek medications={medications} />
+      </QueryClientProvider>
+    );
+  };
+  const schedule = { schedule_type_id: 'daily', time_of_day: '08:00' };
+
+  it('leaves a stack member out of smoothing and says why, still counting its doses', () => {
+    renderWithStacks(stackWith(schedule, 'a'), [
+      med('a', 'Alpha', [weekly(6)]),
+      med('b', 'Beta', [weekly(6)]),
+    ]);
+    expect(
+      screen.getByText(/Alpha — In a stack with its own schedule/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Alpha: .* → /)).not.toBeInTheDocument();
+    // Its Saturday dose is fixed, so Beta is moved off Saturday.
+    expect(screen.getAllByText(/Beta: .* → /)).toHaveLength(1);
+  });
+
+  it('smooths a member of a stack that has no schedule as before', () => {
+    renderWithStacks(stackWith(null, 'a'), [
+      med('a', 'Alpha', [weekly(6)]),
+      med('b', 'Beta', [weekly(6)]),
+    ]);
+    expect(
+      screen.queryByText(/In a stack with its own schedule/)
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText(/→/)).toHaveLength(1);
+  });
+
+  it('smooths everything as before when no stacks are loaded', () => {
+    renderWithStacks(undefined, [
+      med('a', 'Alpha', [weekly(6)]),
+      med('b', 'Beta', [weekly(6)]),
+    ]);
+    expect(screen.getAllByText(/→/)).toHaveLength(1);
+  });
 });
