@@ -1,5 +1,6 @@
 import { MutationCache } from '@tanstack/react-query';
 import i18n from 'i18next';
+import { NetworkApiError } from '@/api/api';
 import { toast } from '@/hooks/use-toast';
 import { error } from '@/utils/logging';
 import { getUserLoggingLevel } from '@/utils/userPreferences';
@@ -38,6 +39,9 @@ export const createMutationCache = () =>
       const loggingLevel = getUserLoggingLevel();
       error(loggingLevel, 'Mutation Error: ', err);
       if (mutation.meta?.silentError) return;
+      // apiCall already showed the one "may have saved" message for this
+      // failure; a second toast would bury it.
+      if (err instanceof NetworkApiError && err.mayHaveSaved) return;
       const resolvedErrorMessage = resolveMessage(
         mutation.meta?.errorMessage,
         err,

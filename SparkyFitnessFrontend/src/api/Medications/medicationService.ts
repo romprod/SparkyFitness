@@ -61,7 +61,12 @@ export const listMedicationEntries = (
 export const createMedicationEntry = (
   body: CreateMedicationEntryInput
 ): Promise<MedicationEntry> =>
-  apiCall('/v2/medications/entries', { method: 'POST', body });
+  apiCall('/v2/medications/entries', {
+    method: 'POST',
+    body,
+    // No client id, so a retry after a dropped connection can log it twice.
+    mayHaveSavedOnNetworkError: true,
+  });
 
 export const updateMedicationEntry = (
   id: string,
@@ -153,7 +158,12 @@ export const listInjections = (
 export const logInjection = (
   body: LogInjectionInput
 ): Promise<InjectionEntry & { pen: MedicationPen | null }> =>
-  apiCall('/v2/medications/injections', { method: 'POST', body });
+  apiCall('/v2/medications/injections', {
+    method: 'POST',
+    body,
+    // No client id, so a retry after a dropped connection can log it twice.
+    mayHaveSavedOnNetworkError: true,
+  });
 
 export const updateInjection = (
   id: string,

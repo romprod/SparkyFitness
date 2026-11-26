@@ -2,6 +2,8 @@ import {
   apiCall,
   clearDemoRestrictions,
   gatewayReloadRuntime,
+  HttpApiError,
+  NetworkApiError,
 } from '@/api/api';
 import { toast } from '@/hooks/use-toast';
 
@@ -254,5 +256,100 @@ describe('apiCall demo restriction handling', () => {
       apiCall('/identity/mfa/email-toggle', { method: 'POST', body: '{}' })
     ).rejects.toThrow();
     expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('apiCall mayHaveSavedOnNetworkError', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn();
+  });
+
+  it('shows one "Could not save" toast and throws a NetworkApiError for the same message and cause', async () => {
+    const cause = new TypeError('Failed to fetch');
+    jest.mocked(global.fetch).mockRejectedValueOnce(cause);
+    const error = await apiCall('/v2/medications/injections', {
+      method: 'POST',
+      body: {},
+      mayHaveSavedOnNetworkError: true,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NetworkApiError);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as NetworkApiError).message).toBe('Failed to fetch');
+    expect((error as NetworkApiError).cause).toBe(cause);
+    expect((error as NetworkApiError).mayHaveSaved).toBe(true);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Could not save',
+      description:
+        'The connection dropped before Sparky answered, so it may have been saved. Reload the page and check before trying again.',
+      variant: 'destructive',
+    });
+  });
+
+  it('keeps today\'s "Network Error" toast and an Error with the same message without the opt-in', async () => {
+    jest.mocked(global.fetch).mockRejectedValueOnce(new TypeError('offline'));
+    const error = await apiCall('/v2/medications/injections', {
+      method: 'POST',
+      body: {},
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('offline');
+    expect((error as NetworkApiError).mayHaveSaved).toBe(false);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Network Error',
+      description: 'offline',
+      variant: 'destructive',
+    });
+  });
+
+  it("leaves an HTTP error alone: today's API Error toast and an HttpApiError", async () => {
+    jest
+      .mocked(global.fetch)
+      .mockResolvedValueOnce(
+        makeResponse({ status: 409, body: '{"error":"Course changed"}' })
+      );
+    const error = await apiCall('/v2/medications/injections', {
+      method: 'POST',
+      body: {},
+      mayHaveSavedOnNetworkError: true,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpApiError);
+    expect(error).not.toBeInstanceOf(NetworkApiError);
+    expect((error as HttpApiError).status).toBe(409);
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'API Error',
+      description: 'Course changed',
+      variant: 'destructive',
+    });
+  });
+
+  it('leaves a cancelled request alone', async () => {
+    const controller = new AbortController();
+    const abort = new DOMException('Aborted', 'AbortError');
+    controller.abort();
+    jest.mocked(global.fetch).mockRejectedValue(abort);
+    await expect(
+      apiCall('/v2/medications/injections', {
+        method: 'POST',
+        signal: controller.signal,
+        mayHaveSavedOnNetworkError: true,
+      })
+    ).rejects.toBe(abort);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('still shows no toast with suppressErrorToast, but throws the flagged error', async () => {
+    jest.mocked(global.fetch).mockRejectedValueOnce(new TypeError('offline'));
+    await expect(
+      apiCall('/x', {
+        method: 'POST',
+        mayHaveSavedOnNetworkError: true,
+        suppressErrorToast: true,
+      })
+    ).rejects.toBeInstanceOf(NetworkApiError);
+    expect(mockToast).not.toHaveBeenCalled();
   });
 });

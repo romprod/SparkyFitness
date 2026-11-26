@@ -12,6 +12,10 @@ interface ApiCallOptions extends RequestInit {
   // Still throws, but shows no toast for an HTTP or network error: for
   // secondary requests whose failure the caller already shows in place.
   suppressErrorToast?: boolean;
+  // For a call that creates something and is not idempotent. If no answer comes
+  // back (a network failure), the request may still have landed, so show one
+  // "check before retrying" message instead of the generic network error.
+  mayHaveSavedOnNetworkError?: boolean;
   externalApi?: boolean;
   isFormData?: boolean; // New option to indicate if the body is FormData
   responseType?: 'json' | 'text' | 'blob'; // Add responseType option
@@ -29,6 +33,25 @@ export class HttpApiError extends Error {
     this.name = 'HttpApiError';
     this.status = status;
     this.code = code;
+  }
+}
+
+// A request that got no answer at all: the connection dropped, or the fetch
+// threw. Still an Error with the same message, so existing handlers are
+// unaffected. Distinct from HttpApiError, where the server did answer.
+export class NetworkApiError extends Error {
+  // True when the call opted in with mayHaveSavedOnNetworkError. apiCall has
+  // already shown the "check before retrying" toast, so the mutation cache
+  // must not add a second one.
+  readonly mayHaveSaved: boolean;
+
+  constructor(
+    message: string,
+    options: { cause?: unknown; mayHaveSaved?: boolean } = {}
+  ) {
+    super(message, { cause: options.cause });
+    this.name = 'NetworkApiError';
+    this.mayHaveSaved = options.mayHaveSaved ?? false;
   }
 }
 
@@ -352,7 +375,18 @@ export async function apiCall<T = any>(
 
     const errorMessage = err instanceof Error ? err.message : String(err);
     logging.error(userLoggingLevel, 'API call network error:', err); // Log the raw error object for better debugging
-    if (!options?.suppressErrorToast) {
+    if (options?.mayHaveSavedOnNetworkError) {
+      if (!options?.suppressErrorToast) {
+        toast({
+          title: i18n.t('hooks.api.couldNotSave', 'Could not save'),
+          description: i18n.t(
+            'hooks.api.mayHaveSavedOnNetworkError',
+            'The connection dropped before Sparky answered, so it may have been saved. Reload the page and check before trying again.'
+          ),
+          variant: 'destructive',
+        });
+      }
+    } else if (!options?.suppressErrorToast) {
       toast({
         title: i18n.t('hooks.api.networkError', 'Network Error'),
         description:
@@ -364,7 +398,10 @@ export async function apiCall<T = any>(
         variant: 'destructive',
       });
     }
-    throw new Error(errorMessage, { cause: err });
+    throw new NetworkApiError(errorMessage, {
+      cause: err,
+      mayHaveSaved: options?.mayHaveSavedOnNetworkError === true,
+    });
   }
 }
 
