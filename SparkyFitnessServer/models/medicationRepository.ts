@@ -245,35 +245,122 @@ async function updateMedication(
   }
 }
 
+export interface MedicationInUse {
+  stock: number;
+  plans: number;
+  schedules: number;
+  prescriptions: number;
+  doses: number;
+}
+
+const IN_USE_PARTS: [keyof MedicationInUse, string, string][] = [
+  ['stock', 'stock item', 'stock items'],
+  ['plans', 'plan', 'plans'],
+  ['schedules', 'schedule', 'schedules'],
+  ['prescriptions', 'prescription', 'prescriptions'],
+  ['doses', 'logged dose', 'logged doses'],
+];
+
+export function inUseMessage(inUse: MedicationInUse): string {
+  const parts = IN_USE_PARTS.filter(([key]) => inUse[key] > 0).map(
+    ([key, one, many]) => `${inUse[key]} ${inUse[key] === 1 ? one : many}`
+  );
+  return `In use by ${parts.join(', ')} — delete those first, or mark it inactive.`;
+}
+
+async function blendNamesContaining(client: PoolClient, id: string) {
+  const blends = await client.query<{ name: string }>(
+    `SELECT DISTINCT COALESCE(NULLIF(b.display_name, ''), b.name) AS name
+       FROM medication_blend_components c
+       JOIN medications b ON b.id = c.blend_medication_id
+      WHERE c.component_medication_id = $1
+      ORDER BY 1`,
+    [id]
+  );
+  return blends.rows.map((r) => r.name);
+}
+
+function blendRefusal(names: string[]) {
+  // A component of a blend stays until it is taken out of the blend: dropping it would
+  // quietly change every share.
+  return Object.assign(
+    new Error(
+      `This medication is a component of ${names.join(', ')}. Remove it from the blend before deleting it.`
+    ),
+    { statusCode: 409, status: 409 }
+  );
+}
+
+// A medicine with stock, plans, schedules, prescriptions or logged doses is refused:
+// stock, schedules and the blend links would be removed with it, and the rest would be
+// left pointing at nothing. Plans do not generate schedules; the only schedules a plan
+// owns are legacy rules handed over to it (medication_course_handoffs), which are
+// counted under the plan, not again as schedules.
 async function deleteMedication(userId: string, id: string) {
   const client: PoolClient = await getClient(userId);
+  let began = false;
   try {
+    await client.query('BEGIN');
+    began = true;
+    const locked = await client.query(
+      'SELECT id FROM medications WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [id, userId]
+    );
+    if ((locked.rowCount ?? 0) === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    const blends = await blendNamesContaining(client, id);
+    if (blends.length > 0) throw blendRefusal(blends);
+
+    const counted = await client.query<Record<keyof MedicationInUse, number>>(
+      `SELECT
+         (SELECT COUNT(*)::int FROM medication_pens WHERE medication_id = $1 AND user_id = $2)
+         + (SELECT COUNT(*)::int FROM medication_packs WHERE medication_id = $1 AND user_id = $2) AS stock,
+         (SELECT COUNT(*)::int FROM medication_courses
+           WHERE medication_id = $1 AND user_id = $2 AND deleted_at IS NULL) AS plans,
+         (SELECT COUNT(*)::int FROM medication_schedules s
+           WHERE s.medication_id = $1 AND s.user_id = $2
+             AND NOT EXISTS (
+               SELECT 1 FROM medication_course_handoffs h
+                 JOIN medication_courses c ON c.id = h.course_id AND c.user_id = h.user_id
+                WHERE h.schedule_id = s.id AND h.user_id = s.user_id AND c.deleted_at IS NULL)) AS schedules,
+         (SELECT COUNT(*)::int FROM medication_prescriptions WHERE medication_id = $1 AND user_id = $2) AS prescriptions,
+         (SELECT COUNT(*)::int FROM medication_entries WHERE medication_id = $1 AND user_id = $2)
+         + (SELECT COUNT(*)::int FROM injection_entries WHERE medication_id = $1 AND user_id = $2) AS doses`,
+      [id, userId]
+    );
+    const row = counted.rows[0];
+    const inUse: MedicationInUse = {
+      stock: Number(row?.stock ?? 0),
+      plans: Number(row?.plans ?? 0),
+      schedules: Number(row?.schedules ?? 0),
+      prescriptions: Number(row?.prescriptions ?? 0),
+      doses: Number(row?.doses ?? 0),
+    };
+    if (Object.values(inUse).some((n) => n > 0)) {
+      throw Object.assign(new Error(inUseMessage(inUse)), {
+        statusCode: 409,
+        status: 409,
+        in_use: inUse,
+      });
+    }
+
     const result = await client.query(
       'DELETE FROM medications WHERE id = $1 AND user_id = $2 RETURNING id',
       [id, userId]
     );
+    await client.query('COMMIT');
     return (result.rowCount ?? 0) > 0;
   } catch (error) {
-    // A component of a blend stays until it is taken out of the blend: dropping it would
-    // quietly change every share.
+    if (began) await client.query('ROLLBACK').catch(() => undefined);
+    // A blend that took this medicine as a component after the check above.
     if (
       (error as { constraint?: string }).constraint ===
       'medication_blend_components_component_fk'
     ) {
-      const blends = await client.query<{ name: string }>(
-        `SELECT DISTINCT COALESCE(NULLIF(b.display_name, ''), b.name) AS name
-           FROM medication_blend_components c
-           JOIN medications b ON b.id = c.blend_medication_id
-          WHERE c.component_medication_id = $1
-          ORDER BY 1`,
-        [id]
-      );
-      throw Object.assign(
-        new Error(
-          `This medication is a component of ${blends.rows.map((r) => r.name).join(', ')}. Remove it from the blend before deleting it.`
-        ),
-        { statusCode: 409, status: 409 }
-      );
+      throw blendRefusal(await blendNamesContaining(client, id));
     }
     throw error;
   } finally {

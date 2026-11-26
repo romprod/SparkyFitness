@@ -14,7 +14,6 @@ import {
 } from '../db/poolManager.js';
 import * as rx from '../models/medicationPrescriptionRepository.js';
 import * as pens from '../models/medicationPenRepository.js';
-import * as medications from '../models/medicationRepository.js';
 import * as entries from '../models/medicationEntryRepository.js';
 import * as injections from '../models/injectionRepository.js';
 import {
@@ -26,6 +25,20 @@ import {
   deleteMedicationCourseRevision,
 } from '../services/medicationCourseService.js';
 import { medicationCoursePlanFixture } from './fixtures/medicationCourseFixture.js';
+
+// The repository refuses a medicine that is in use, so tests of what the database does
+// when one goes (cascades, SET NULL, retained history) delete it directly.
+async function rawDeleteMedication(id: string) {
+  const client = await getSystemClient();
+  try {
+    const result = await client.query('DELETE FROM medications WHERE id=$1', [
+      id,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } finally {
+    client.release();
+  }
+}
 
 // Author-only fixture: release runs this opt-in against one isolated migrated database.
 describe.runIf(process.env.MEDICATION_PRESCRIPTIONS_INTEGRATION === '1')(
@@ -687,7 +700,7 @@ describe.runIf(process.env.MEDICATION_PRESCRIPTIONS_INTEGRATION === '1')(
       const med = await medication(),
         record = await create(med),
         made = await course(med, record.id);
-      expect(await medications.deleteMedication(owner, med)).toBe(true);
+      expect(await rawDeleteMedication(med)).toBe(true);
       expect(
         (await getMedicationCourse(owner, made.course_id)).course.medication_id
       ).toBeNull();

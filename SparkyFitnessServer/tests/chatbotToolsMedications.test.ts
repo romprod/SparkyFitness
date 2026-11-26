@@ -196,6 +196,25 @@ describe('sparky_manage_medications create/update/delete + schedules', () => {
     );
   });
 
+  it('delete_medication shows the in-use refusal as a validation message', async () => {
+    vi.mocked(medicationRepository.deleteMedication).mockRejectedValue(
+      Object.assign(
+        new Error(
+          'In use by 1 plan — delete those first, or mark it inactive.'
+        ),
+        { statusCode: 409 }
+      )
+    );
+
+    const result = (await tools.sparky_manage_medications.execute!(
+      { action: 'delete_medication', medication_id: MED_ID },
+      opts
+    )) as string;
+
+    expect(result).toContain('VALIDATION');
+    expect(result).toContain('In use by 1 plan');
+  });
+
   it('add_schedule confirms with type, time, and id', async () => {
     vi.mocked(medicationRepository.addSchedule).mockResolvedValue({
       id: SCHEDULE_ID,

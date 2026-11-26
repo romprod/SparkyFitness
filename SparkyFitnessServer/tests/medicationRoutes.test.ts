@@ -12,6 +12,7 @@ import medicationDisplayPreferenceRepository from '../models/medicationDisplayPr
 import glp1Service from '../services/glp1Service.js';
 import { canAccessUserData } from '../utils/permissionUtils.js';
 import medicationRoutes from '../routes/v2/medicationRoutes.js';
+import errorHandler from '../middleware/errorHandler.js';
 import {
   lookupSupplementByUpc,
   mapScannedLabel,
@@ -676,6 +677,35 @@ describe('Medication Routes V2', () => {
         .delete(`/api/v2/medications/${UID}`)
         .set('Cookie', cookie);
       expect(res.statusCode).toBe(204);
+    });
+
+    it('passes the in-use refusal through as a 409 with the counts', async () => {
+      const inUse = {
+        stock: 2,
+        plans: 0,
+        schedules: 0,
+        prescriptions: 1,
+        doses: 14,
+      };
+      vi.mocked(medicationRepository.deleteMedication).mockRejectedValue(
+        Object.assign(
+          new Error(
+            'In use by 2 stock items, 1 prescription, 14 logged doses — delete those first, or mark it inactive.'
+          ),
+          { statusCode: 409, in_use: inUse }
+        )
+      );
+      const withErrors = express();
+      withErrors.use(app);
+      withErrors.use(errorHandler);
+      const res = await request(withErrors)
+        .delete(`/api/v2/medications/${UID}`)
+        .set('Cookie', cookie);
+      expect(res.statusCode).toBe(409);
+      expect(res.body.error).toBe(
+        'In use by 2 stock items, 1 prescription, 14 logged doses — delete those first, or mark it inactive.'
+      );
+      expect(res.body.in_use).toEqual(inUse);
     });
 
     it('returns 404 when nothing deleted', async () => {

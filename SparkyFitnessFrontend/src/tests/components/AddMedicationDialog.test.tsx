@@ -295,6 +295,135 @@ describe('AddMedicationDialog half-life', () => {
   });
 });
 
+describe('AddMedicationDialog medicine profile', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const peptide = {
+    ...mobileDoseMed,
+    id: 'med-prof',
+    name: 'BPC-157',
+    type_id: 'injection',
+    is_glp1: false,
+    is_supplement: false,
+    custom_fields: {
+      half_life_hours: 4,
+      aliases: ['BPC157', 'Body Protection'],
+      storage_notes: 'Refrigerate after reconstitution',
+      substance_class: 'IU',
+    },
+  } as unknown as Medication;
+  const aliasesLabel = 'Aliases (comma-separated)';
+
+  it('saves aliases and storage notes for a new medicine', () => {
+    render(<AddMedicationDialog />);
+    openDialog();
+    fireEvent.click(screen.getByText('Show Advanced Options'));
+    setField('Name', 'BPC-157');
+    setField(aliasesLabel, ' BPC157, bpc157 ,, Body Protection ');
+    setField('Storage notes', '  Fridge ');
+    save();
+    expect(lastCreateBody().custom_fields).toEqual({
+      aliases: ['BPC157', 'Body Protection'],
+      storage_notes: 'Fridge',
+    });
+  });
+
+  it('offers aliases and storage notes for a pill, but not the substance class', () => {
+    render(<AddMedicationDialog editMed={mirroredMed} />);
+    openDialog();
+    fireEvent.click(screen.getByText('Show Advanced Options'));
+    expect(screen.getByLabelText(aliasesLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText('Storage notes')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Substance class')).not.toBeInTheDocument();
+    setField(aliasesLabel, 'Glucophage');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      aliases: ['Glucophage'],
+    });
+  });
+
+  it('loads saved values and keeps them, with the other keys, on save', () => {
+    render(<AddMedicationDialog editMed={peptide} />);
+    openDialog();
+    expect(screen.getByLabelText(aliasesLabel)).toHaveValue(
+      'BPC157, Body Protection'
+    );
+    expect(screen.getByLabelText('Storage notes')).toHaveValue(
+      'Refrigerate after reconstitution'
+    );
+    expect(
+      screen.getByText(
+        'A label only: amounts are never converted between mass and IU.'
+      )
+    ).toBeInTheDocument();
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual(peptide.custom_fields);
+  });
+
+  it('drops the keys when the fields are cleared', () => {
+    render(<AddMedicationDialog editMed={peptide} />);
+    openDialog();
+    setField(aliasesLabel, '');
+    setField('Storage notes', '   ');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      half_life_hours: 4,
+      substance_class: 'IU',
+    });
+  });
+});
+
+describe('AddMedicationDialog unmanaged custom fields', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const extras = {
+    package_images: { front: 'https://x/f.jpg', back: 'https://x/b.jpg' },
+    food_to_supplement: { source_food_id: 'f1', source_variant_id: 'v1' },
+  };
+
+  it('keeps keys the dialog does not manage when a supplement is edited', () => {
+    const supplement = {
+      ...mirroredMed,
+      id: 'med-sup',
+      name: 'Vitamin D',
+      is_supplement: true,
+      custom_fields: { ...extras, units_per_serving: 2 },
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={supplement} />);
+    openDialog();
+    setField('Name', 'Vitamin D3');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual({
+      ...extras,
+      units_per_serving: 2,
+    });
+  });
+
+  it('still removes a cleared minimum interval, keeping other keys', () => {
+    const med = {
+      ...mirroredMed,
+      custom_fields: { ...extras, min_interval_hours: 48 },
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={med} />);
+    openDialog();
+    setField('Minimum hours between doses (optional)', '');
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual(extras);
+  });
+
+  it('drops the GLP-1 keys when a medicine is switched away from GLP-1', () => {
+    const med = {
+      ...mirroredMed,
+      type_id: 'injection',
+      is_glp1: true,
+      custom_fields: { ...extras, glp1_drug: 'semaglutide' },
+    } as unknown as Medication;
+    render(<AddMedicationDialog editMed={med} />);
+    openDialog();
+    fireEvent.click(screen.getByRole('switch'));
+    save();
+    expect(lastUpdateArgs().body.custom_fields).toEqual(extras);
+  });
+});
+
 describe('AddMedicationDialog dose fields', () => {
   beforeEach(() => jest.clearAllMocks());
 

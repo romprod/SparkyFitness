@@ -13,7 +13,16 @@ import {
   MAX_DEFAULT_BUD_DAYS,
   MAX_HALF_LIFE_HOURS,
   readHalfLifeHours,
+  readAliases,
+  readStorageNotes,
+  readSubstanceClass,
+  parseAliases,
+  withMedicineProfile,
+  MAX_ALIASES,
+  MAX_ALIAS_LENGTH,
+  MAX_STORAGE_NOTES_LENGTH,
   type MissedDosePolicy,
+  type SubstanceClass,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -88,6 +97,36 @@ export function MedTypeIcon({
   const Icon = MED_TYPE_ICONS[key] ?? Pill;
   const color = MED_TYPE_COLORS[key] ?? 'text-muted-foreground';
   return <Icon className={`${color} ${className ?? ''}`} />;
+}
+
+// Every custom_fields key this dialog writes or clears. The server replaces custom_fields
+// wholesale on update, so any other key on an edited medicine (package_images,
+// food_to_supplement, ...) is carried over untouched rather than dropped.
+const MANAGED_CUSTOM_FIELD_KEYS = new Set([
+  'glp1_drug',
+  'custom_glp1_name',
+  'custom_half_life_days',
+  'custom_t_max_days',
+  'custom_cadence',
+  'custom_is_oral',
+  'half_life_hours',
+  'default_bud_days',
+  'min_interval_hours',
+  'missed_policy',
+  'units_per_serving',
+  'aliases',
+  'storage_notes',
+  'substance_class',
+]);
+
+function unmanagedCustomFields(
+  customFields: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(customFields ?? {}).filter(
+      ([key]) => !MANAGED_CUSTOM_FIELD_KEYS.has(key)
+    )
+  );
 }
 
 export default function AddMedicationDialog({
@@ -259,6 +298,13 @@ export default function AddMedicationDialog({
   const [halfLifeHours, setHalfLifeHours] = useState(
     savedHalfLife ? String(savedHalfLife) : ''
   );
+  const savedAliases = readAliases(editMed?.custom_fields);
+  const [aliasesText, setAliasesText] = useState(savedAliases.join(', '));
+  const savedStorageNotes = readStorageNotes(editMed?.custom_fields);
+  const [storageNotes, setStorageNotes] = useState(savedStorageNotes ?? '');
+  const savedSubstanceClass = readSubstanceClass(editMed?.custom_fields);
+  const [substanceClass, setSubstanceClass] =
+    useState<SubstanceClass>(savedSubstanceClass);
   const [effectiveness, setEffectiveness] = useState<number>(
     editMed?.effectiveness_rating ?? 0
   );
@@ -267,7 +313,10 @@ export default function AddMedicationDialog({
   const [showAdvanced, setShowAdvanced] = useState(
     savedPolicy.min_interval_hours !== null ||
       savedPolicy.missed_policy !== 'prompt' ||
-      savedHalfLife !== null
+      savedHalfLife !== null ||
+      savedAliases.length > 0 ||
+      savedStorageNotes !== null ||
+      savedSubstanceClass !== 'mass'
   );
 
   const createMutation = useCreateMedicationMutation();
@@ -536,21 +585,28 @@ export default function AddMedicationDialog({
     const hours = Number(minIntervalHours);
     const budDays = Math.floor(Number(defaultBudDays));
     const halfLife = Number(halfLifeHours);
-    return {
-      ...fields,
-      ...(takesOwnHalfLife && Number.isFinite(halfLife) && halfLife > 0
-        ? { half_life_hours: Math.min(halfLife, MAX_HALF_LIFE_HOURS) }
-        : {}),
-      ...(!isSupplement && budDays > 0
-        ? { default_bud_days: Math.min(budDays, MAX_DEFAULT_BUD_DAYS) }
-        : {}),
-      ...(!isSupplement && hours > 0
-        ? { min_interval_hours: Math.min(hours, MAX_MIN_INTERVAL_HOURS) }
-        : {}),
-      ...(!isSupplement && missedPolicy !== 'prompt'
-        ? { missed_policy: missedPolicy }
-        : {}),
-    };
+    return withMedicineProfile(
+      {
+        ...fields,
+        ...(takesOwnHalfLife && Number.isFinite(halfLife) && halfLife > 0
+          ? { half_life_hours: Math.min(halfLife, MAX_HALF_LIFE_HOURS) }
+          : {}),
+        ...(!isSupplement && budDays > 0
+          ? { default_bud_days: Math.min(budDays, MAX_DEFAULT_BUD_DAYS) }
+          : {}),
+        ...(!isSupplement && hours > 0
+          ? { min_interval_hours: Math.min(hours, MAX_MIN_INTERVAL_HOURS) }
+          : {}),
+        ...(!isSupplement && missedPolicy !== 'prompt'
+          ? { missed_policy: missedPolicy }
+          : {}),
+      },
+      {
+        aliases: parseAliases(aliasesText),
+        storageNotes,
+        substanceClass: takesOwnHalfLife ? substanceClass : 'mass',
+      }
+    );
   };
 
   const handleDoseAmountChange = (value: string) => {
@@ -630,8 +686,9 @@ export default function AddMedicationDialog({
       notes: notes.trim() || null,
       effectiveness_rating: effectiveness > 0 ? effectiveness : null,
       photo_path: photoPath || null,
-      custom_fields: withDosePolicy(
-        isGlp1
+      custom_fields: withDosePolicy({
+        ...unmanagedCustomFields(isEdit ? editMed?.custom_fields : undefined),
+        ...(isGlp1
           ? glp1Drug === 'custom'
             ? {
                 glp1_drug: 'custom',
@@ -644,8 +701,8 @@ export default function AddMedicationDialog({
                 custom_is_oral: customIsOral,
               }
             : { glp1_drug: glp1Drug }
-          : {}
-      ),
+          : {}),
+      }),
     };
     // Supplements never carry GLP-1 metadata, so the branch above leaves them an empty
     // object to extend.
@@ -682,6 +739,9 @@ export default function AddMedicationDialog({
         setMinIntervalHours('');
         setMissedPolicy('prompt');
         setDefaultBudDays('');
+        setAliasesText('');
+        setStorageNotes('');
+        setSubstanceClass('mass');
         setEffectiveness(0);
         setPhotoPath('');
         setIsSupplement(defaultIsSupplement);
@@ -1440,6 +1500,41 @@ export default function AddMedicationDialog({
                   </div>
                 )}
 
+                {takesOwnHalfLife && (
+                  <div className="space-y-2">
+                    <Label htmlFor="med-substance-class">
+                      {t(
+                        'medications.cabinet.substanceClass',
+                        'Substance class'
+                      )}
+                    </Label>
+                    <Select
+                      value={substanceClass}
+                      onValueChange={(v) =>
+                        setSubstanceClass(v === 'IU' ? 'IU' : 'mass')
+                      }
+                    >
+                      <SelectTrigger id="med-substance-class">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mass">
+                          {t('medications.cabinet.substanceClassMass', 'mass')}
+                        </SelectItem>
+                        <SelectItem value="IU">
+                          {t('medications.cabinet.substanceClassIu', 'IU')}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'medications.cabinet.substanceClassHint',
+                        'A label only: amounts are never converted between mass and IU.'
+                      )}
+                    </p>
+                  </div>
+                )}
+
                 {!isSupplement && (
                   <div className="space-y-2">
                     <Label htmlFor="med-default-bud">
@@ -1466,6 +1561,47 @@ export default function AddMedicationDialog({
                     </p>
                   </div>
                 )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="med-aliases">
+                    {t(
+                      'medications.cabinet.aliases',
+                      'Aliases (comma-separated)'
+                    )}
+                  </Label>
+                  <Input
+                    id="med-aliases"
+                    value={aliasesText}
+                    onChange={(e) => setAliasesText(e.target.value)}
+                    placeholder={t(
+                      'medications.cabinet.aliasesPlaceholder',
+                      'BPC157, Body Protection Compound'
+                    )}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'medications.cabinet.aliasesHint',
+                      'Up to {{count}} names, {{length}} characters each.',
+                      { count: MAX_ALIASES, length: MAX_ALIAS_LENGTH }
+                    )}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="med-storage-notes">
+                    {t('medications.cabinet.storageNotes', 'Storage notes')}
+                  </Label>
+                  <Input
+                    id="med-storage-notes"
+                    value={storageNotes}
+                    maxLength={MAX_STORAGE_NOTES_LENGTH}
+                    onChange={(e) => setStorageNotes(e.target.value)}
+                    placeholder={t(
+                      'medications.cabinet.storageNotesPlaceholder',
+                      'Refrigerate after reconstitution'
+                    )}
+                  />
+                </div>
 
                 {/* Notes */}
                 <div className="space-y-2">

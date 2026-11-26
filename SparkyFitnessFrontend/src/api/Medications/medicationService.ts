@@ -42,8 +42,14 @@ export const updateMedication = (
 ): Promise<Medication> =>
   apiCall(`/v2/medications/${id}`, { method: 'PUT', body });
 
-export const deleteMedication = (id: string): Promise<void> =>
-  apiCall(`/v2/medications/${id}`, { method: 'DELETE' });
+export const deleteMedication = (
+  id: string,
+  opts: { quiet?: boolean } = {}
+): Promise<void> =>
+  apiCall(`/v2/medications/${id}`, {
+    method: 'DELETE',
+    suppressErrorToast: opts.quiet,
+  });
 
 // --- Medication Entries (Adherence) ---------------------------------------
 

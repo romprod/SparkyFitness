@@ -30,6 +30,9 @@ import {
   filterEntriesBySubtype,
   filterMedsBySubtype,
   type MedSubtype,
+  readAliases,
+  readStorageNotes,
+  readSubstanceClass,
 } from '@workspace/shared';
 import { Button } from '@/components/ui/button';
 import {
@@ -41,8 +44,19 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   useMedications,
   useDeleteMedicationMutation,
+  useUpdateMedicationMutation,
   useMedicationEntries,
 } from '@/hooks/useMedications';
 import { useSymptomEntries } from '@/hooks/useSymptoms';
@@ -240,10 +254,39 @@ export default function Medications() {
   }, [autoDefaulted, loadingMeds, meds]);
 
   // Mutations
-  const removeMedMutation = useDeleteMedicationMutation();
+  // A refusal is shown in the confirm dialog, so the mutation stays quiet.
+  const removeMedMutation = useDeleteMedicationMutation({ quiet: true });
+  const updateMedMutation = useUpdateMedicationMutation();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteRefusal, setDeleteRefusal] = useState<string | null>(null);
 
-  const handleDeleteMed = (id: string) =>
-    removeMedMutation.mutate(id, { onSuccess: () => setSelectedId(null) });
+  const closeDeleteDialog = () => {
+    setConfirmingDelete(false);
+    setDeleteRefusal(null);
+  };
+  const handleDeleteMed = (id: string) => {
+    setDeleteRefusal(null);
+    removeMedMutation.mutate(id, {
+      onSuccess: () => {
+        closeDeleteDialog();
+        setSelectedId(null);
+      },
+      onError: (error) =>
+        setDeleteRefusal(
+          error instanceof Error && error.message
+            ? error.message
+            : t(
+                'medications.cabinet.deleteFailed',
+                'Could not remove medication.'
+              )
+        ),
+    });
+  };
+  const setMedActive = (id: string, isActive: boolean, onDone?: () => void) =>
+    updateMedMutation.mutate(
+      { id, body: { is_active: isActive } },
+      { onSuccess: onDone }
+    );
 
   // Resolve the detail pane from the FILTERED list, so switching the subtype filter clears
   // a selection that is no longer visible instead of leaving its Edit/Delete card orphaned.
@@ -702,6 +745,14 @@ export default function Medications() {
                           <CardTitle className="text-base font-bold break-words">
                             {selected.display_name || selected.name}
                           </CardTitle>
+                          {!selected.is_active && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] px-1.5 py-0"
+                            >
+                              {t('medications.common.inactive', 'Inactive')}
+                            </Badge>
+                          )}
                           {selected.is_glp1 && (
                             <Badge className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-1.5 py-0">
                               {t('medications.glp1Name', 'GLP-1')}
@@ -751,7 +802,14 @@ export default function Medications() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeleteMed(selected.id)}
+                          aria-label={t(
+                            'medications.cabinet.deleteMedication',
+                            'Delete medication'
+                          )}
+                          onClick={() => {
+                            setDeleteRefusal(null);
+                            setConfirmingDelete(true);
+                          }}
                           disabled={removeMedMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -759,6 +817,32 @@ export default function Medications() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4 text-sm">
+                      <div className="space-y-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={updateMedMutation.isPending}
+                          onClick={() =>
+                            setMedActive(selected.id, !selected.is_active)
+                          }
+                        >
+                          {selected.is_active
+                            ? t(
+                                'medications.cabinet.markInactive',
+                                'Mark inactive'
+                              )
+                            : t(
+                                'medications.cabinet.makeActive',
+                                'Make active'
+                              )}
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          {t(
+                            'medications.cabinet.inactiveHelp',
+                            'Inactive medicines are kept with their history but hidden from Today, logging and plans.'
+                          )}
+                        </p>
+                      </div>
                       {/* Advanced details cards / sections */}
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         {selected.prescriber && (
@@ -859,6 +943,39 @@ export default function Medications() {
                           </p>
                           <p className="mt-0.5">{selected.reason_text}</p>
                         </div>
+                      )}
+
+                      {readAliases(selected.custom_fields).length > 0 && (
+                        <p className="text-xs">
+                          <span className="font-semibold text-muted-foreground">
+                            {t(
+                              'medications.cabinet.alsoKnownAs',
+                              'Also known as'
+                            )}
+                            :
+                          </span>{' '}
+                          {readAliases(selected.custom_fields).join(', ')}
+                        </p>
+                      )}
+                      {readStorageNotes(selected.custom_fields) && (
+                        <p className="text-xs whitespace-pre-wrap">
+                          <span className="font-semibold text-muted-foreground">
+                            {t('medications.cabinet.storageLabel', 'Storage')}:
+                          </span>{' '}
+                          {readStorageNotes(selected.custom_fields)}
+                        </p>
+                      )}
+                      {readSubstanceClass(selected.custom_fields) === 'IU' && (
+                        <p className="text-xs">
+                          <span className="font-semibold text-muted-foreground">
+                            {t(
+                              'medications.cabinet.substanceClassLine',
+                              'Substance class'
+                            )}
+                            :
+                          </span>{' '}
+                          IU
+                        </p>
                       )}
 
                       {selected.notes && (
@@ -968,6 +1085,64 @@ export default function Medications() {
           recentMedicationEntries={recentEntries}
         />
       )}
+
+      <AlertDialog
+        open={confirmingDelete && selected !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('medications.cabinet.deleteTitle', 'Delete {{name}}?', {
+                name: selected?.display_name || selected?.name || '',
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'medications.cabinet.deleteBody',
+                'It must have no stock, plans, prescriptions or logged doses, and not be part of a blend.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteRefusal && (
+            <p role="alert" className="text-sm text-destructive">
+              {deleteRefusal}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {deleteRefusal
+                ? t('common.close', 'Close')
+                : t('common.cancel', 'Cancel')}
+            </AlertDialogCancel>
+            {deleteRefusal ? (
+              selected?.is_active && (
+                <Button
+                  disabled={updateMedMutation.isPending}
+                  onClick={() =>
+                    setMedActive(selected.id, false, closeDeleteDialog)
+                  }
+                >
+                  {t('medications.cabinet.markInactive', 'Mark inactive')}
+                </Button>
+              )
+            ) : (
+              <AlertDialogAction
+                disabled={removeMedMutation.isPending}
+                onClick={(event) => {
+                  // Stay open: a refusal is shown here, a success closes it.
+                  event.preventDefault();
+                  if (selected) handleDeleteMed(selected.id);
+                }}
+              >
+                {t('common.delete', 'Delete')}
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

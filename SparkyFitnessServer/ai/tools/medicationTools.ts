@@ -668,7 +668,8 @@ Actions:
               );
           }
         } catch (error) {
-          if ((error as { statusCode?: number }).statusCode === 422)
+          const status = (error as { statusCode?: number }).statusCode;
+          if (status === 422 || status === 409)
             return ERRORS.VALIDATION((error as Error).message);
           log('error', '[Medication Tool] Error:', error);
           return ERRORS.DB_ERROR(error);

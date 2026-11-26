@@ -20,6 +20,7 @@ interface ErrorFields {
   stack?: unknown;
   status?: unknown;
   statusCode?: unknown;
+  in_use?: unknown;
 }
 
 const errorHandler = (
@@ -112,6 +113,8 @@ const errorHandler = (
   res.status(statusCode).json({
     error: message,
     code,
+    // What is still linked to a medicine that was refused deletion.
+    in_use: statusCode === 409 ? error.in_use : undefined,
     details: process.env.NODE_ENV === 'development' ? error.stack : undefined, // Only send stack in development
   });
 };

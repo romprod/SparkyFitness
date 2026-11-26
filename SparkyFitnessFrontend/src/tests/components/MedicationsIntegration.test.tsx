@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -172,10 +172,12 @@ const syringe = {
 };
 let mockGlp1 = true;
 let mockEmptyMedications = false;
+let mockProfile: Record<string, unknown> = {};
 beforeEach(() => {
   localStorage.clear();
   mockGlp1 = true;
   mockEmptyMedications = false;
+  mockProfile = {};
   mockInvoiceUser.activeUserId = 'owner';
   mockApiCall.mockReset();
   mockApiCall.mockImplementation(
@@ -244,7 +246,7 @@ beforeEach(() => {
                 is_supplement: false,
                 dose_amount: 0.5,
                 dose_unit: 'mg',
-                custom_fields: { glp1_drug: 'retatrutide' },
+                custom_fields: { glp1_drug: 'retatrutide', ...mockProfile },
                 schedules: [],
                 nutrients: {},
               },
@@ -364,6 +366,33 @@ it('keeps syringe controls within a selected non-GLP1 injectable Cabinet detail'
   expect(
     await screen.findByRole('button', { name: 'Manage devices' })
   ).toBeInTheDocument();
+});
+it('shows aliases, storage notes and an IU class on the selected medicine, and nothing for mass', async () => {
+  mockGlp1 = false;
+  mockProfile = {
+    aliases: ['LY3437943', 'Reta'],
+    storage_notes: 'Refrigerate after reconstitution',
+    substance_class: 'IU',
+  };
+  open();
+  fireEvent.click(await screen.findByText('Synthetic injectable'));
+  expect(await screen.findByText(/LY3437943, Reta/)).toBeInTheDocument();
+  expect(screen.getByText('Also known as:')).toBeInTheDocument();
+  expect(
+    screen.getByText(/Refrigerate after reconstitution/)
+  ).toBeInTheDocument();
+  expect(screen.getByText('Storage:')).toBeInTheDocument();
+  expect(screen.getByText('Substance class:')).toBeInTheDocument();
+});
+it('shows no profile lines when none are saved', async () => {
+  mockGlp1 = false;
+  mockProfile = { substance_class: 'mass' };
+  open();
+  fireEvent.click(await screen.findByText('Synthetic injectable'));
+  await screen.findByText('Blend components');
+  expect(screen.queryByText('Also known as:')).not.toBeInTheDocument();
+  expect(screen.queryByText('Storage:')).not.toBeInTheDocument();
+  expect(screen.queryByText('Substance class:')).not.toBeInTheDocument();
 });
 it('offers blend components on a selected injectable, as a plain medication until some are added', async () => {
   mockGlp1 = false;
@@ -496,4 +525,105 @@ it('hides the owner-only Prescriptions destination in a delegated profile', asyn
       endpoint.startsWith('/v2/medication-prescriptions')
     )
   ).toBe(false);
+});
+
+describe('deleting and deactivating a medicine', () => {
+  const calls = (method: string, suffix = '') =>
+    mockApiCall.mock.calls.filter(
+      ([endpoint, options]) =>
+        endpoint === `/v2/medications/med${suffix}` &&
+        (options as { method?: string } | undefined)?.method === method
+    );
+  const openSelected = async () => {
+    mockGlp1 = false;
+    open();
+    fireEvent.click(await screen.findByText('Synthetic injectable'));
+    return screen.findByRole('button', { name: 'Delete medication' });
+  };
+  const refuse = (message: string) => {
+    const base = mockApiCall.getMockImplementation()!;
+    mockApiCall.mockImplementation(async (endpoint, options) => {
+      if (
+        endpoint === '/v2/medications/med' &&
+        (options as { method?: string } | undefined)?.method === 'DELETE'
+      )
+        throw new Error(message);
+      return base(endpoint, options);
+    });
+  };
+
+  it('asks first, and Cancel deletes nothing', async () => {
+    fireEvent.click(await openSelected());
+    expect(
+      await screen.findByText('Delete Synthetic injectable?')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'It must have no stock, plans, prescriptions or logged doses, and not be part of a blend.'
+      )
+    ).toBeInTheDocument();
+    expect(calls('DELETE')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Delete Synthetic injectable?')
+      ).not.toBeInTheDocument()
+    );
+    expect(calls('DELETE')).toHaveLength(0);
+  });
+
+  it('deletes once confirmed', async () => {
+    fireEvent.click(await openSelected());
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(calls('DELETE')).toHaveLength(1));
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Delete Synthetic injectable?')
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it('shows a refusal, offers Mark inactive and keeps the medicine selected', async () => {
+    const message =
+      'In use by 2 stock items, 14 logged doses — delete those first, or mark it inactive.';
+    fireEvent.click(await openSelected());
+    refuse(message);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(
+      screen.getByText('Delete Synthetic injectable?')
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark inactive' }));
+    await waitFor(() => expect(calls('PUT')).toHaveLength(1));
+    expect(calls('PUT')[0]![1]).toMatchObject({ body: { is_active: false } });
+    expect(
+      screen.getByRole('button', { name: 'Delete medication' })
+    ).toBeInTheDocument();
+  });
+
+  it('marks a medicine inactive and active again with a body of only is_active', async () => {
+    await openSelected();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark inactive' }));
+    await waitFor(() => expect(calls('PUT')).toHaveLength(1));
+    expect(calls('PUT')[0]![1]).toMatchObject({ body: { is_active: false } });
+    expect(
+      screen.getByText(
+        'Inactive medicines are kept with their history but hidden from Today, logging and plans.'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('offers Make active on an inactive medicine', async () => {
+    const base = mockApiCall.getMockImplementation()!;
+    mockApiCall.mockImplementation(async (endpoint, options) => {
+      const result = await base(endpoint, options);
+      return endpoint === '/v2/medications' && Array.isArray(result)
+        ? result.map((m: object) => ({ ...m, is_active: false }))
+        : result;
+    });
+    await openSelected();
+    fireEvent.click(screen.getByRole('button', { name: 'Make active' }));
+    await waitFor(() => expect(calls('PUT')).toHaveLength(1));
+    expect(calls('PUT')[0]![1]).toMatchObject({ body: { is_active: true } });
+  });
 });

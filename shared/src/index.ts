@@ -466,5 +466,6 @@ export * from './schemas/database/BodyCompScans.zod.ts';
 export * from './schemas/api/MedicationPrescriptionCosts.api.zod.ts';
 export * from './medications/vialCostResolution.ts';
 export * from './medications/dosePolicy.ts';
+export * from './medications/medicineProfile.ts';
 export * from './medications/cycleAlert.ts';
 export * from './medications/stackSetup.ts';

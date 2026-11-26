@@ -206,14 +206,37 @@ describe('what stops a component being deleted', () => {
     expect(await blendsContaining(owner, a)).toEqual(['KLOW', 'Wolverine']);
   });
 
-  it('turns the database’s refusal into a 409 that names the blends', async () => {
+  it('refuses a blend component before counting anything else, naming the blends', async () => {
     mocks.query
+      .mockResolvedValueOnce(rows()) // BEGIN
+      .mockResolvedValueOnce(rows([{ id: a }])) // lock
+      .mockResolvedValueOnce(rows([{ name: 'KLOW' }])); // blends
+    await expect(
+      medicationRepository.deleteMedication(owner, a)
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message:
+        'This medication is a component of KLOW. Remove it from the blend before deleting it.',
+    });
+    expect(sql().at(-1)).toBe('ROLLBACK');
+    expect(sql().some((q) => q.startsWith('DELETE'))).toBe(false);
+  });
+
+  it('turns the database’s refusal into the same 409 when a blend appears after the check', async () => {
+    mocks.query
+      .mockResolvedValueOnce(rows()) // BEGIN
+      .mockResolvedValueOnce(rows([{ id: a }])) // lock
+      .mockResolvedValueOnce(rows()) // no blends yet
+      .mockResolvedValueOnce(
+        rows([{ stock: 0, plans: 0, schedules: 0, prescriptions: 0, doses: 0 }])
+      )
       .mockRejectedValueOnce(
         Object.assign(new Error('violates foreign key'), {
           code: '23503',
           constraint: 'medication_blend_components_component_fk',
         })
       )
+      .mockResolvedValueOnce(rows()) // ROLLBACK
       .mockResolvedValueOnce(rows([{ name: 'KLOW' }]));
     await expect(
       medicationRepository.deleteMedication(owner, a)
@@ -226,7 +249,9 @@ describe('what stops a component being deleted', () => {
 
   it('leaves every other failure as it was', async () => {
     const boom = new Error('connection lost');
-    mocks.query.mockRejectedValueOnce(boom);
+    mocks.query
+      .mockResolvedValueOnce(rows()) // BEGIN
+      .mockRejectedValueOnce(boom);
     await expect(medicationRepository.deleteMedication(owner, a)).rejects.toBe(
       boom
     );

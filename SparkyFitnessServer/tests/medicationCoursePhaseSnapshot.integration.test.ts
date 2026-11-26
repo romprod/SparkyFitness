@@ -9,7 +9,6 @@ import {
 import { getClient, getSystemClient, endPool } from '../db/poolManager.js';
 import * as entries from '../models/medicationEntryRepository.js';
 import * as injections from '../models/injectionRepository.js';
-import * as medications from '../models/medicationRepository.js';
 import { getMedicationCourseHistory } from '../services/medicationCourseService.js';
 import { loadInventoryForecastSnapshot } from '../models/medicationInventoryForecastRepository.js';
 import {
@@ -17,6 +16,20 @@ import {
   loadCoursePhaseActuals,
   loadMedicationCourse,
 } from '../models/medicationCourseRepository.js';
+
+// The repository refuses a medicine that is in use, so tests of what the database does
+// when one goes (cascades, SET NULL, retained history) delete it directly.
+async function rawDeleteMedication(id: string) {
+  const client = await getSystemClient();
+  try {
+    const result = await client.query('DELETE FROM medications WHERE id=$1', [
+      id,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } finally {
+    client.release();
+  }
+}
 
 // Synthetic opt-in only. Family metadata is fixture server state, never a client-authored association.
 describe.runIf(process.env.COURSE_PHASE_SNAPSHOT_INTEGRATION === '1')(
@@ -427,7 +440,7 @@ describe.runIf(process.env.COURSE_PHASE_SNAPSHOT_INTEGRATION === '1')(
       const f = await fixture();
       const e = await detachedEntry(f);
       const i = await detachInjection(f);
-      await medications.deleteMedication(owner, f.med);
+      await rawDeleteMedication(f.med);
       expect(await heldCourse(f, () => entries.deleteEntry(owner, e.id))).toBe(
         true
       );
@@ -483,7 +496,7 @@ describe.runIf(process.env.COURSE_PHASE_SNAPSHOT_INTEGRATION === '1')(
       const f = await fixture(),
         g = await fixture(owner, f.med);
       const e = await detachedEntry(f);
-      await medications.deleteMedication(owner, f.med);
+      await rawDeleteMedication(f.med);
       await expect(
         entries.updateEntry(owner, e.id, {
           course_revision_id: g.next,

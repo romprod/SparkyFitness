@@ -6,6 +6,20 @@ import stock from '../models/medicationPenRepository.js';
 import injections from '../models/injectionRepository.js';
 import { saveSyringe } from '../models/medicationSyringeRepository.js';
 
+// The repository refuses a medicine that is in use, so tests of what the database does
+// when one goes (cascades, SET NULL, retained history) delete it directly.
+async function rawDeleteMedication(id: string) {
+  const client = await getSystemClient();
+  try {
+    const result = await client.query('DELETE FROM medications WHERE id=$1', [
+      id,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } finally {
+    client.release();
+  }
+}
+
 // Explicit opt-in for a fresh isolated synthetic database only, never production.
 describe.runIf(process.env.MEDICATION_CASCADE_INTEGRATION === '1')(
   'medication history FK cleanup and preparation scope',
@@ -101,14 +115,33 @@ describe.runIf(process.env.MEDICATION_CASCADE_INTEGRATION === '1')(
       }
     }
 
+    it('the repository refuses a medicine with a logged dose and deletes an unused one', async () => {
+      const { medication, log } = await fixture('manual');
+      await expect(
+        medications.deleteMedication(owner, medication.id)
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        in_use: {
+          stock: 1,
+          plans: 0,
+          schedules: 0,
+          prescriptions: 0,
+          doses: 1,
+        },
+      });
+      expect((await history(owner, log.id)).medication_id).toBe(medication.id);
+      const unused = await medications.createMedication(owner, {
+        name: 'Synthetic unused medicine',
+        type_id: 'injection',
+      });
+      expect(await medications.deleteMedication(owner, unused.id)).toBe(true);
+    });
     it.each(['manual', 'prepared', 'calculated'] as const)(
       'normal medication deletion preserves %s injection history and clears only nullable links',
       async (kind) => {
         const { medication, vial, log } = await fixture(kind);
         const before = await history(owner, log.id);
-        expect(await medications.deleteMedication(owner, medication.id)).toBe(
-          true
-        );
+        expect(await rawDeleteMedication(medication.id)).toBe(true);
         const after = await history(owner, log.id);
         expect(after).toEqual({
           ...before,

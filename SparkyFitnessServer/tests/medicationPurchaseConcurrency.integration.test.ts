@@ -4,7 +4,20 @@ import type { MedicationPurchaseView } from '@workspace/shared';
 import { getSystemClient, getClient, endPool } from '../db/poolManager.js';
 import * as purchases from '../models/medicationPurchaseRepository.js';
 import stock from '../models/medicationPenRepository.js';
-import medications from '../models/medicationRepository.js';
+
+// The repository refuses a medicine that is in use, so tests of what the database does
+// when one goes (cascades, SET NULL, retained history) delete it directly.
+async function rawDeleteMedication(id: string) {
+  const client = await getSystemClient();
+  try {
+    const result = await client.query('DELETE FROM medications WHERE id=$1', [
+      id,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } finally {
+    client.release();
+  }
+}
 
 describe.runIf(process.env.PURCHASE_CONCURRENCY_INTEGRATION === '1')(
   'private invoice concurrency PostgreSQL',
@@ -175,7 +188,7 @@ describe.runIf(process.env.PURCHASE_CONCURRENCY_INTEGRATION === '1')(
         operation_id: randomUUID(),
       });
       const outcomes = await Promise.allSettled([
-        medications.deleteMedication(owner, temporaryMed),
+        rawDeleteMedication(temporaryMed),
         purchases.updatePurchase(owner, purchase.id, {
           ...values(temporaryMed, [vial.id]),
           expected_revision: purchase.revision,

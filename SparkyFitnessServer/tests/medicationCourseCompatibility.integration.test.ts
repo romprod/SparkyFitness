@@ -32,6 +32,20 @@ import {
 } from '../services/medicationCourseService.js';
 import { getAppointmentReportData } from '../services/appointmentReportService.js';
 
+// The repository refuses a medicine that is in use, so tests of what the database does
+// when one goes (cascades, SET NULL, retained history) delete it directly.
+async function rawDeleteMedication(id: string) {
+  const client = await getSystemClient();
+  try {
+    const result = await client.query('DELETE FROM medications WHERE id=$1', [
+      id,
+    ]);
+    return (result.rowCount ?? 0) > 0;
+  } finally {
+    client.release();
+  }
+}
+
 // Explicit opt-in; the companion runner provisions a new empty, synthetic database.
 describe.runIf(process.env.MEDICATION_COURSE_COMPAT_INTEGRATION === '1')(
   'managed course actual-log compatibility PostgreSQL',
@@ -476,7 +490,7 @@ describe.runIf(process.env.MEDICATION_COURSE_COMPAT_INTEGRATION === '1')(
           ]);
         })
       ).rejects.toThrow();
-      expect(await medications.deleteMedication(owner, f.med)).toBe(true);
+      expect(await rawDeleteMedication(f.med)).toBe(true);
       const retained = await withAdmin(
         async (client) =>
           (
@@ -944,7 +958,7 @@ describe.runIf(process.env.MEDICATION_COURSE_COMPAT_INTEGRATION === '1')(
       expect(actual.medication_name_snapshot).toBe(
         'Synthetic course medication'
       );
-      await medications.deleteMedication(owner, f.med);
+      await rawDeleteMedication(f.med);
       await deleteMedicationCourseRevision(owner, f.course, f.revision, {
         operation_id: randomUUID(),
         expected_version: 1,

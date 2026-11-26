@@ -338,15 +338,20 @@ export const useUpdateMedicationMutation = () => {
   });
 };
 
-export const useDeleteMedicationMutation = () => {
+/** `quiet` leaves a refusal to the caller, which shows the server's message itself. */
+export const useDeleteMedicationMutation = (
+  options: { quiet?: boolean } = {}
+) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => medicationService.deleteMedication(id),
+    mutationFn: (id: string) =>
+      medicationService.deleteMedication(id, { quiet: options.quiet }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['medications'] });
       invalidateReports(queryClient);
     },
     meta: {
+      ...(options.quiet ? { silentError: true } : {}),
       errorMessage: i18n.t(
         'hooks.useMedications.couldNotRemoveMedication',
         'Could not remove medication.'
