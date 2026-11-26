@@ -88,7 +88,7 @@ async function replaceMembers(
        SELECT 1 FROM medication_stack_members sm
        WHERE sm.stack_id = $1 AND sm.medication_id = want.medication_id
      )
-     ORDER BY want.position`,
+     ORDER BY want.medication_id`,
     [stackId, owner, medicationIds]
   );
 }
