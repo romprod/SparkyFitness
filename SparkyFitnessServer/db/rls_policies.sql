@@ -147,6 +147,7 @@ BEGIN
     'medication_preparations',
     'medication_preparation_corrections',
     'medication_preparation_dose_corrections',
+    'medication_dose_audit',
     'medication_smooth_week_pins',
     'injection_entries',
     'medication_titration_steps',
@@ -1161,6 +1162,7 @@ SELECT create_medication_policy('medication_stock_status_audit');
 SELECT create_medication_policy('medication_preparations');
 SELECT create_medication_policy('medication_preparation_corrections');
 SELECT create_medication_policy('medication_preparation_dose_corrections');
+SELECT create_medication_policy('medication_dose_audit');
 SELECT create_medication_policy('medication_smooth_week_pins');
 SELECT create_medication_policy('injection_entries');
 SELECT create_medication_policy('medication_titration_steps');

@@ -267,6 +267,7 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     medication_preparations: 'medication',
     medication_preparation_corrections: 'medication',
     medication_preparation_dose_corrections: 'medication',
+    medication_dose_audit: 'medication',
     medication_smooth_week_pins: 'medication',
     medication_schedules: 'medication',
     medication_courses: 'medication',
@@ -1097,6 +1098,151 @@ describe.runIf(RUN)('RLS permission matrix', () => {
         }),
         touchColumn: 'name',
         rowId: () => id,
+      });
+    });
+
+    // -- medication audit: readable like the doses, but nobody writes it directly ----
+    describe('medication_dose_audit (append-only)', () => {
+      const INACTIVE = '00000000-0000-4000-a000-0000000000a1';
+      const EXPIRED = '00000000-0000-4000-a000-0000000000a2';
+      const STRANGER = '00000000-0000-4000-a000-0000000000a3';
+      let entryId = '';
+      let auditId = '';
+      beforeAll(async () => {
+        const sys = await getSystemClient();
+        try {
+          await sys.query(
+            'DELETE FROM public."user" WHERE id = ANY($1::uuid[])',
+            [[INACTIVE, EXPIRED, STRANGER]]
+          );
+          for (const id of [INACTIVE, EXPIRED, STRANGER])
+            await sys.query(
+              'INSERT INTO public."user" (id, email, email_verified) VALUES ($1, $2, true)',
+              [id, `rls-matrix-audit-${id}@example.test`]
+            );
+          const grant = JSON.stringify({ can_manage_medications: true });
+          await sys.query(
+            `INSERT INTO public.family_access (owner_user_id, family_user_id, family_email, access_permissions, is_active, status)
+             VALUES ($1, $2, 'rls-matrix-inactive@example.test', $3::jsonb, false, 'inactive')`,
+            [OWNER, INACTIVE, grant]
+          );
+          await sys.query(
+            `INSERT INTO public.family_access (owner_user_id, family_user_id, family_email, access_permissions, is_active, status, access_end_date)
+             VALUES ($1, $2, 'rls-matrix-expired@example.test', $3::jsonb, true, 'active', now() - interval '1 day')`,
+            [OWNER, EXPIRED, grant]
+          );
+          // The audit row is written by the trigger on this dose.
+          entryId = (
+            await sys.query(
+              "INSERT INTO public.medication_entries (user_id, status, med_name_snapshot) VALUES ($1, 'taken', 'rls-matrix-audit') RETURNING id",
+              [OWNER]
+            )
+          ).rows[0].id;
+          auditId = (
+            await sys.query(
+              'SELECT id FROM public.medication_dose_audit WHERE entity_id = $1',
+              [entryId]
+            )
+          ).rows[0].id;
+        } finally {
+          sys.release();
+        }
+      });
+      afterAll(async () => {
+        const sys = await getSystemClient();
+        try {
+          await sys.query(
+            'DELETE FROM public.medication_entries WHERE id = $1',
+            [entryId]
+          );
+          await sys.query(
+            'DELETE FROM public."user" WHERE id = ANY($1::uuid[])',
+            [[INACTIVE, EXPIRED, STRANGER]]
+          );
+        } finally {
+          sys.release();
+        }
+      });
+
+      type Who = DelegateKey | 'owner' | 'inactive' | 'expired' | 'stranger';
+      const WHO: Who[] = ['owner', ...KEYS, 'inactive', 'expired', 'stranger'];
+      const authAs = (who: Who): [string, string] => {
+        if (who === 'owner') return [OWNER, OWNER];
+        if (who === 'inactive') return [OWNER, INACTIVE];
+        if (who === 'expired') return [OWNER, EXPIRED];
+        // a user with no grant at all asking for the owner's data
+        if (who === 'stranger') return [OWNER, STRANGER];
+        return [OWNER, D[who]];
+      };
+      // Who may read it: the owner, can_manage_medications, can_view_reports.
+      const READERS: Who[] = ['owner', 'meds', 'reports'];
+      // Who gets as far as the immutability trigger on UPDATE/DELETE (RLS lets them see the row).
+      const WRITERS: Who[] = ['owner', 'meds'];
+
+      async function run(who: Who, sql: string, params: unknown[]) {
+        const [user, actor] = authAs(who);
+        const client = await getClient(user, actor);
+        try {
+          await client.query('BEGIN');
+          try {
+            const res = await client.query(sql, params);
+            return { rows: res.rows, rowCount: res.rowCount ?? 0 };
+          } catch (e) {
+            return { error: e as { code?: string; message: string } };
+          } finally {
+            await client.query('ROLLBACK');
+          }
+        } finally {
+          client.release();
+        }
+      }
+
+      it.each(WHO)('SELECT as "%s"', async (who) => {
+        const out = await run(
+          who,
+          'SELECT id FROM public.medication_dose_audit WHERE id = $1',
+          [auditId]
+        );
+        expect(out.rowCount).toBe(READERS.includes(who) ? 1 : 0);
+      });
+
+      it.each(WHO)('INSERT as "%s" is refused', async (who) => {
+        const out = await run(
+          who,
+          `INSERT INTO public.medication_dose_audit (user_id, entity_kind, entity_id, action, new_values)
+           VALUES ($1, 'entry', $2, 'create', '{}'::jsonb)`,
+          [OWNER, randomUUID()]
+        );
+        // the guard trigger fires before the row security check, so everyone meets the guard
+        expect(out.error?.message).toMatch(/written by the database only/);
+      });
+
+      it.each(WHO)('UPDATE as "%s" is refused or hidden', async (who) => {
+        const out = await run(
+          who,
+          "UPDATE public.medication_dose_audit SET action = 'delete' WHERE id = $1",
+          [auditId]
+        );
+        if (WRITERS.includes(who)) {
+          expect(out.error?.message).toMatch(/immutable/);
+        } else {
+          expect(out.error).toBeUndefined();
+          expect(out.rowCount).toBe(0);
+        }
+      });
+
+      it.each(WHO)('DELETE as "%s" is refused or hidden', async (who) => {
+        const out = await run(
+          who,
+          'DELETE FROM public.medication_dose_audit WHERE id = $1',
+          [auditId]
+        );
+        if (WRITERS.includes(who)) {
+          expect(out.error?.message).toMatch(/immutable/);
+        } else {
+          expect(out.error).toBeUndefined();
+          expect(out.rowCount).toBe(0);
+        }
       });
     });
 
