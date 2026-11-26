@@ -6,6 +6,14 @@ import {
 import { normalizePurchaseDecimal } from '../../medications/purchaseCosts.ts';
 
 const uuid = z.string().uuid();
+/**
+ * Clients that send this header with a value of 2 or more can read and write the
+ * several medicines a prescription covers. Without it the API keeps the
+ * one-medicine contract on the primary medicine.
+ */
+export const PRESCRIPTION_MODEL_VERSION_HEADER = 'X-Prescription-Model-Version';
+export const PRESCRIPTION_MODEL_VERSION = 2;
+export const MAX_PRESCRIPTION_MEDICATIONS = 20;
 const count = z.number().int().min(0).max(2147483647);
 const version = z.number().int().positive().max(2147483647);
 const text = z
@@ -119,6 +127,70 @@ export const medicationPrescriptionUpdateSchema = fields
         message: 'Confirm per-vial basis with an explicit cost',
       });
   });
+const medicationIds = z
+  .array(uuid)
+  .min(1)
+  .max(MAX_PRESCRIPTION_MEDICATIONS)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: 'Each medication can be listed once',
+  });
+/**
+ * Model 2 create: either `medication_id` (one medicine, exactly the model 1
+ * body) or `medication_ids`, never both. Key order matches model 1 so a
+ * legacy body parses to the same JSON and keeps its operation hash.
+ */
+export const medicationPrescriptionCreateSchemaV2 = fields
+  .extend({
+    operation_id: uuid,
+    medication_id: uuid.optional(),
+    medication_ids: medicationIds.optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      (value.medication_id === undefined) ===
+      (value.medication_ids === undefined)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['medication_ids'],
+        message: 'Send either medication_id or medication_ids',
+      });
+    if (value.cost_basis === 'per_vial' && value.cost === null)
+      context.addIssue({
+        code: 'custom',
+        path: ['cost'],
+        message: 'Confirm per-vial basis with an explicit cost',
+      });
+  });
+/** Model 2 update: `medication_ids` replaces the covered set; omitted preserves it. */
+export const medicationPrescriptionUpdateSchemaV2 = fields
+  .partial()
+  .extend({
+    status: medicationPrescriptionStatusSchema.optional(),
+    operation_id: uuid,
+    expected_version: version,
+    medication_id: uuid.nullable().optional(),
+    medication_ids: medicationIds.optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.medication_id !== undefined && value.medication_ids !== undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['medication_ids'],
+        message: 'Send either medication_id or medication_ids',
+      });
+    if (
+      value.cost_basis === 'per_vial' &&
+      (value.cost === undefined || value.cost === null)
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['cost'],
+        message: 'Confirm per-vial basis with an explicit cost',
+      });
+  });
 export const medicationPrescriptionDeleteSchema = z
   .object({ operation_id: uuid, expected_version: version })
   .strict();
@@ -163,12 +235,60 @@ export const medicationPrescriptionListSchema = z
 export const medicationPrescriptionDetailSchema = z
   .object({ prescription: medicationPrescriptionSchema })
   .strict();
+/** One covered medicine; `medication_id` null is the permanent tombstone of a deleted medicine. */
+export const medicationPrescriptionCoverageSchema = z
+  .object({
+    medication_id: uuid.nullable(),
+    medication_name: z.string(),
+    position: count,
+  })
+  .strict();
+/** Model 2 response: model 1 plus the covered medicines in display order (primary first). */
+export const medicationPrescriptionSchemaV2 =
+  medicationPrescriptionSchema.extend({
+    medications: z.array(medicationPrescriptionCoverageSchema).min(1),
+  });
+/** What a model 2 client parses: an older server omits `medications`, so it is optional. */
+export const medicationPrescriptionClientSchema =
+  medicationPrescriptionSchema.extend({
+    medications: z
+      .array(medicationPrescriptionCoverageSchema)
+      .min(1)
+      .optional(),
+  });
+export const medicationPrescriptionListSchemaV2 = z
+  .object({ prescriptions: z.array(medicationPrescriptionSchemaV2) })
+  .strict();
+export const medicationPrescriptionDetailSchemaV2 = z
+  .object({ prescription: medicationPrescriptionSchemaV2 })
+  .strict();
+export const medicationPrescriptionClientListSchema = z
+  .object({ prescriptions: z.array(medicationPrescriptionClientSchema) })
+  .strict();
+export const medicationPrescriptionClientDetailSchema = z
+  .object({ prescription: medicationPrescriptionClientSchema })
+  .strict();
 export const medicationPrescriptionMutationResultSchema = z
   .object({ id: uuid, version: version.nullable(), deleted: z.boolean() })
   .strict();
 
 export type MedicationPrescription = z.infer<
   typeof medicationPrescriptionSchema
+>;
+export type MedicationPrescriptionCreateV2 = z.infer<
+  typeof medicationPrescriptionCreateSchemaV2
+>;
+export type MedicationPrescriptionUpdateV2 = z.infer<
+  typeof medicationPrescriptionUpdateSchemaV2
+>;
+export type MedicationPrescriptionCoverage = z.infer<
+  typeof medicationPrescriptionCoverageSchema
+>;
+export type MedicationPrescriptionV2 = z.infer<
+  typeof medicationPrescriptionSchemaV2
+>;
+export type MedicationPrescriptionClient = z.infer<
+  typeof medicationPrescriptionClientSchema
 >;
 export type MedicationPrescriptionQuery = z.infer<
   typeof medicationPrescriptionQuerySchema

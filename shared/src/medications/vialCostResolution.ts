@@ -7,7 +7,8 @@ import { medicationCourseDaySchema } from '../schemas/api/MedicationCourses.api.
 const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 export interface MedicationCostPrescription {
   id: string;
-  medication_id: string;
+  /** Every live medicine the prescription covers. */
+  medication_ids: string[];
   cost: string | null;
   currency: string | null;
   date_written: string | null;
@@ -83,7 +84,7 @@ export function resolveMedicationVialPrice(input: {
   if (
     vial.kind !== 'vial' ||
     !rx ||
-    rx.medication_id !== vial.medication_id ||
+    !rx.medication_ids.includes(vial.medication_id) ||
     rx.cost_basis !== 'per_vial' ||
     cost === null ||
     cost.lt(0)

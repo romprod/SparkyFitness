@@ -27,8 +27,9 @@ export async function loadMedicationPrescriptionFinancialSnapshot(
     "SELECT p.id,p.medication_id,p.kind,p.label_mass_mg::text,p.status,v.purchase_item_id,p.prescription_id,(SELECT pr.final_volume_ml::text FROM medication_preparations pr WHERE pr.pen_id=p.id AND pr.user_id=p.user_id AND pr.mode='reconstituted' LIMIT 1) AS diluent_ml FROM medication_pens p LEFT JOIN medication_purchase_vials v ON v.pen_id=p.id AND v.user_id=p.user_id WHERE p.user_id=$1 AND p.kind='vial' ORDER BY p.id",
     [owner]
   );
+  // Prescriptions with a linked vial of a medicine they still cover, with every live covered medicine.
   const prescriptions = await client.query<MedicationCostPrescription>(
-    "SELECT DISTINCT r.id,r.medication_id,r.cost::text,r.currency,r.date_written::text,r.cost_basis FROM medication_prescriptions r JOIN medication_pens p ON p.prescription_id=r.id AND p.user_id=r.user_id AND p.medication_id=r.medication_id WHERE p.user_id=$1 AND p.kind='vial' ORDER BY r.id",
+    "SELECT r.id,(SELECT COALESCE(array_agg(j.medication_id ORDER BY j.position,j.created_at,j.id),ARRAY[]::uuid[]) FROM medication_prescription_medications j WHERE j.prescription_id=r.id AND j.user_id=r.user_id AND j.medication_id IS NOT NULL) AS medication_ids,r.cost::text,r.currency,r.date_written::text,r.cost_basis FROM medication_prescriptions r WHERE r.user_id=$1 AND EXISTS(SELECT 1 FROM medication_pens p JOIN medication_prescription_medications j ON j.prescription_id=r.id AND j.user_id=r.user_id AND j.medication_id=p.medication_id WHERE p.prescription_id=r.id AND p.user_id=r.user_id AND p.kind='vial') ORDER BY r.id",
     [owner]
   );
   return {

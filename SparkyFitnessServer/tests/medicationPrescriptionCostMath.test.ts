@@ -30,7 +30,7 @@ const rx = (
   patch: Partial<MedicationCostPrescription> = {}
 ): MedicationCostPrescription => ({
   id: uid(20),
-  medication_id: med,
+  medication_ids: [med],
   cost: '30',
   currency: 'GBP',
   date_written: '2026-11-01',
@@ -118,7 +118,18 @@ describe('one explicit linked-vial cost resolver', () => {
   );
   it('does not infer a stock prescription from another course, latest record, or different medication', () => {
     expect(resolve(vial({ prescription_id: null })).is_costed).toBe(false);
-    expect(resolve(vial(), rx({ medication_id: other })).is_costed).toBe(false);
+    expect(resolve(vial(), rx({ medication_ids: [other] })).is_costed).toBe(
+      false
+    );
+    // A prescription that covers several medicines prices the vial of each one it covers, and only those.
+    expect(
+      resolve(vial(), rx({ medication_ids: [other, med] })).is_costed
+    ).toBe(true);
+    expect(
+      resolve(vial({ medication_id: other }), rx({ medication_ids: [med] }))
+        .is_costed
+    ).toBe(false);
+    expect(resolve(vial(), rx({ medication_ids: [] })).is_costed).toBe(false);
     expect(resolve(vial({ prescription_id: uid(99) })).is_costed).toBe(false);
   });
   it('requires an explicit per-vial basis and vial kind; no cost confirmation is inferred', () => {
