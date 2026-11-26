@@ -3,10 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MedicationPrescriptions from '@/pages/Medications/MedicationPrescriptions';
 import { prescriptionRefillNotice } from '@/pages/Medications/medicationPrescriptionPresentation';
 import {
+  coveredFixture,
   prescriptionFixture,
   prescriptionIds,
 } from '@/tests/fixtures/medicationPrescriptions';
-import { courseMedication } from '@/tests/fixtures/medicationCourses';
+import {
+  courseMedication,
+  courseIds,
+} from '@/tests/fixtures/medicationCourses';
 import { HttpApiError } from '@/api/api';
 let mockReady = true,
   mockCurrent = true,
@@ -93,6 +97,39 @@ it('shows all stored statuses without filters and preserves known zero versus un
   expect(
     screen.getAllByRole('button', { name: 'Edit' })[0]!.closest('details')
   ).toBeNull();
+});
+it('titles a prescription by its joined medicine names with a chip each and a marked deleted medicine', () => {
+  mockRecords = [
+    coveredFixture(
+      [
+        { id: courseIds.med, name: 'BPC-157' },
+        { id: courseIds.rule, name: 'TB-500' },
+        { id: null, name: 'Retired peptide' },
+      ],
+      { cost: '90', cost_basis: 'per_prescription', source: 'Shared source' }
+    ),
+    prescriptionFixture({
+      id: prescriptionIds.second,
+      medication_id: null,
+      medication_name: 'Solo deleted',
+    }),
+  ];
+  render(<MedicationPrescriptions medications={[courseMedication]} />);
+  expect(
+    screen.getByText('BPC-157 + TB-500 + Retired peptide', { selector: 'p' })
+  ).toBeInTheDocument();
+  const chips = screen.getByRole('list', { name: 'Medications covered' });
+  expect(chips).toHaveTextContent('BPC-157');
+  expect(chips).toHaveTextContent('TB-500');
+  expect(chips).toHaveTextContent('Retired peptide · Deleted medication');
+  expect(
+    screen.getByText(/Total cost \(split across linked vials\): AUD 90.00/)
+  ).toBeInTheDocument();
+  // A one-medicine prescription keeps its original whole-card note and no chips.
+  expect(screen.getAllByText('Deleted medication')).toHaveLength(1);
+  expect(
+    screen.getAllByRole('list', { name: 'Medications covered' })
+  ).toHaveLength(1);
 });
 it('keeps an orphan register available without a medication but disables new creation', () => {
   render(<MedicationPrescriptions medications={[]} />);

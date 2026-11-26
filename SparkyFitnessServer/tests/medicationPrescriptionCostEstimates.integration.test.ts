@@ -81,6 +81,7 @@ describe.runIf(
     medicationPrescriptionCreateSchema.parse({
       medication_id,
       operation_id: randomUUID(),
+      currency: 'AUD',
       ...patch,
     });
   const create = (
@@ -331,15 +332,16 @@ describe.runIf(
       expect(Object.keys(selected).sort()).toEqual(
         [
           'id',
-          'medication_id',
+          'medication_ids',
           'cost',
           'currency',
           'date_written',
           'cost_basis',
+          'linked_vial_count',
         ].sort()
       );
       expect(selected).toMatchObject({
-        medication_id: med,
+        medication_ids: [med],
         cost: '10',
         cost_basis: 'per_vial',
       });

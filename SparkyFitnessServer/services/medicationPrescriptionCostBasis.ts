@@ -1,5 +1,5 @@
 import { normalizePurchaseDecimal } from '@workspace/shared';
-export type PrescriptionCostBasis = 'per_vial' | null;
+export type PrescriptionCostBasis = 'per_vial' | 'per_prescription' | null;
 interface CostState {
   cost: string | null;
   currency: string;
@@ -10,9 +10,13 @@ interface CostIntent {
   currency?: string | null;
   cost_basis?: PrescriptionCostBasis;
 }
-const invalid = () =>
+const invalid = (basis: 'per_vial' | 'per_prescription') =>
   Object.assign(
-    new Error('Confirm a supplied cost per vial before selecting its basis.'),
+    new Error(
+      basis === 'per_vial'
+        ? 'Confirm a supplied cost per vial before selecting its basis.'
+        : 'Confirm a supplied total cost before selecting its basis.'
+    ),
     { statusCode: 422, status: 422 }
   );
 /** Authored intent only; an unrelated save never confirms ambiguous historical cost. */
@@ -20,14 +24,17 @@ export function prescriptionCostBasis(
   intent: CostIntent,
   previous?: CostState
 ): PrescriptionCostBasis {
-  if (intent.cost_basis === 'per_vial') {
+  if (
+    intent.cost_basis === 'per_vial' ||
+    intent.cost_basis === 'per_prescription'
+  ) {
     if (
       intent.cost === undefined ||
       intent.cost === null ||
       normalizePurchaseDecimal(intent.cost) === null
     )
-      throw invalid();
-    return 'per_vial';
+      throw invalid(intent.cost_basis);
+    return intent.cost_basis;
   }
   if (intent.cost_basis === null) return null;
   if (!previous) return null;

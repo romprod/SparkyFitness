@@ -6,6 +6,8 @@ import {
   medicationPrescriptionCostAnalyticsQuerySchema,
   medicationPrescriptionVialCostsSchema,
   medicationPrescriptionVialCostsQuerySchema,
+  PRESCRIPTION_MODEL_VERSION,
+  PRESCRIPTION_MODEL_VERSION_HEADER,
   type MedicationCostWindow,
 } from '@workspace/shared';
 import { apiCall } from '@/api/api';
@@ -141,6 +143,10 @@ export const getMedicationVialCostsWithPrescriptionEstimates = async (
   medicationPrescriptionVialCostsSchema.parse(
     await apiCall(`${base}/vial-costs`, {
       method: 'GET',
+      // Lets a price that is a share of a whole prescription say so, instead of reading as a per-vial price.
+      headers: {
+        [PRESCRIPTION_MODEL_VERSION_HEADER]: String(PRESCRIPTION_MODEL_VERSION),
+      },
       params: medicationPrescriptionVialCostsQuerySchema.parse({
         expected_owner_id: ownerId,
         cost_basis: 'with_prescription_estimates',

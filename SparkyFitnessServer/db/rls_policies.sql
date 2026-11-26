@@ -128,6 +128,7 @@ BEGIN
     'medication_device_preferences',
     'medication_prescriptions',
     'medication_prescription_operations',
+    'medication_prescription_medications',
     'medication_purchases',
     'medication_purchase_items',
     'medication_purchase_vials',
@@ -826,6 +827,9 @@ SELECT create_owner_policy('user_medication_display_preferences');
 -- Invoice amounts and links are private financial data, never medication delegation.
 DROP POLICY IF EXISTS owner_policy ON public.medication_prescriptions;
 CREATE POLICY owner_policy ON public.medication_prescriptions FOR ALL TO PUBLIC USING(user_id=authenticated_user_id() AND user_id=current_user_id()) WITH CHECK(user_id=authenticated_user_id() AND user_id=current_user_id());
+-- Which medicines a prescription covers (one prescription may cover several): owner only, like the prescription itself.
+DROP POLICY IF EXISTS owner_policy ON public.medication_prescription_medications;
+CREATE POLICY owner_policy ON public.medication_prescription_medications FOR ALL TO PUBLIC USING(user_id=authenticated_user_id() AND user_id=current_user_id()) WITH CHECK(user_id=authenticated_user_id() AND user_id=current_user_id());
 DROP POLICY IF EXISTS owner_policy ON public.medication_prescription_operations;
 DROP POLICY IF EXISTS owner_select_policy ON public.medication_prescription_operations;
 DROP POLICY IF EXISTS owner_insert_policy ON public.medication_prescription_operations;

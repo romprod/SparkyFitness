@@ -1,8 +1,6 @@
 import MedicationPrescriptionLink from './MedicationPrescriptionLink';
-import {
-  useMedicationPrescriptionScope,
-  useMedicationPrescriptions,
-} from '@/hooks/Medications/useMedicationPrescriptions';
+import StockPrescriptionLine from './StockPrescriptionLine';
+import { useMedicationPrescriptionScope } from '@/hooks/Medications/useMedicationPrescriptions';
 import { useEffect, useState, useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -1633,64 +1631,5 @@ function InventorySession({
         }
       />
     </>
-  );
-}
-
-/** "Rx: source · Change" line from Pitstop; shown only when a prescription is linked. */
-function StockPrescriptionLine({
-  pen,
-  canWrite,
-  onChange,
-}: {
-  pen: MedicationPen;
-  canWrite: boolean;
-  onChange: () => void;
-}) {
-  const { t } = useTranslation();
-  const { data } = useMedicationPrescriptions(!!pen.prescription_id);
-  if (!pen.prescription_id) {
-    // Stock still in play can be linked to a prescription from its card, as in Pitstop.
-    if (
-      !canWrite ||
-      pen.kind !== 'vial' ||
-      pen.status === 'finished' ||
-      pen.status === 'discarded'
-    )
-      return null;
-    return (
-      <button
-        type="button"
-        className="text-primary hover:underline"
-        onClick={onChange}
-      >
-        {t('medications.stockLayout.addRx', '+ Add prescription')}
-      </button>
-    );
-  }
-  const row = data?.prescriptions.find(
-    (item) => item.id === pen.prescription_id
-  );
-  if (!row) return null;
-  const name =
-    row.source ??
-    row.prescriber ??
-    row.pharmacy ??
-    t('medications.prescriptions.singular', 'Prescription');
-  return (
-    <span className="flex items-center gap-1.5 text-muted-foreground">
-      <span>
-        {t('medications.stockLayout.rx', 'Rx')}:{' '}
-        <span className="text-foreground">{name}</span>
-      </span>
-      {canWrite && (
-        <button
-          type="button"
-          className="text-primary hover:underline"
-          onClick={onChange}
-        >
-          {t('medications.stockLayout.change', 'Change')}
-        </button>
-      )}
-    </span>
   );
 }

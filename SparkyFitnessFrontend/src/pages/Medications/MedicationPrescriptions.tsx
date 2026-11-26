@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import {
   todayInZone,
   formatPurchaseMoney,
-  type MedicationPrescription,
   type MedicationPrescriptionDelete,
 } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
@@ -28,7 +27,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import MedicationPrescriptionForm from './MedicationPrescriptionForm';
-import { prescriptionRefillNotice } from './medicationPrescriptionPresentation';
+import {
+  prescriptionCoverage,
+  prescriptionRefillNotice,
+  type PrescriptionRecord,
+} from './medicationPrescriptionPresentation';
 
 function DeletePrescription({
   record,
@@ -37,7 +40,7 @@ function DeletePrescription({
   returnFocus,
   onDeletedFocus,
 }: {
-  record: MedicationPrescription;
+  record: PrescriptionRecord;
   result: ReturnType<typeof useMedicationPrescriptions>;
   onClose: () => void;
   returnFocus?: HTMLElement | null;
@@ -235,12 +238,12 @@ function PrescriptionRegister({
   const { scope, query, data } = result;
   const today = todayInZone(timezone);
   const [edit, setEdit] = useState<{
-    record?: MedicationPrescription;
+    record?: PrescriptionRecord;
     trigger: HTMLElement;
   } | null>(null);
   const defaultCurrency = useLastUsedMedicationCurrency(!!edit && !edit.record);
   const [remove, setRemove] = useState<{
-    record: MedicationPrescription;
+    record: PrescriptionRecord;
     trigger: HTMLElement;
   } | null>(null);
   const basic = useRef<HTMLButtonElement>(null);
@@ -304,6 +307,7 @@ function PrescriptionRegister({
             <ul className="grid gap-4 lg:grid-cols-2">
               {data.prescriptions.map((record) => {
                 const notice = prescriptionRefillNotice(record, today);
+                const coverage = prescriptionCoverage(record);
                 return (
                   <li
                     key={record.id}
@@ -318,13 +322,41 @@ function PrescriptionRegister({
                               'Prescription'
                             )}
                         </p>
-                        {record.medication_id === null && (
-                          <p className="text-xs text-muted-foreground">
-                            {t(
-                              'medications.prescriptions.deletedTarget',
-                              'Deleted medication'
+                        {coverage.length > 1 ? (
+                          <ul
+                            aria-label={t(
+                              'medications.prescriptions.covered',
+                              'Medications covered'
                             )}
-                          </p>
+                            className="mt-1 flex flex-wrap gap-1"
+                          >
+                            {coverage.map((entry, index) => (
+                              <li
+                                key={`${entry.medication_id ?? 'deleted'}-${index}`}
+                                className={`rounded-full border px-2 py-0.5 text-xs ${
+                                  entry.medication_id === null
+                                    ? 'border-dashed text-muted-foreground'
+                                    : ''
+                                }`}
+                              >
+                                {entry.medication_name}
+                                {entry.medication_id === null &&
+                                  ` · ${t(
+                                    'medications.prescriptions.deletedTarget',
+                                    'Deleted medication'
+                                  )}`}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          record.medication_id === null && (
+                            <p className="text-xs text-muted-foreground">
+                              {t(
+                                'medications.prescriptions.deletedTarget',
+                                'Deleted medication'
+                              )}
+                            </p>
+                          )
                         )}
                         <p className="text-sm text-muted-foreground break-words">
                           {record.source ??
@@ -383,10 +415,15 @@ function PrescriptionRegister({
                                   'medications.costEstimates.costPerVial',
                                   'Cost per vial'
                                 )
-                              : t(
-                                  'medications.costEstimates.unconfirmedCost',
-                                  'Recorded cost (basis unconfirmed)'
-                                )}
+                              : record.cost_basis === 'per_prescription'
+                                ? t(
+                                    'medications.costEstimates.totalSplit',
+                                    'Total cost (split across linked vials)'
+                                  )
+                                : t(
+                                    'medications.costEstimates.unconfirmedCost',
+                                    'Recorded cost (basis unconfirmed)'
+                                  )}
                             :{' '}
                             {formatPurchaseMoney(record.cost, record.currency)}
                           </p>

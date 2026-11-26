@@ -1,7 +1,10 @@
 import type { PoolClient } from 'pg';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { medicationPrescriptionCreateSchema } from '@workspace/shared';
+import {
+  medicationPrescriptionCreateSchema,
+  medicationPrescriptionCreateSchemaV2,
+} from '@workspace/shared';
 const mocks = vi.hoisted(() => ({
   actor: 'owner',
   query: vi.fn(),
@@ -359,5 +362,269 @@ describe('private manual prescription transactions', () => {
         sql.startsWith('INSERT INTO medication_prescriptions(')
       )
     ).toHaveLength(1);
+  });
+  describe('prescriptions that cover several medicines', () => {
+    const second = '00000000-0000-4000-a000-000000000009';
+    const rowsFor = (
+      sql: string,
+      coverage: Array<{
+        id: string;
+        medication_id: string | null;
+        position: number;
+      }>,
+      basis: 'per_vial' | null = null
+    ) =>
+      sql.includes('FROM medication_prescription_medications')
+        ? coverage
+        : sql.includes('SELECT medication_id,version')
+          ? [
+              {
+                medication_id: med,
+                version: 1,
+                cost: '5',
+                currency: 'AUD',
+                cost_basis: basis,
+              },
+            ]
+          : sql.startsWith('SELECT id FROM medications')
+            ? coverage.flatMap((row) =>
+                row.medication_id ? [{ id: row.medication_id }] : []
+              )
+            : sql.startsWith('SELECT id,COALESCE')
+              ? [
+                  { id: med, name: 'Synthetic one' },
+                  { id: second, name: 'Synthetic two' },
+                ]
+              : [];
+    it('locks the covered medicines in id order and writes the primary, then one coverage row per medicine', async () => {
+      const ids = [second, med];
+      mocks.query.mockImplementation(async (sql: string) => ({
+        rows: rowsFor(sql, []).length
+          ? rowsFor(sql, [])
+          : sql.startsWith('SELECT id FROM medications')
+            ? ids.map((i) => ({ id: i }))
+            : rowsFor(sql, []),
+      }));
+      await createMedicationPrescription(
+        owner,
+        medicationPrescriptionCreateSchemaV2.parse({
+          operation_id: op,
+          medication_ids: ids,
+          currency: 'GBP',
+        })
+      );
+      const lock = mocks.query.mock.calls.find((c) =>
+        c[0].startsWith('SELECT id FROM medications')
+      )!;
+      expect(lock[0]).toContain('ORDER BY id FOR UPDATE');
+      expect(lock[1][1]).toEqual([...ids].sort());
+      const insert = mocks.query.mock.calls.find((c) =>
+        c[0].startsWith('INSERT INTO medication_prescriptions(')
+      )!;
+      expect(insert[1][2]).toBe(second);
+      const covered = mocks.query.mock.calls.filter((c) =>
+        c[0].startsWith('INSERT INTO medication_prescription_medications')
+      );
+      expect(covered.map((c) => [c[1][2], c[1][4]])).toEqual([
+        [second, 0],
+        [med, 1],
+      ]);
+    });
+    it('refuses a per-vial price on several medicines before writing anything', async () => {
+      mocks.query.mockImplementation(async (sql: string) => ({
+        rows: rowsFor(sql, []).length
+          ? []
+          : sql.startsWith('SELECT id FROM medications')
+            ? [{ id: med }, { id: second }]
+            : rowsFor(sql, []),
+      }));
+      await expect(
+        createMedicationPrescription(
+          owner,
+          medicationPrescriptionCreateSchemaV2.parse({
+            operation_id: op,
+            medication_ids: [med, second],
+            currency: 'GBP',
+            cost: '5',
+            cost_basis: 'per_vial',
+          })
+        )
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        code: 'cost_basis_per_vial_needs_one_medication',
+      });
+      expect(
+        mocks.query.mock.calls.some((c) =>
+          c[0].startsWith('INSERT INTO medication_prescription')
+        )
+      ).toBe(false);
+    });
+    it('refuses to add a medicine to a confirmed per-vial price unless the same save clears the basis', async () => {
+      const coverage = [{ id: 'row1', medication_id: med, position: 0 }];
+      mocks.query.mockImplementation(async (sql: string) => ({
+        rows: sql.startsWith('SELECT id FROM medications')
+          ? [{ id: med }, { id: second }]
+          : rowsFor(sql, coverage, 'per_vial'),
+      }));
+      await expect(
+        updateMedicationPrescription(owner, id, {
+          operation_id: op,
+          expected_version: 1,
+          medication_ids: [med, second],
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+      await expect(
+        updateMedicationPrescription(owner, id, {
+          operation_id: '00000000-0000-4000-a000-0000000000aa',
+          expected_version: 1,
+          medication_ids: [med, second],
+          cost_basis: null,
+        })
+      ).resolves.toMatchObject({ version: 2 });
+    });
+    it('refuses a removal that stock or a plan still links and names the counts', async () => {
+      const coverage = [
+        { id: 'row1', medication_id: med, position: 0 },
+        { id: 'row2', medication_id: second, position: 1 },
+      ];
+      mocks.query.mockImplementation(async (sql: string) => ({
+        rows: sql.includes('AS pens,')
+          ? [{ pens: 2, plans: 1 }]
+          : sql.startsWith('SELECT id FROM medications')
+            ? [{ id: med }, { id: second }]
+            : sql.startsWith('SELECT id,COALESCE')
+              ? [{ id: second, name: 'Synthetic two' }]
+              : rowsFor(sql, coverage),
+      }));
+      await expect(
+        updateMedicationPrescription(owner, id, {
+          operation_id: op,
+          expected_version: 1,
+          medication_ids: [med],
+        })
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'prescription_medication_linked',
+        message: expect.stringContaining('2 stock items and 1 plan revision'),
+      });
+      expect(
+        mocks.query.mock.calls.some((c) => c[0].startsWith('DELETE'))
+      ).toBe(false);
+    });
+    it('detects a coverage change between the first read and the lock', async () => {
+      let reads = 0;
+      mocks.query.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM medication_prescription_medications'))
+          return {
+            rows: [{ id: 'row' + ++reads, medication_id: med, position: 0 }],
+          };
+        return {
+          rows: rowsFor(sql, [{ id: 'row', medication_id: med, position: 0 }]),
+        };
+      });
+      await expect(
+        updateMedicationPrescription(owner, id, {
+          operation_id: op,
+          expected_version: 1,
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+    it('echoes only the current primary as medication_id and never changes it', async () => {
+      mocks.query.mockImplementation(async (sql: string) => ({
+        rows: rowsFor(sql, [{ id: 'row1', medication_id: med, position: 0 }]),
+      }));
+      await expect(
+        updateMedicationPrescription(owner, id, {
+          operation_id: op,
+          expected_version: 1,
+          medication_id: second,
+        })
+      ).rejects.toMatchObject({ statusCode: 422 });
+      await expect(
+        updateMedicationPrescription(owner, id, {
+          operation_id: '00000000-0000-4000-a000-0000000000ab',
+          expected_version: 1,
+          medication_id: med,
+        })
+      ).resolves.toMatchObject({ version: 2 });
+    });
+    it('replays a receipt hashed over a legacy single-medicine body', async () => {
+      const body = {
+        operation_id: op,
+        medication_id: med,
+        currency: 'GBP',
+        cost: '1',
+      };
+      const legacyHash = createHash('sha256')
+        .update(
+          JSON.stringify({
+            action: 'create',
+            data: medicationPrescriptionCreateSchema.parse(body),
+          })
+        )
+        .digest('hex');
+      const prior = { id, version: 1, deleted: false };
+      mocks.query.mockImplementation(async (sql: string) => ({
+        rows: sql.includes('SELECT request_hash,result')
+          ? [{ request_hash: legacyHash, result: prior }]
+          : [],
+      }));
+      expect(
+        await createMedicationPrescription(
+          owner,
+          medicationPrescriptionCreateSchemaV2.parse(body)
+        )
+      ).toEqual(prior);
+    });
+    it('titles several medicines by their joined names and shows the coverage only to model 2', async () => {
+      const row = {
+        id,
+        medication_id: med,
+        user_id: owner,
+        medication_name: 'Synthetic one',
+        cost_basis: null,
+        cost: '5',
+        currency: 'AUD',
+        created_at: '2026-11-17T12:00Z',
+        updated_at: '2026-11-17T12:00Z',
+        source_encrypted: null,
+        prescriber_encrypted: null,
+        pharmacy_encrypted: null,
+        dose_instructions_encrypted: null,
+        medications: [
+          { medication_id: med, medication_name: 'Synthetic one' },
+          { medication_id: null, medication_name: 'Synthetic gone' },
+        ],
+      };
+      mocks.query.mockResolvedValue({ rows: [row] });
+      const one = (await listMedicationPrescriptions(owner))[0]!;
+      expect(one.medication_name).toBe('Synthetic one + Synthetic gone');
+      expect(one).not.toHaveProperty('medications');
+      const two = (await listMedicationPrescriptions(owner, undefined, 2))[0]!;
+      expect(two).toMatchObject({
+        medications: [
+          { medication_id: med, medication_name: 'Synthetic one', position: 0 },
+          {
+            medication_id: null,
+            medication_name: 'Synthetic gone',
+            position: 1,
+          },
+        ],
+      });
+    });
+    it('links a prescription only through a coverage row it holds for the medication', async () => {
+      mocks.query.mockResolvedValue({ rows: [{ id }] });
+      await validatePrescriptionLink(client, owner, second, {
+        prescription_id: id,
+      });
+      expect(mocks.query).toHaveBeenCalledWith(
+        expect.stringContaining('medication_prescription_medications j'),
+        [id, owner, second]
+      );
+      mocks.query.mockResolvedValue({ rows: [] });
+      await expect(
+        validatePrescriptionLink(client, owner, second, { prescription_id: id })
+      ).rejects.toMatchObject({ statusCode: 422 });
+    });
   });
 });

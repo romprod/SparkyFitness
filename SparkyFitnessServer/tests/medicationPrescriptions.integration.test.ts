@@ -224,17 +224,21 @@ describe.runIf(process.env.MEDICATION_PRESCRIPTIONS_INTEGRATION === '1')(
       });
       const before = await children(),
         beforeRx = await rows('medication_prescriptions');
-      const migration = await readFile(
-        new URL(
+      // Replay the original migration and the one that lets a prescription cover several medicines, in order.
+      const migrations = await Promise.all(
+        [
           '../db/migrations/20261117120000_medication_prescriptions.sql',
-          import.meta.url
-        ),
-        'utf8'
+          '../db/migrations/20261126120000_medication_prescription_medications.sql',
+        ].map((file) => readFile(new URL(file, import.meta.url), 'utf8'))
       );
+      const beforeCoverage = await rows('medication_prescription_medications');
       await admin(async (c) => {
-        await c.query(migration);
-        await c.query(migration);
+        for (const migration of [...migrations, ...migrations])
+          await c.query(migration);
       });
+      expect(await rows('medication_prescription_medications')).toEqual(
+        beforeCoverage
+      );
       expect(await children()).toEqual(before);
       expect(await rows('medication_prescriptions')).toEqual(beforeRx);
     });

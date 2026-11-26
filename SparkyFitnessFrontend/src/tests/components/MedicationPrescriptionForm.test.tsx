@@ -12,6 +12,7 @@ import {
   courseIds,
 } from '@/tests/fixtures/medicationCourses';
 import {
+  coveredFixture,
   prescriptionFixture,
   prescriptionIds,
 } from '@/tests/fixtures/medicationPrescriptions';
@@ -21,9 +22,13 @@ const mockCreate = jest.fn(),
   mockUpdate = jest.fn(),
   mockReload = jest.fn();
 let mockCurrent = true;
+let mockRegister: { prescriptions: unknown[] } | undefined;
 jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
   useMedicationPrescription: () => ({ query: { refetch: mockReload } }),
-  useMedicationPrescriptions: () => ({ query: { refetch: mockListRefresh } }),
+  useMedicationPrescriptions: () => ({
+    query: { refetch: mockListRefresh },
+    data: mockRegister,
+  }),
   useMedicationPrescriptionActions: () => ({
     create: mockCreate,
     update: mockUpdate,
@@ -47,6 +52,7 @@ const props = () => ({
 });
 beforeEach(() => {
   mockCurrent = true;
+  mockRegister = undefined;
   mockCreate.mockReset();
   mockUpdate.mockReset();
   mockReload.mockReset();
@@ -469,4 +475,215 @@ it('keeps an existing prescription its own currency whatever the default is', ()
     />
   );
   expect(screen.getByLabelText('Currency')).toHaveValue('AUD');
+});
+
+describe('a prescription that covers several medicines', () => {
+  const second = {
+    ...courseMedication,
+    id: '00000000-0000-4000-8000-0000000000b1',
+    name: 'Second medication',
+    display_name: 'Second medication',
+  };
+  const third = {
+    ...courseMedication,
+    id: '00000000-0000-4000-8000-0000000000b2',
+    name: 'Third medication',
+    display_name: 'Third medication',
+  };
+  const many = () => ({
+    ...props(),
+    medications: [courseMedication, second, third],
+  });
+  const add = (id: string) =>
+    fireEvent.change(screen.getByLabelText('Also covers another medication'), {
+      target: { value: id },
+    });
+  const save = () =>
+    fireEvent.click(screen.getByRole('button', { name: 'Save prescription' }));
+  it('sends one medicine as medication_id, exactly as before several existed', async () => {
+    render(<MedicationPrescriptionForm {...many()} />);
+    expect(
+      screen.queryByRole('list', { name: 'Medications covered' })
+    ).toBeNull();
+    save();
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled());
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({
+      medication_id: courseIds.med,
+    });
+    expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('medication_ids');
+  });
+  it('picks several medicines as ordered chips with a primary and sends medication_ids in that order', async () => {
+    render(<MedicationPrescriptionForm {...many()} />);
+    add(second.id);
+    add(third.id);
+    const chips = screen.getByRole('list', { name: 'Medications covered' });
+    expect(chips).toHaveTextContent(/1\. Example medication\s*Primary/);
+    expect(chips).toHaveTextContent('2. Second medication');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Move Third medication up' })
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove Second medication' })
+    );
+    expect(chips).not.toHaveTextContent('Second medication');
+    add(second.id);
+    save();
+    await waitFor(() => expect(mockCreate).toHaveBeenCalled());
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({
+      medication_ids: [courseIds.med, third.id, second.id],
+    });
+    expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('medication_id');
+  });
+  it('keeps a fixed target as the primary while letting more be added around it', () => {
+    render(
+      <MedicationPrescriptionForm
+        {...many()}
+        fixedMedicationId={courseIds.med}
+      />
+    );
+    add(second.id);
+    expect(screen.getByLabelText('Medication')).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Remove Example medication' })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Move Second medication up' })
+    ).toBeDisabled();
+  });
+  it('sends the covered set on an edit only when it changed, and shows deleted medicines read-only', async () => {
+    const initial = coveredFixture(
+      [
+        { id: courseIds.med, name: 'Example medication' },
+        { id: null, name: 'Gone medication' },
+      ],
+      { cost: '30' }
+    );
+    render(<MedicationPrescriptionForm {...many()} initial={initial} />);
+    expect(
+      screen.getByRole('list', { name: 'Medications covered' })
+    ).toHaveTextContent('Gone medication · Deleted medication');
+    fireEvent.change(screen.getByLabelText('Source'), {
+      target: { value: 'x' },
+    });
+    save();
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('medication_ids');
+    expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('medication_id');
+    add(second.id);
+    save();
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
+    expect(mockUpdate.mock.calls[1][1]).toMatchObject({
+      medication_ids: [courseIds.med, second.id],
+    });
+  });
+  it('names what still links a medicine that cannot be removed and lets the owner keep editing', async () => {
+    mockUpdate.mockRejectedValueOnce(
+      new HttpApiError(
+        'Cannot remove Second medication while 1 stock item and 0 plan revisions still link this prescription. Unlink them first.',
+        409,
+        'prescription_medication_linked'
+      )
+    );
+    const initial = coveredFixture([
+      { id: courseIds.med, name: 'Example medication' },
+      { id: second.id, name: 'Second medication' },
+    ]);
+    render(<MedicationPrescriptionForm {...many()} initial={initial} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove Second medication' })
+    );
+    save();
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('1 stock item')
+    );
+    // Not a stale record: no reload is demanded and the draft stays editable.
+    expect(
+      screen.queryByRole('button', { name: /Reload saved prescription/ })
+    ).toBeNull();
+    expect(screen.getByLabelText('Source')).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: 'Save prescription' })
+    ).toBeEnabled();
+  });
+  it('labels the cost a total for several medicines and confirms only the whole-prescription basis', async () => {
+    render(<MedicationPrescriptionForm {...many()} />);
+    add(second.id);
+    expect(screen.getByLabelText('Total cost')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Cost per vial')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Total cost'), {
+      target: { value: '90' },
+    });
+    save();
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    // Typing a cost on several medicines never confirms a per-vial price.
+    expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('cost_basis');
+    fireEvent.change(screen.getByLabelText('Price basis'), {
+      target: { value: 'per_prescription' },
+    });
+    save();
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
+    expect(mockCreate.mock.calls[1][0]).toMatchObject({
+      cost: '90',
+      cost_basis: 'per_prescription',
+    });
+  });
+  it('clears a per-vial confirmation when a second medicine is added and says so', async () => {
+    const initial = prescriptionFixture({ cost: '12', cost_basis: 'per_vial' });
+    render(<MedicationPrescriptionForm {...many()} initial={initial} />);
+    expect(
+      screen.queryByText(/saving clears its per-vial confirmation/)
+    ).toBeNull();
+    add(second.id);
+    expect(
+      screen.getByText(/saving clears its per-vial confirmation/)
+    ).toBeInTheDocument();
+    save();
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+    expect(mockUpdate.mock.calls[0][1]).toMatchObject({
+      medication_ids: [courseIds.med, second.id],
+      cost_basis: null,
+    });
+  });
+  it('keeps a single medicine with a whole-prescription price on that basis through unrelated edits', async () => {
+    const initial = prescriptionFixture({
+      cost: '60',
+      cost_basis: 'per_prescription',
+    });
+    render(<MedicationPrescriptionForm {...many()} initial={initial} />);
+    expect(screen.getByLabelText('Price basis')).toHaveValue(
+      'per_prescription'
+    );
+    fireEvent.change(screen.getByLabelText('Source'), {
+      target: { value: 'x' },
+    });
+    save();
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+    expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty('cost_basis');
+  });
+  it('cannot add medicines against a server that answers in the one-medicine shape', () => {
+    mockRegister = { prescriptions: [prescriptionFixture()] };
+    render(<MedicationPrescriptionForm {...many()} />);
+    const choose = screen.getByLabelText('Also covers another medication');
+    expect(choose).toBeDisabled();
+    expect(choose).toHaveTextContent('Needs a server update');
+  });
+  it('allows at most twenty medicines', () => {
+    const twenty = Array.from({ length: 21 }, (_, i) => ({
+      ...courseMedication,
+      id: `00000000-0000-4000-8000-0000000001${String(i).padStart(2, '0')}`,
+      name: `Medication ${i}`,
+      display_name: `Medication ${i}`,
+    }));
+    render(
+      <MedicationPrescriptionForm
+        {...props()}
+        medications={twenty}
+        fixedMedicationId={twenty[0]!.id}
+      />
+    );
+    for (const med of twenty.slice(1, 20)) add(med.id);
+    expect(
+      screen.getByLabelText('Also covers another medication')
+    ).toBeDisabled();
+  });
 });

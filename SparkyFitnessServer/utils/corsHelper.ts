@@ -1,6 +1,9 @@
 import ipaddr from 'ipaddr.js';
 import { log } from '../config/logging.js';
-import { MOOD_MODEL_VERSION_HEADER } from '@workspace/shared';
+import {
+  MOOD_MODEL_VERSION_HEADER,
+  PRESCRIPTION_MODEL_VERSION_HEADER,
+} from '@workspace/shared';
 
 /** Request headers a browser client may send cross-origin. */
 export const CORS_ALLOWED_HEADERS = [
@@ -12,6 +15,8 @@ export const CORS_ALLOWED_HEADERS = [
   'x-requested-with',
   // Opts a client into several mood check-ins per day.
   MOOD_MODEL_VERSION_HEADER.toLowerCase(),
+  // Opts a client into prescriptions that cover several medicines.
+  PRESCRIPTION_MODEL_VERSION_HEADER.toLowerCase(),
   // MCP StreamableHTTP headers; browser clients fail CORS preflight without
   // them.
   'mcp-protocol-version',

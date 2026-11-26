@@ -177,5 +177,8 @@ describe('corsHelper', () => {
     it('lets browsers send the mood model version header', () => {
       expect(CORS_ALLOWED_HEADERS).toContain('x-mood-model-version');
     });
+    it('lets browsers send the prescription model version header', () => {
+      expect(CORS_ALLOWED_HEADERS).toContain('x-prescription-model-version');
+    });
   });
 });

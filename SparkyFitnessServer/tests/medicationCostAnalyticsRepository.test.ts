@@ -179,7 +179,8 @@ describe('owner cost analytics snapshot projection', () => {
     )![0];
     expect(query).toContain('p.prescription_id=r.id');
     expect(query).toContain('p.user_id=r.user_id');
-    expect(query).toContain('p.medication_id=r.medication_id');
+    expect(query).toContain('j.medication_id=p.medication_id');
+    expect(query).toContain('medication_prescription_medications');
     expect(query).toContain("p.kind='vial'");
   });
   it('keeps all opt-in inputs and projection on one read-only snapshot with an explicit echo', async () => {

@@ -170,6 +170,7 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     // owner-only (no delegation)
     medication_prescriptions: 'owner',
     medication_prescription_operations: 'owner',
+    medication_prescription_medications: 'owner',
     medication_purchases: 'owner',
     medication_purchase_items: 'owner',
     medication_purchase_vials: 'owner',

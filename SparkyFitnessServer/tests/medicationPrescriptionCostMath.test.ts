@@ -6,6 +6,7 @@ import {
   resolveMedicationVialPrice,
   medicationPrescriptionCostAnalyticsSchema,
   medicationPrescriptionVialCostsSchema,
+  medicationPrescriptionVialCostSchema,
   type MedicationCostAnalyticsInput,
   type MedicationCostPrescription,
   type MedicationCostVial,
@@ -30,7 +31,7 @@ const rx = (
   patch: Partial<MedicationCostPrescription> = {}
 ): MedicationCostPrescription => ({
   id: uid(20),
-  medication_id: med,
+  medication_ids: [med],
   cost: '30',
   currency: 'GBP',
   date_written: '2026-11-01',
@@ -118,7 +119,18 @@ describe('one explicit linked-vial cost resolver', () => {
   );
   it('does not infer a stock prescription from another course, latest record, or different medication', () => {
     expect(resolve(vial({ prescription_id: null })).is_costed).toBe(false);
-    expect(resolve(vial(), rx({ medication_id: other })).is_costed).toBe(false);
+    expect(resolve(vial(), rx({ medication_ids: [other] })).is_costed).toBe(
+      false
+    );
+    // A prescription that covers several medicines prices the vial of each one it covers, and only those.
+    expect(
+      resolve(vial(), rx({ medication_ids: [other, med] })).is_costed
+    ).toBe(true);
+    expect(
+      resolve(vial({ medication_id: other }), rx({ medication_ids: [med] }))
+        .is_costed
+    ).toBe(false);
+    expect(resolve(vial(), rx({ medication_ids: [] })).is_costed).toBe(false);
     expect(resolve(vial({ prescription_id: uid(99) })).is_costed).toBe(false);
   });
   it('requires an explicit per-vial basis and vial kind; no cost confirmation is inferred', () => {
@@ -517,5 +529,170 @@ describe('separate estimate accounting and common usage/waste rates', () => {
     expect(result(i).rows[0]?.cost_per_dose).toBe('4');
     i.vials[0]!.prescription_id = null;
     expect(result(i).rows[0]?.uncosted_doses).toBe(1);
+  });
+});
+
+/** Exact decimal strings as integers scaled by 10^60, so sums are compared without rounding. */
+const SCALE = 60;
+function exact(value: string): bigint {
+  const [mantissa = '0', exponent = '0'] = value.toLowerCase().split('e');
+  const [whole = '0', fraction = ''] = mantissa.split('.');
+  const digits = BigInt(whole + fraction);
+  const shift = SCALE - fraction.length + Number(exponent);
+  return shift >= 0
+    ? digits * 10n ** BigInt(shift)
+    : digits / 10n ** BigInt(-shift);
+}
+describe('whole-prescription price split across linked vials (per_prescription)', () => {
+  const total = (patch: Partial<MedicationCostPrescription> = {}) =>
+    rx({ cost_basis: 'per_prescription', cost: '30', ...patch });
+  const vials = (n: number, patch: Partial<MedicationCostVial> = {}) =>
+    Array.from({ length: n }, (_, i) =>
+      vial({ id: uid(100 + i), purchase_item_id: null, ...patch })
+    );
+  const estimates = (
+    v: MedicationCostVial[],
+    r = total(),
+    invoices: MedicationVialInvoicePrice[] = []
+  ) =>
+    medicationPrescriptionVialCostsSchema.parse(
+      buildMedicationVialCostEstimates({
+        vials: v,
+        invoice_prices: invoices,
+        prescriptions: [r],
+      })
+    );
+  it('gives every linked vial an equal share and labels the basis', () => {
+    const out = estimates(vials(3));
+    expect(out.vials.map((v) => v.unit_cost)).toEqual(['10', '10', '10']);
+    for (const v of out.vials)
+      expect(v).toMatchObject({
+        cost_source: 'prescription',
+        estimate_basis: 'per_prescription',
+        prescription_id: uid(20),
+        currency: 'GBP',
+      });
+  });
+  it('never lets the shares add up to more than the price, whatever the count and rounding', () => {
+    for (const cost of ['10', '2', '0.01', '1', '100.37', '0.3'])
+      for (let n = 1; n <= 40; n++) {
+        const out = estimates(vials(n), total({ cost }));
+        const sum = out.vials.reduce((acc, v) => acc + exact(v.unit_cost!), 0n);
+        expect(sum <= exact(cost)).toBe(true);
+        // ...and falls short only by rounding far below a cent.
+        expect(exact(cost) - sum < exact('1e-30')).toBe(true);
+      }
+  });
+  it('treats a free prescription as a known free share and divides by the vials actually linked', () => {
+    expect(estimates(vials(2), total({ cost: '0' })).vials[0]).toMatchObject({
+      is_costed: true,
+      unit_cost: '0',
+    });
+    // The snapshot's own count wins when it is larger than the vials in hand.
+    expect(
+      estimates(vials(1), total({ linked_vial_count: 3 })).vials[0]?.unit_cost
+    ).toBe('10');
+    expect(
+      estimates(vials(4), total({ linked_vial_count: 1 })).vials[0]?.unit_cost
+    ).toBe('7.5');
+  });
+  it('lets a linked vial that has its own invoice price take the invoice and leaves its share unspent', () => {
+    const invoice = invoicePrice({ unit_cost: '4', purchase_item_id: uid(31) });
+    const v = [
+      ...vials(2),
+      vial({ id: uid(120), purchase_item_id: invoice.purchase_item_id }),
+    ];
+    const out = estimates(v, total(), [invoice]);
+    expect(out.vials.map((x) => [x.cost_source, x.unit_cost])).toEqual([
+      ['prescription', '10'],
+      ['prescription', '10'],
+      ['invoice', '4'],
+    ]);
+    const split = out.vials
+      .filter((x) => x.cost_source === 'prescription')
+      .reduce((acc, x) => acc + exact(x.unit_cost!), 0n);
+    expect(split <= exact('30')).toBe(true);
+  });
+  it('moves every share when a vial is linked or unlinked', () => {
+    expect(estimates(vials(2)).vials[0]?.unit_cost).toBe('15');
+    expect(estimates(vials(3)).vials[0]?.unit_cost).toBe('10');
+    expect(estimates(vials(1)).vials[0]?.unit_cost).toBe('30');
+  });
+  it('prices nothing without a linked vial, for an uncovered medicine, or for a non-vial', () => {
+    expect(
+      resolveMedicationVialPrice({
+        vial: vial(),
+        invoice_prices: new Map(),
+        prescriptions: new Map([[uid(20), total({ linked_vial_count: 0 })]]),
+      }).is_costed
+    ).toBe(false);
+    expect(
+      estimates(vials(2, { medication_id: other })).vials.some(
+        (v) => v.is_costed
+      )
+    ).toBe(false);
+    expect(
+      estimates(vials(2, { kind: 'pen' })).vials.some((v) => v.is_costed)
+    ).toBe(false);
+  });
+  it('prices the vials of every covered medicine from one total', () => {
+    const v = [
+      vial({ id: uid(100), medication_id: med }),
+      vial({ id: uid(101), medication_id: other }),
+    ];
+    const out = estimates(v, total({ medication_ids: [med, other] }));
+    expect(out.vials.map((x) => x.unit_cost)).toEqual(['15', '15']);
+  });
+  it('keeps the schema honest: a prescription estimate needs a known basis', () => {
+    const base = estimates(vials(1)).vials[0]!;
+    expect(
+      medicationPrescriptionVialCostSchema.safeParse({
+        ...base,
+        estimate_basis: 'something_else',
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionVialCostSchema.safeParse({
+        ...base,
+        estimate_basis: null,
+      }).success
+    ).toBe(false);
+  });
+  it('reaches the cost report: the total is counted once however many vials share it', () => {
+    const i = input();
+    i.vials = vials(3);
+    i.prescriptions = [total()];
+    i.doses = [];
+    const out = medicationPrescriptionCostAnalyticsSchema.parse(
+      buildMedicationPrescriptionCostAnalytics(i)
+    );
+    expect(out.accounted[0]).toMatchObject({
+      currency: 'GBP',
+      prescription_estimate: '30.00',
+      estimated_vials: 3,
+    });
+  });
+  it('keeps currencies apart: two prescriptions in two currencies are two buckets', () => {
+    const i = input();
+    i.vials = [
+      vial({ id: uid(100), prescription_id: uid(20) }),
+      vial({ id: uid(101), prescription_id: uid(21) }),
+    ];
+    i.prescriptions = [
+      total(),
+      total({ id: uid(21), currency: 'EUR', cost: '8' }),
+    ];
+    i.doses = [];
+    const out = medicationPrescriptionCostAnalyticsSchema.parse(
+      buildMedicationPrescriptionCostAnalytics(i)
+    );
+    expect(
+      out.accounted.map((b) => [b.currency, b.prescription_estimate])
+    ).toEqual(
+      expect.arrayContaining([
+        ['GBP', '30.00'],
+        ['EUR', '8.00'],
+      ])
+    );
   });
 });

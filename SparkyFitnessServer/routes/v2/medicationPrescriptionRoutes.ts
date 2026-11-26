@@ -8,6 +8,12 @@ import {
   medicationPrescriptionListSchema,
   medicationPrescriptionDetailSchema,
   medicationPrescriptionMutationResultSchema,
+  medicationPrescriptionCreateSchemaV2,
+  medicationPrescriptionUpdateSchemaV2,
+  medicationPrescriptionListSchemaV2,
+  medicationPrescriptionDetailSchemaV2,
+  PRESCRIPTION_MODEL_VERSION,
+  PRESCRIPTION_MODEL_VERSION_HEADER,
 } from '@workspace/shared';
 import { authenticate } from '../../middleware/authMiddleware.js';
 import * as prescriptions from '../../models/medicationPrescriptionRepository.js';
@@ -64,9 +70,25 @@ const run =
     }
   };
 const id = (req: express.Request) => z.string().uuid().parse(req.params.id);
+// Without the header every request and response keeps the one-medicine contract.
+const isModel2 = (req: express.Request) =>
+  (Number(req.header(PRESCRIPTION_MODEL_VERSION_HEADER)) || 1) >=
+  PRESCRIPTION_MODEL_VERSION;
 router.get(
   '/',
-  run(async (_req, res, owner, expected) => {
+  run(async (req, res, owner, expected) => {
+    if (isModel2(req)) {
+      res.json(
+        medicationPrescriptionListSchemaV2.parse({
+          prescriptions: await prescriptions.listMedicationPrescriptions(
+            owner,
+            expected,
+            2
+          ),
+        })
+      );
+      return;
+    }
     res.json(
       medicationPrescriptionListSchema.parse({
         prescriptions: await prescriptions.listMedicationPrescriptions(
@@ -80,6 +102,19 @@ router.get(
 router.get(
   '/:id',
   run(async (req, res, owner, expected) => {
+    if (isModel2(req)) {
+      res.json(
+        medicationPrescriptionDetailSchemaV2.parse({
+          prescription: await prescriptions.getMedicationPrescription(
+            owner,
+            id(req),
+            expected,
+            2
+          ),
+        })
+      );
+      return;
+    }
     res.json(
       medicationPrescriptionDetailSchema.parse({
         prescription: await prescriptions.getMedicationPrescription(
@@ -100,7 +135,10 @@ router.post(
         medicationPrescriptionMutationResultSchema.parse(
           await prescriptions.createMedicationPrescription(
             owner,
-            medicationPrescriptionCreateSchema.parse(req.body),
+            (isModel2(req)
+              ? medicationPrescriptionCreateSchemaV2
+              : medicationPrescriptionCreateSchema
+            ).parse(req.body),
             expected
           )
         )
@@ -115,7 +153,10 @@ router.put(
         await prescriptions.updateMedicationPrescription(
           owner,
           id(req),
-          medicationPrescriptionUpdateSchema.parse(req.body),
+          (isModel2(req)
+            ? medicationPrescriptionUpdateSchemaV2
+            : medicationPrescriptionUpdateSchema
+          ).parse(req.body),
           expected
         )
       )

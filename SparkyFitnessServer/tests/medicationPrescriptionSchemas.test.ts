@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   medicationPrescriptionCreateSchema,
+  medicationPrescriptionCreateSchemaV2,
   medicationPrescriptionUpdateSchema,
+  medicationPrescriptionUpdateSchemaV2,
+  medicationPrescriptionSchemaV2,
+  medicationPrescriptionClientSchema,
+  medicationPrescriptionListSchemaV2,
   medicationPrescriptionDeleteSchema,
   medicationPrescriptionQuerySchema,
   medicationPrescriptionSchema,
@@ -291,5 +296,183 @@ describe('basic owner-private prescription contracts', () => {
         prescription_id: null,
       }).prescription_id
     ).toBeNull();
+  });
+});
+
+describe('prescriptions that cover several medicines: contracts', () => {
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => '40000000-0000-4000-8000-' + String(100 + i).padStart(12, '0')
+    );
+  const base = { operation_id: id, currency: 'GBP' };
+  it('keeps model 1 strict: it knows nothing of medication_ids', () => {
+    expect(
+      medicationPrescriptionCreateSchema.safeParse({
+        ...base,
+        medication_ids: ids(2),
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionUpdateSchema.safeParse({
+        ...update,
+        medication_ids: ids(2),
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionSchema.safeParse({ ...row(), medications: [] })
+        .success
+    ).toBe(false);
+  });
+  it('accepts exactly one of medication_id or medication_ids on create, at most 20 distinct', () => {
+    const parse = (value: object) =>
+      medicationPrescriptionCreateSchemaV2.safeParse({ ...base, ...value });
+    expect(parse({ medication_id: med }).success).toBe(true);
+    expect(parse({ medication_ids: ids(1) }).success).toBe(true);
+    expect(parse({ medication_ids: ids(20) }).success).toBe(true);
+    expect(parse({}).success).toBe(false);
+    expect(parse({ medication_id: med, medication_ids: ids(2) }).success).toBe(
+      false
+    );
+    expect(parse({ medication_ids: [] }).success).toBe(false);
+    expect(parse({ medication_ids: ids(21) }).success).toBe(false);
+    expect(parse({ medication_ids: [ids(1)[0], ids(1)[0]] }).success).toBe(
+      false
+    );
+    expect(parse({ medication_ids: ['nope'] }).success).toBe(false);
+    expect(parse({ medication_id: med, surprise: true }).success).toBe(false);
+  });
+  it('lets an update replace the set or echo medication_id, never both', () => {
+    const parse = (value: object) =>
+      medicationPrescriptionUpdateSchemaV2.safeParse({ ...update, ...value });
+    expect(parse({}).success).toBe(true);
+    expect(parse({ medication_ids: ids(2) }).success).toBe(true);
+    expect(parse({ medication_id: med }).success).toBe(true);
+    expect(parse({ medication_id: null }).success).toBe(true);
+    expect(parse({ medication_id: med, medication_ids: ids(1) }).success).toBe(
+      false
+    );
+    expect(parse({ medication_ids: ids(21) }).success).toBe(false);
+  });
+  it('parses a legacy body to the same JSON, key order included, through both schemas', () => {
+    const body = {
+      ...create,
+      cost: '12.50',
+      quantity: 3,
+      source: ' Synthetic ',
+    };
+    expect(
+      JSON.stringify(medicationPrescriptionCreateSchemaV2.parse(body))
+    ).toBe(JSON.stringify(medicationPrescriptionCreateSchema.parse(body)));
+    const patch = {
+      ...update,
+      medication_id: med,
+      cost: '3',
+      cost_basis: 'per_vial',
+    };
+    expect(
+      JSON.stringify(medicationPrescriptionUpdateSchemaV2.parse(patch))
+    ).toBe(JSON.stringify(medicationPrescriptionUpdateSchema.parse(patch)));
+  });
+  it('adds the covered medicines to the model 2 response only, and tolerates their absence for a client', () => {
+    const covered = [
+      { medication_id: med, medication_name: 'Synthetic one', position: 0 },
+      { medication_id: null, medication_name: 'Synthetic gone', position: 1 },
+    ];
+    const v2 = { ...row(), medications: covered };
+    expect(medicationPrescriptionSchemaV2.safeParse(v2).success).toBe(true);
+    expect(medicationPrescriptionSchemaV2.safeParse(row()).success).toBe(false);
+    expect(
+      medicationPrescriptionSchemaV2.safeParse({ ...v2, medications: [] })
+        .success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionSchemaV2.safeParse({
+        ...v2,
+        medications: [{ ...covered[0], extra: 1 }],
+      }).success
+    ).toBe(false);
+    expect(medicationPrescriptionClientSchema.safeParse(row()).success).toBe(
+      true
+    );
+    expect(medicationPrescriptionClientSchema.safeParse(v2).success).toBe(true);
+    expect(
+      medicationPrescriptionListSchemaV2.safeParse({ prescriptions: [v2] })
+        .success
+    ).toBe(true);
+  });
+  it('lets an old strict reader parse a multi-medicine prescription projected to model 1', () => {
+    const { medications: _covered, ...legacyShape } = {
+      ...row(),
+      medication_name: 'Synthetic one + Synthetic two',
+      medications: [],
+    };
+    expect(medicationPrescriptionSchema.safeParse(legacyShape).success).toBe(
+      true
+    );
+  });
+});
+
+describe('whole-prescription cost basis contracts', () => {
+  const base = { operation_id: id, currency: 'GBP', medication_id: med };
+  it('lets only model 2 name the per-prescription basis, and always with a cost', () => {
+    const withBasis = { ...base, cost: '30', cost_basis: 'per_prescription' };
+    expect(
+      medicationPrescriptionCreateSchema.safeParse(withBasis).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionCreateSchemaV2.safeParse(withBasis).success
+    ).toBe(true);
+    expect(
+      medicationPrescriptionCreateSchemaV2.safeParse({
+        ...withBasis,
+        cost: undefined,
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionUpdateSchema.safeParse({
+        ...update,
+        cost: '1',
+        cost_basis: 'per_prescription',
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionUpdateSchemaV2.safeParse({
+        ...update,
+        cost: '1',
+        cost_basis: 'per_prescription',
+      }).success
+    ).toBe(true);
+    expect(
+      medicationPrescriptionUpdateSchemaV2.safeParse({
+        ...update,
+        cost_basis: 'per_prescription',
+      }).success
+    ).toBe(false);
+    expect(
+      medicationPrescriptionCreateSchemaV2.safeParse({
+        ...withBasis,
+        cost_basis: 'per_dose',
+      }).success
+    ).toBe(false);
+  });
+  it('keeps the model 1 response strict to per_vial while model 2 knows both', () => {
+    const covered = [
+      { medication_id: med, medication_name: 'Synthetic one', position: 0 },
+    ];
+    const marked = { ...row(), cost: '30', cost_basis: 'per_prescription' };
+    expect(medicationPrescriptionSchema.safeParse(marked).success).toBe(false);
+    expect(
+      medicationPrescriptionSchemaV2.safeParse({
+        ...marked,
+        medications: covered,
+      }).success
+    ).toBe(true);
+    expect(
+      medicationPrescriptionClientSchema.safeParse({
+        ...marked,
+        medications: covered,
+      }).success
+    ).toBe(true);
   });
 });

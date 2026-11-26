@@ -154,4 +154,146 @@ describe('owner-private prescription API', () => {
     expect(deletion.status).toBe(200);
     expect(deletion.body).toEqual({ id, version: null, deleted: true });
   });
+
+  describe('model 2 (several medicines) negotiated by header', () => {
+    const header = { 'X-Prescription-Model-Version': '2' };
+    const med = '00000000-0000-4000-a000-000000000005';
+    const med2 = '00000000-0000-4000-a000-000000000006';
+    const row = {
+      id,
+      user_id: owner,
+      medication_id: med,
+      medication_name: 'One + Two',
+      source: null,
+      prescriber: null,
+      pharmacy: null,
+      dose_instructions: null,
+      cost: null,
+      currency: 'AUD',
+      quantity: null,
+      refills_authorized: null,
+      refills_remaining: null,
+      date_written: null,
+      next_refill: null,
+      expiration: null,
+      lead_time_days: null,
+      status: 'active',
+      version: 1,
+      created_at: '2026-11-17T12:00:00Z',
+      updated_at: '2026-11-17T12:00:00Z',
+    };
+    const covered = [
+      { medication_id: med, medication_name: 'One', position: 0 },
+      { medication_id: med2, medication_name: 'Two', position: 1 },
+    ];
+    it('lists the covered medicines for model 2 only', async () => {
+      repo.listMedicationPrescriptions.mockResolvedValue([
+        { ...row, medications: covered },
+      ]);
+      const v2 = await request(appFor()).get('/rx').set(header);
+      expect(v2.status).toBe(200);
+      expect(v2.body.prescriptions[0].medications).toEqual(covered);
+      expect(repo.listMedicationPrescriptions).toHaveBeenLastCalledWith(
+        owner,
+        undefined,
+        2
+      );
+      repo.listMedicationPrescriptions.mockResolvedValue([row]);
+      const v1 = await request(appFor()).get('/rx');
+      expect(v1.status).toBe(200);
+      expect(v1.body.prescriptions[0]).not.toHaveProperty('medications');
+      expect(repo.listMedicationPrescriptions).toHaveBeenLastCalledWith(
+        owner,
+        undefined
+      );
+    });
+    it('treats an absent, malformed or version 1 header as model 1', async () => {
+      repo.listMedicationPrescriptions.mockResolvedValue([row]);
+      for (const value of [undefined, '1', 'banana', '0'])
+        await request(appFor())
+          .get('/rx')
+          .set(
+            value === undefined ? {} : { 'X-Prescription-Model-Version': value }
+          );
+      for (const call of repo.listMedicationPrescriptions.mock.calls)
+        expect(call).toHaveLength(2);
+    });
+    it('details a prescription with its coverage for model 2', async () => {
+      repo.getMedicationPrescription.mockResolvedValue({
+        ...row,
+        medications: covered,
+      });
+      const res = await request(appFor())
+        .get('/rx/' + id)
+        .set(header);
+      expect(res.status).toBe(200);
+      expect(res.body.prescription.medications).toHaveLength(2);
+      expect(repo.getMedicationPrescription).toHaveBeenCalledWith(
+        owner,
+        id,
+        undefined,
+        2
+      );
+    });
+    it('creates from medication_ids only for model 2 and refuses unknown shapes', async () => {
+      const body = {
+        operation_id: op,
+        currency: 'AUD',
+        medication_ids: [med, med2],
+      };
+      expect((await request(appFor()).post('/rx').send(body)).status).toBe(400);
+      expect(repo.createMedicationPrescription).not.toHaveBeenCalled();
+      const ok = await request(appFor()).post('/rx').set(header).send(body);
+      expect(ok.status).toBe(201);
+      expect(repo.createMedicationPrescription).toHaveBeenCalledWith(
+        owner,
+        expect.objectContaining({ medication_ids: [med, med2] }),
+        undefined
+      );
+      for (const bad of [
+        { ...body, medication_id: med },
+        { ...body, medication_ids: [] },
+        { ...body, extra: 1 },
+      ])
+        expect(
+          (await request(appFor()).post('/rx').set(header).send(bad)).status
+        ).toBe(400);
+    });
+    it('updates the covered set for model 2 only and sends legacy bodies on unchanged', async () => {
+      const patch = {
+        operation_id: op,
+        expected_version: 1,
+        medication_ids: [med2],
+      };
+      expect(
+        (
+          await request(appFor())
+            .put('/rx/' + id)
+            .send(patch)
+        ).status
+      ).toBe(400);
+      expect(
+        (
+          await request(appFor())
+            .put('/rx/' + id)
+            .set(header)
+            .send(patch)
+        ).status
+      ).toBe(200);
+      const legacyBody = {
+        operation_id: op,
+        expected_version: 1,
+        medication_id: med,
+      };
+      await request(appFor())
+        .put('/rx/' + id)
+        .send(legacyBody);
+      expect(repo.updateMedicationPrescription).toHaveBeenLastCalledWith(
+        owner,
+        id,
+        legacyBody,
+        undefined
+      );
+    });
+  });
 });

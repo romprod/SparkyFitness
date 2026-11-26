@@ -5,13 +5,19 @@ import type {
 } from '../schemas/api/MedicationPrescriptionCosts.api.zod.ts';
 import { medicationCourseDaySchema } from '../schemas/api/MedicationCourses.api.zod.ts';
 const D = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
+/** A share is rounded down, so the shares of one prescription never add up to more than its price. */
+const Share = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_DOWN });
 export interface MedicationCostPrescription {
   id: string;
-  medication_id: string;
+  /** Every live medicine the prescription covers. */
+  medication_ids: string[];
   cost: string | null;
   currency: string | null;
   date_written: string | null;
-  cost_basis: 'per_vial' | null;
+  /** per_vial: the price is one vial's. per_prescription: the price is the whole fill, split across its linked vials. */
+  cost_basis: 'per_vial' | 'per_prescription' | null;
+  /** Vials linked to the prescription (every status). The vials passed alongside may raise it, never lower it. */
+  linked_vial_count?: number;
 }
 export interface MedicationVialInvoicePrice {
   purchase_id: string;
@@ -83,20 +89,29 @@ export function resolveMedicationVialPrice(input: {
   if (
     vial.kind !== 'vial' ||
     !rx ||
-    rx.medication_id !== vial.medication_id ||
-    rx.cost_basis !== 'per_vial' ||
+    !rx.medication_ids.includes(vial.medication_id) ||
+    (rx.cost_basis !== 'per_vial' && rx.cost_basis !== 'per_prescription') ||
     cost === null ||
     cost.lt(0)
   )
     return empty;
+  // A whole-fill price is split evenly across every vial linked to it; quantity and refills never divide.
+  const linked = rx.linked_vial_count ?? 0;
+  const unit =
+    rx.cost_basis === 'per_vial'
+      ? cost
+      : linked >= 1
+        ? new Share(cost.toString()).div(linked)
+        : null;
+  if (unit === null) return empty;
   return {
     ...empty,
     is_costed: true,
     cost_source: 'prescription',
-    unit_cost: cost.toString(),
+    unit_cost: unit.toString(),
     currency: currency(rx.currency),
     prescription_id: rx.id,
-    estimate_basis: 'per_vial',
+    estimate_basis: rx.cost_basis,
     prescription_date_written:
       rx.date_written !== null &&
       !rx.date_written.startsWith('0000-') &&
@@ -111,9 +126,27 @@ export function buildMedicationVialCostEstimates(input: {
   prescriptions: MedicationCostPrescription[];
 }): MedicationPrescriptionVialCosts {
   const invoice_prices = new Map(
-      input.invoice_prices.map((row) => [row.purchase_item_id, row])
-    ),
-    prescriptions = new Map(input.prescriptions.map((row) => [row.id, row]));
+    input.invoice_prices.map((row) => [row.purchase_item_id, row])
+  );
+  const linkedVials = new Map<string, number>();
+  for (const vial of input.vials)
+    if (vial.prescription_id && vial.kind === 'vial')
+      linkedVials.set(
+        vial.prescription_id,
+        (linkedVials.get(vial.prescription_id) ?? 0) + 1
+      );
+  const prescriptions = new Map(
+    input.prescriptions.map((row) => [
+      row.id,
+      {
+        ...row,
+        linked_vial_count: Math.max(
+          row.linked_vial_count ?? 0,
+          linkedVials.get(row.id) ?? 0
+        ),
+      },
+    ])
+  );
   return {
     cost_basis: 'with_prescription_estimates',
     vials: input.vials.map((vial) =>
