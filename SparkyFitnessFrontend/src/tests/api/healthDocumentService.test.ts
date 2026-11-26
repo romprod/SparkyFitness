@@ -25,6 +25,7 @@ const doc: HealthDocument = {
   size_bytes: 20,
   body_comp_scan_id: null,
   metabolic_test_id: null,
+  ecg_recording_id: null,
   uploaded_at: '2026-11-23T10:00:00.000Z',
 };
 

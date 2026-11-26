@@ -67,6 +67,12 @@ const Labs = lazyWithChunkRecovery(() => import('./pages/Labs/Labs'));
 const BodyCompPrepChecklist = lazyWithChunkRecovery(
   () => import('./pages/Labs/BodyCompPrepChecklist')
 );
+const EcgRecordingsPage = lazyWithChunkRecovery(
+  () => import('./pages/Labs/EcgRecordingsPage')
+);
+const EcgRecordingPage = lazyWithChunkRecovery(
+  () => import('./pages/Labs/EcgRecordingPage')
+);
 const Symptoms = lazyWithChunkRecovery(
   () => import('./pages/Symptoms/Symptoms')
 );
@@ -467,6 +473,16 @@ const router = createBrowserRouter([
           {
             path: 'labs/dexa-checklist',
             Component: BodyCompPrepChecklist,
+            ErrorBoundary: RouteErrorBoundary,
+          },
+          {
+            path: 'labs/ecg',
+            Component: EcgRecordingsPage,
+            ErrorBoundary: RouteErrorBoundary,
+          },
+          {
+            path: 'labs/ecg/:id',
+            Component: EcgRecordingPage,
             ErrorBoundary: RouteErrorBoundary,
           },
           {

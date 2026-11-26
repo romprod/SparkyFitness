@@ -49,6 +49,7 @@ import LabPanelForm from './LabPanelForm';
 import LabPanelHistory from './LabPanelHistory';
 import MetabolicTestsCard from './MetabolicTestsCard';
 import BodyCompScansCard from './BodyCompScansCard';
+import EcgRecordingsCard from './EcgRecordingsCard';
 import HealthDocumentsCard from './HealthDocumentsCard';
 import LabMarkerChart from './LabMarkerChart';
 import LabResultDialog from './LabResultDialog';
@@ -497,6 +498,8 @@ const Labs = () => {
       <BodyCompScansCard />
 
       <MetabolicTestsCard />
+
+      <EcgRecordingsCard />
 
       <HealthDocumentsCard />
 

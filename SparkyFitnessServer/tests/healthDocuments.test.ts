@@ -61,6 +61,7 @@ describe('what goes with the file', () => {
       document_day: '2026-11-02',
       body_comp_scan_id: id(1),
       metabolic_test_id: null,
+      ecg_recording_id: null,
     });
     expect(
       healthDocumentFieldsSchema.parse({
@@ -74,6 +75,7 @@ describe('what goes with the file', () => {
       document_day: null,
       body_comp_scan_id: null,
       metabolic_test_id: null,
+      ecg_recording_id: null,
     });
   });
 
@@ -88,6 +90,11 @@ describe('what goes with the file', () => {
     expect(bad({ body_comp_scan_id: id(1), metabolic_test_id: id(2) })).toBe(
       false
     );
+    expect(bad({ kind: 'ecg_report', ecg_recording_id: id(3) })).toBe(true);
+    expect(bad({ metabolic_test_id: id(2), ecg_recording_id: id(3) })).toBe(
+      false
+    );
+    expect(bad({ ecg_recording_id: 'not-an-id' })).toBe(false);
     expect(healthDocumentFieldsSchema.safeParse({}).success).toBe(false);
   });
 });

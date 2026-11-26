@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../db/poolManager.js', () => ({ getClient: mocks.getClient }));
 import {
+  adoptHealthDocumentForEcg,
   deleteHealthDocument,
   getHealthDocumentFile,
   insertHealthDocument,
@@ -23,6 +24,7 @@ const fields = (patch: Record<string, unknown> = {}) => ({
   document_day: '2026-11-02',
   body_comp_scan_id: null,
   metabolic_test_id: null,
+  ecg_recording_id: null,
   ...patch,
 });
 const doc = (patch: Record<string, unknown> = {}) => ({
@@ -45,6 +47,7 @@ const stored = {
   size_bytes: '20',
   body_comp_scan_id: null,
   metabolic_test_id: null,
+  ecg_recording_id: null,
   created_at: new Date('2026-11-23T10:00:00Z'),
 };
 
@@ -70,6 +73,7 @@ describe('listing', () => {
       size_bytes: 20,
       body_comp_scan_id: null,
       metabolic_test_id: null,
+      ecg_recording_id: null,
       uploaded_at: '2026-11-23T10:00:00.000Z',
     });
     const [text, params] = mocks.query.mock.calls[0]!;
@@ -118,6 +122,35 @@ describe('recording', () => {
     });
     expect(mocks.query).toHaveBeenCalledTimes(2);
     expect(mocks.release).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks a linked ECG recording is the owner’s, and ties an unlinked stored document to one', async () => {
+    const recording = '00000000-0000-4000-a000-0000000000e3';
+    mocks.query.mockResolvedValueOnce(rows());
+    await expect(
+      insertHealthDocument(
+        owner,
+        doc({ fields: fields({ ecg_recording_id: recording }) })
+      )
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'That recording was not found.',
+    });
+    expect(String(mocks.query.mock.calls[0]![0])).toContain('ecg_recordings');
+    expect(mocks.query.mock.calls[0]![1]).toEqual([recording, owner]);
+
+    mocks.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(
+      await adoptHealthDocumentForEcg(owner, 'd1', recording, '2026-11-02')
+    ).toBe(true);
+    const [text, params] = mocks.query.mock.calls[1]!;
+    expect(String(text)).toContain('ecg_recording_id IS NULL');
+    expect(String(text)).toContain('body_comp_scan_id IS NULL');
+    expect(params).toEqual(['d1', owner, recording, '2026-11-02']);
+    mocks.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    expect(
+      await adoptHealthDocumentForEcg(owner, 'd2', recording, '2026-11-02')
+    ).toBe(false);
   });
 
   it('records a document tied to a scan that is the owner’s', async () => {

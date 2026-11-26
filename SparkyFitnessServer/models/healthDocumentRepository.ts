@@ -28,11 +28,12 @@ const view = (row: Row): HealthDocument => ({
   size_bytes: Number(row['size_bytes']),
   body_comp_scan_id: (row['body_comp_scan_id'] as string | null) ?? null,
   metabolic_test_id: (row['metabolic_test_id'] as string | null) ?? null,
+  ecg_recording_id: (row['ecg_recording_id'] as string | null) ?? null,
   uploaded_at: new Date(row['created_at'] as string | Date).toISOString(),
 });
 
 const COLUMNS = `id, kind, label, document_day::text AS document_day, original_name, mime,
-  size_bytes, body_comp_scan_id, metabolic_test_id, created_at`;
+  size_bytes, body_comp_scan_id, metabolic_test_id, ecg_recording_id, created_at`;
 
 /** Every stored original of the owner, newest first. */
 export async function listHealthDocuments(
@@ -64,7 +65,7 @@ export interface NewHealthDocument {
 
 /**
  * Records a stored original. The same file is not kept twice: a second upload of identical bytes
- * answers 409 with the one already stored. A scan or test that is not the owner's answers 400.
+ * answers 409 with the one already stored. A scan, test or recording that is not the owner's answers 400.
  */
 export async function insertHealthDocument(
   owner: string,
@@ -88,12 +89,19 @@ export async function insertHealthDocument(
       );
       if (!found.rowCount) throw fail('That test was not found.', 400);
     }
+    if (fields.ecg_recording_id) {
+      const found = await client.query(
+        'SELECT 1 FROM ecg_recordings WHERE id = $1 AND user_id = $2',
+        [fields.ecg_recording_id, owner]
+      );
+      if (!found.rowCount) throw fail('That recording was not found.', 400);
+    }
     try {
       const { rows } = await client.query(
         `INSERT INTO health_documents
            (id, user_id, kind, label, document_day, original_name, mime, size_bytes, sha256,
-            file_path, body_comp_scan_id, metabolic_test_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            file_path, body_comp_scan_id, metabolic_test_id, ecg_recording_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          RETURNING ${COLUMNS}`,
         [
           doc.id,
@@ -108,6 +116,7 @@ export async function insertHealthDocument(
           doc.file_path,
           fields.body_comp_scan_id,
           fields.metabolic_test_id,
+          fields.ecg_recording_id,
         ]
       );
       return view(rows[0] as Row);
@@ -175,6 +184,33 @@ export async function deleteHealthDocument(
       [id, owner]
     );
     return rows[0] ? String((rows[0] as Row)['file_path']) : null;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Ties a document already stored (the same bytes uploaded earlier) to an ECG recording, when it
+ * is not tied to any record yet. It becomes an ECG report. Answers whether it was tied.
+ */
+export async function adoptHealthDocumentForEcg(
+  owner: string,
+  id: string,
+  ecgRecordingId: string,
+  documentDay: string,
+  authenticatedUserId?: string
+): Promise<boolean> {
+  const client = await getClient(owner, authenticatedUserId);
+  try {
+    const { rowCount } = await client.query(
+      `UPDATE health_documents
+          SET kind = 'ecg_report', ecg_recording_id = $3,
+              document_day = COALESCE(document_day, $4::date)
+        WHERE id = $1 AND user_id = $2 AND body_comp_scan_id IS NULL
+          AND metabolic_test_id IS NULL AND ecg_recording_id IS NULL`,
+      [id, owner, ecgRecordingId, documentDay]
+    );
+    return Boolean(rowCount);
   } finally {
     client.release();
   }

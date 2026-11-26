@@ -53,6 +53,7 @@ export const useDeleteHealthDocumentMutation = () => {
 /** Opens a stored original in a new tab; the failure, if any, is the caller's to show. */
 export const useOpenHealthDocumentMutation = () =>
   useMutation({
-    mutationFn: (doc: HealthDocument) => openHealthDocument(doc),
+    mutationFn: (doc: Pick<HealthDocument, 'id' | 'original_name'>) =>
+      openHealthDocument(doc),
     meta: { silentError: true },
   });

@@ -58,6 +58,7 @@ const doc = (patch: Partial<HealthDocument> = {}): HealthDocument => ({
   size_bytes: 20_480,
   body_comp_scan_id: null,
   metabolic_test_id: null,
+  ecg_recording_id: null,
   uploaded_at: '2026-11-23T10:00:00.000Z',
   ...patch,
 });
@@ -138,6 +139,20 @@ describe('stored originals card', () => {
     const open = () =>
       fireEvent.click(screen.getByRole('button', { name: 'Store a report' }));
     const submit = () => fireEvent.submit(form());
+
+    it('does not offer ECG report as a kind to file by hand, but labels one that was imported', () => {
+      mockDocs = {
+        data: [doc({ id: 'e', kind: 'ecg_report', ecg_recording_id: 'r1' })],
+      };
+      render(<HealthDocumentsCard />);
+      expect(screen.getByRole('listitem')).toHaveTextContent('ECG report');
+      open();
+      const kinds = within(screen.getByLabelText('What it is'))
+        .getAllByRole('option')
+        .map((o) => o.textContent);
+      expect(kinds).toContain('DEXA report');
+      expect(kinds).not.toContain('ECG report');
+    });
 
     it('asks for a file, a PDF or image, and one that is not too large, before sending anything', async () => {
       render(<HealthDocumentsCard />);

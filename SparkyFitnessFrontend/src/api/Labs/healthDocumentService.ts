@@ -45,7 +45,9 @@ export const deleteHealthDocument = (id: string): Promise<void> =>
  * first, while the click still counts, and pointed at the file once it arrives; if the browser
  * blocks the tab, the file is offered as a download instead.
  */
-export async function openHealthDocument(doc: HealthDocument): Promise<void> {
+export async function openHealthDocument(
+  doc: Pick<HealthDocument, 'id' | 'original_name'>
+): Promise<void> {
   const tab = window.open('', '_blank');
   if (tab) tab.opener = null;
   try {

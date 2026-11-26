@@ -102,6 +102,7 @@ const stored = {
   size_bytes: 20,
   body_comp_scan_id: null,
   metabolic_test_id: null,
+  ecg_recording_id: null,
   uploaded_at: '2026-11-23T10:00:00.000Z',
 };
 const pdf = Buffer.from('%PDF-1.4\nhello\n%%EOF');
@@ -147,6 +148,7 @@ describe('stored originals', () => {
         document_day: '2026-11-02',
         body_comp_scan_id: '00000000-0000-4000-a000-0000000000e1',
         metabolic_test_id: null,
+        ecg_recording_id: null,
       });
     });
 

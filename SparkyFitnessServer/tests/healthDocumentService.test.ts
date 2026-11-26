@@ -39,6 +39,7 @@ const fields = {
   document_day: null,
   body_comp_scan_id: null,
   metabolic_test_id: null,
+  ecg_recording_id: null,
 };
 const pdf = (text: string) => Buffer.from(`%PDF-1.4\n${text}\n%%EOF`);
 const folder = () => path.join(uploads, 'health-documents', owner);

@@ -15,6 +15,7 @@ export const healthDocumentsSchema = z.object({
   file_path: z.string(),
   body_comp_scan_id: z.string().nullable().optional(),
   metabolic_test_id: z.string().nullable().optional(),
+  ecg_recording_id: z.string().nullable().optional(),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
@@ -32,6 +33,7 @@ export const healthDocumentsInitializerSchema = z.object({
   file_path: z.string().optional(),
   body_comp_scan_id: z.string().nullable().optional(),
   metabolic_test_id: z.string().nullable().optional(),
+  ecg_recording_id: z.string().nullable().optional(),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });

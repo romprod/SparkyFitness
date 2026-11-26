@@ -127,14 +127,10 @@ export async function openHealthDocument(
   return { absolute, original_name: meta.original_name, mime: meta.mime };
 }
 
-/** Deletes a stored original and its file. A document already gone counts as deleted. */
-export async function removeHealthDocument(
-  owner: string,
-  id: string,
-  authenticatedUserId?: string
+/** Removes a stored file by the path its row held, unless that path leaves the uploads folder. */
+export async function discardHealthDocumentFile(
+  filePath: string
 ): Promise<void> {
-  const filePath = await deleteHealthDocument(owner, id, authenticatedUserId);
-  if (!filePath) return;
   const absolute = resolveUploadPathWithinRoot(filePath);
   if (!absolute) {
     log(
@@ -144,4 +140,15 @@ export async function removeHealthDocument(
     return;
   }
   await safeUnlink(absolute);
+}
+
+/** Deletes a stored original and its file. A document already gone counts as deleted. */
+export async function removeHealthDocument(
+  owner: string,
+  id: string,
+  authenticatedUserId?: string
+): Promise<void> {
+  const filePath = await deleteHealthDocument(owner, id, authenticatedUserId);
+  if (!filePath) return;
+  await discardHealthDocumentFile(filePath);
 }

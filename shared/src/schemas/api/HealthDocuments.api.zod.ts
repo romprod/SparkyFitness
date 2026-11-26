@@ -7,6 +7,7 @@ export const HEALTH_DOCUMENT_KINDS = [
   'lab_report',
   'dexa_report',
   'rmr_report',
+  'ecg_report',
   'other',
 ] as const;
 export type HealthDocumentKind = (typeof HEALTH_DOCUMENT_KINDS)[number];
@@ -52,7 +53,7 @@ const optionalDay = z
 
 /**
  * What goes with the file when it is stored. The file's name, type, size and checksum are read
- * from the file itself, never from the form. A document can be tied to one scan or one RMR test;
+ * from the file itself, never from the form. A document can be tied to one scan, one RMR test or one ECG recording;
  * it is kept if that record is deleted.
  */
 export const healthDocumentFieldsSchema = z
@@ -62,11 +63,20 @@ export const healthDocumentFieldsSchema = z
     document_day: optionalDay,
     body_comp_scan_id: optionalId,
     metabolic_test_id: optionalId,
+    ecg_recording_id: optionalId,
   })
-  .refine((value) => !(value.body_comp_scan_id && value.metabolic_test_id), {
-    path: ['metabolic_test_id'],
-    message: 'A document can be linked to one record',
-  });
+  .refine(
+    (value) =>
+      [
+        value.body_comp_scan_id,
+        value.metabolic_test_id,
+        value.ecg_recording_id,
+      ].filter(Boolean).length <= 1,
+    {
+      path: ['metabolic_test_id'],
+      message: 'A document can be linked to one record',
+    }
+  );
 export type HealthDocumentFields = z.output<typeof healthDocumentFieldsSchema>;
 
 export const healthDocumentSchema = z.object({
@@ -79,6 +89,7 @@ export const healthDocumentSchema = z.object({
   size_bytes: z.number(),
   body_comp_scan_id: z.string().uuid().nullable(),
   metabolic_test_id: z.string().uuid().nullable(),
+  ecg_recording_id: z.string().uuid().nullable(),
   uploaded_at: z.string(),
 });
 export type HealthDocument = z.infer<typeof healthDocumentSchema>;

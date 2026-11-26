@@ -23,6 +23,10 @@ jest.mock('@/pages/Labs/BodyCompScansCard', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/pages/Labs/EcgRecordingsCard', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock('@/pages/Labs/HealthDocumentsCard', () => ({
   __esModule: true,
   default: () => null,

@@ -32,11 +32,21 @@ const SELECT_CLASS =
   'h-9 w-full rounded-md border border-input bg-background px-3 text-sm';
 const ACCEPTED = /\.(pdf|jpe?g|png|gif|webp)$/i;
 
+/**
+ * ECG reports arrive through the ECG import, which reads the PDF and links it to its recording.
+ * One filed by hand would be a PDF no recording owns, so the picker does not offer it; the kind
+ * still has a label so an imported one reads properly in the list.
+ */
+const PICKABLE_KINDS = HEALTH_DOCUMENT_KINDS.filter(
+  (value) => value !== 'ecg_report'
+);
+
 const KIND_FALLBACK: Record<HealthDocumentKind, string> = {
   prescription: 'Prescription',
   lab_report: 'Lab report',
   dexa_report: 'DEXA report',
   rmr_report: 'RMR report',
+  ecg_report: 'ECG report',
   other: 'Other',
 };
 
@@ -210,7 +220,7 @@ export default function HealthDocumentsCard() {
                     setKind(e.target.value as HealthDocumentKind)
                   }
                 >
-                  {HEALTH_DOCUMENT_KINDS.map((value) => (
+                  {PICKABLE_KINDS.map((value) => (
                     <option key={value} value={value}>
                       {kindLabel(value)}
                     </option>
