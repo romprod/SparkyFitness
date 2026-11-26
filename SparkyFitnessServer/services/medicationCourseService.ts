@@ -635,77 +635,86 @@ export async function editMedicationCourse(
   _now = new Date()
 ): Promise<MedicationCourseMutationResult> {
   if (input.prescription_id !== undefined) assertPrescriptionOwner(owner);
-  return operation(owner, 'edit', input, { id }, async (client) => {
-    const course = await lockMedicationCourse(client, owner, id);
-    expectedVersion(course, input.expected_version);
-    const old = tip(course),
-      plan = authoredPlan(
-        courseCarryCyclicAnchors(old, authoredPlan(input, old)),
-        old
-      );
-    const device = await loadCourseDevice(
-      client,
-      owner,
-      course.medication_id,
-      plan,
+  return operation(owner, 'edit', input, { id }, (client) =>
+    editCourseInTransaction(client, owner, id, input)
+  );
+}
+/** The edit work itself, on a client whose transaction (and receipt, if any) the caller owns. */
+export async function editCourseInTransaction(
+  client: PoolClient,
+  owner: string,
+  id: string,
+  input: MedicationCourseEditInput
+): Promise<MedicationCourseMutationResult> {
+  const course = await lockMedicationCourse(client, owner, id);
+  expectedVersion(course, input.expected_version);
+  const old = tip(course),
+    plan = authoredPlan(
+      courseCarryCyclicAnchors(old, authoredPlan(input, old)),
       old
     );
-    const phaseActuals = await loadCoursePhaseActuals(client, owner, id);
-    const hasPhaseHistory =
-      coursePhaseActuals({ course, revision: old, delivered: phaseActuals })
-        .length > 0;
-    if (courseMaterialChanges(coursePlan(old), plan).length && hasPhaseHistory)
-      throw courseProblem(
-        'This authored history needs a reviewed successor revision; resume or reopen the current tip first if needed.'
-      );
-    const prescriptionId = await validatePrescriptionLink(
-      client,
+  const device = await loadCourseDevice(
+    client,
+    owner,
+    course.medication_id,
+    plan,
+    old
+  );
+  const phaseActuals = await loadCoursePhaseActuals(client, owner, id);
+  const hasPhaseHistory =
+    coursePhaseActuals({ course, revision: old, delivered: phaseActuals })
+      .length > 0;
+  if (courseMaterialChanges(coursePlan(old), plan).length && hasPhaseHistory)
+    throw courseProblem(
+      'This authored history needs a reviewed successor revision; resume or reopen the current tip first if needed.'
+    );
+  const prescriptionId = await validatePrescriptionLink(
+    client,
+    owner,
+    course.medication_id,
+    input,
+    old.prescription_id ?? null
+  );
+  await client.query(
+    'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12,course_cycle_on_weeks=$13,course_cycle_off_weeks=$14,course_cycle_anchor_date=$15,phase_origin_context=$16::jsonb,prescription_id=$17 WHERE user_id=$1 AND id=$2',
+    [
       owner,
-      course.medication_id,
-      input,
-      old.prescription_id ?? null
-    );
-    await client.query(
-      'UPDATE medication_course_revisions SET name=$3,notes=$4,start_date=$5,end_date=$6,cycle_anchor_date=$7,target_dose=$8,dose_unit=$9,dose_basis=$10,device_id=$11,device_choice=$12,course_cycle_on_weeks=$13,course_cycle_off_weeks=$14,course_cycle_anchor_date=$15,phase_origin_context=$16::jsonb,prescription_id=$17 WHERE user_id=$1 AND id=$2',
-      [
-        owner,
-        old.id,
-        plan.name,
-        plan.notes ?? null,
-        plan.start_date,
-        plan.end_date ?? null,
-        plan.cycle_anchor_date ?? null,
-        plan.target_dose ?? null,
-        plan.dose_unit,
-        plan.dose_basis,
-        device.choice.device_id,
-        device.choice.device_choice,
-        plan.course_cycle_on_weeks ?? null,
-        plan.course_cycle_off_weeks ?? null,
-        courseWeeklyAnchor(plan, old),
-        !hasPhaseHistory && courseMaterialChanges(coursePlan(old), plan).length
-          ? JSON.stringify({
-              start_date: plan.start_date,
-              end_date: plan.end_date ?? null,
-            })
-          : old.phase_origin_context === null
-            ? null
-            : JSON.stringify(old.phase_origin_context),
-        prescriptionId,
-      ]
-    );
-    await storeCourseChildren(client, owner, old.id, plan, old);
-    await client.query(
-      'UPDATE medication_courses SET version=version+1 WHERE user_id=$1 AND id=$2',
-      [owner, id]
-    );
-    return {
-      course_id: id,
-      revision_id: old.id,
-      version: course.version + 1,
-      operation_id: input.operation_id,
-    };
-  });
+      old.id,
+      plan.name,
+      plan.notes ?? null,
+      plan.start_date,
+      plan.end_date ?? null,
+      plan.cycle_anchor_date ?? null,
+      plan.target_dose ?? null,
+      plan.dose_unit,
+      plan.dose_basis,
+      device.choice.device_id,
+      device.choice.device_choice,
+      plan.course_cycle_on_weeks ?? null,
+      plan.course_cycle_off_weeks ?? null,
+      courseWeeklyAnchor(plan, old),
+      !hasPhaseHistory && courseMaterialChanges(coursePlan(old), plan).length
+        ? JSON.stringify({
+            start_date: plan.start_date,
+            end_date: plan.end_date ?? null,
+          })
+        : old.phase_origin_context === null
+          ? null
+          : JSON.stringify(old.phase_origin_context),
+      prescriptionId,
+    ]
+  );
+  await storeCourseChildren(client, owner, old.id, plan, old);
+  await client.query(
+    'UPDATE medication_courses SET version=version+1 WHERE user_id=$1 AND id=$2',
+    [owner, id]
+  );
+  return {
+    course_id: id,
+    revision_id: old.id,
+    version: course.version + 1,
+    operation_id: input.operation_id,
+  };
 }
 export async function reviseMedicationCourse(
   owner: string,
@@ -713,106 +722,116 @@ export async function reviseMedicationCourse(
   input: MedicationCourseReviseInput,
   now = new Date()
 ): Promise<MedicationCourseMutationResult> {
-  return operation(owner, 'revise', input, { id }, async (client) => {
-    const course = await lockMedicationCourse(client, owner, id);
-    expectedVersion(course, input.expected_version);
-    const old = tip(course);
-    if (old.status !== 'active')
-      throw courseProblem(
-        'Resume or reopen the current revision before revising it.'
-      );
-    const context = await loadCourseOwnerContext(client, owner, now);
-    const actuals = await loadCourseActuals(client, owner, id);
-    const reviewed = await revisionReview(
-      client,
-      owner,
-      course,
-      input,
-      actuals,
-      await loadCoursePhaseActuals(client, owner, id),
-      context.today
+  return operation(owner, 'revise', input, { id }, (client) =>
+    reviseCourseInTransaction(client, owner, id, input, now)
+  );
+}
+/** The revise work itself, on a client whose transaction (and receipt, if any) the caller owns. */
+export async function reviseCourseInTransaction(
+  client: PoolClient,
+  owner: string,
+  id: string,
+  input: MedicationCourseReviseInput,
+  now = new Date()
+): Promise<MedicationCourseMutationResult> {
+  const course = await lockMedicationCourse(client, owner, id);
+  expectedVersion(course, input.expected_version);
+  const old = tip(course);
+  if (old.status !== 'active')
+    throw courseProblem(
+      'Resume or reopen the current revision before revising it.'
     );
-    if (reviewed.review_fingerprint !== input.review_fingerprint)
-      throw courseProblem(
-        'The course or its attributed actuals changed. Refresh the review while keeping this draft.'
-      );
-    const delivered = actuals.filter(
-      (a) => a.course_revision_id === old.id && courseAdministered(a)
+  const context = await loadCourseOwnerContext(client, owner, now);
+  const actuals = await loadCourseActuals(client, owner, id);
+  const reviewed = await revisionReview(
+    client,
+    owner,
+    course,
+    input,
+    actuals,
+    await loadCoursePhaseActuals(client, owner, id),
+    context.today
+  );
+  if (reviewed.review_fingerprint !== input.review_fingerprint)
+    throw courseProblem(
+      'The course or its attributed actuals changed. Refresh the review while keeping this draft.'
     );
-    const last =
-      delivered
-        .map((a) => a.entry_date)
-        .sort()
-        .at(-1) ?? null;
-    let boundary: ReturnType<typeof courseRevisionBoundary>;
-    try {
-      boundary = courseRevisionBoundary({
-        predecessor: old,
-        newStart: input.start_date,
-        replacementEnd: input.end_date,
-        lastDeliveredDay: last,
-      });
-    } catch {
-      throw courseProblem(
-        'The successor start must follow the predecessor start and its inherited or authored end must follow the new start.',
-        422
-      );
-    }
-    const plan = authoredPlan({
-      ...reviewed.plan,
-      end_date: boundary.successor_end_date,
+  const delivered = actuals.filter(
+    (a) => a.course_revision_id === old.id && courseAdministered(a)
+  );
+  const last =
+    delivered
+      .map((a) => a.entry_date)
+      .sort()
+      .at(-1) ?? null;
+  let boundary: ReturnType<typeof courseRevisionBoundary>;
+  try {
+    boundary = courseRevisionBoundary({
+      predecessor: old,
+      newStart: input.start_date,
+      replacementEnd: input.end_date,
+      lastDeliveredDay: last,
     });
-    const nextId = randomUUID();
-    const cutoff = dayToUtcRange(
-      plan.start_date,
-      course.timezone
-    ).start.toISOString();
-    await client.query(
-      "UPDATE medication_course_revisions SET status='completed',closed_date=$3 WHERE user_id=$1 AND id=$2",
-      [owner, old.id, boundary.predecessor_end_date]
+  } catch {
+    throw courseProblem(
+      'The successor start must follow the predecessor start and its inherited or authored end must follow the new start.',
+      422
     );
-    await client.query(
-      'UPDATE medication_course_activity SET until_at=GREATEST(from_at,$3::timestamptz) WHERE user_id=$1 AND revision_id=$2 AND until_at IS NULL',
-      [owner, old.id, cutoff]
-    );
-    const med = course.medication_id
-      ? await client.query<{ is_active: boolean }>(
-          'SELECT is_active FROM medications WHERE user_id=$1 AND id=$2',
-          [owner, course.medication_id]
-        )
-      : null;
-    await insertCourseRevision(
-      client,
-      owner,
-      id,
-      nextId,
-      old.revision_no + 1,
-      old.id,
-      plan,
-      now,
-      med?.rows[0]?.is_active ? cutoff : null,
-      (await loadCourseDevice(client, owner, course.medication_id, plan, old))
-        .choice,
-      {
-        weekly_anchor_date: courseWeeklyAnchor(plan, old),
-        phase_family_id: null,
-        phase_origin_context: {
-          start_date: plan.start_date,
-          end_date: plan.end_date ?? null,
-        },
-      }
-    );
-    await client.query(
-      'UPDATE medication_courses SET current_revision_id=$3,version=version+1 WHERE user_id=$1 AND id=$2',
-      [owner, id, nextId]
-    );
-    return {
-      course_id: id,
-      revision_id: nextId,
-      version: course.version + 1,
-      operation_id: input.operation_id,
-    };
+  }
+  const plan = authoredPlan({
+    ...reviewed.plan,
+    end_date: boundary.successor_end_date,
   });
+  const nextId = randomUUID();
+  const cutoff = dayToUtcRange(
+    plan.start_date,
+    course.timezone
+  ).start.toISOString();
+  await client.query(
+    "UPDATE medication_course_revisions SET status='completed',closed_date=$3 WHERE user_id=$1 AND id=$2",
+    [owner, old.id, boundary.predecessor_end_date]
+  );
+  await client.query(
+    'UPDATE medication_course_activity SET until_at=GREATEST(from_at,$3::timestamptz) WHERE user_id=$1 AND revision_id=$2 AND until_at IS NULL',
+    [owner, old.id, cutoff]
+  );
+  const med = course.medication_id
+    ? await client.query<{ is_active: boolean }>(
+        'SELECT is_active FROM medications WHERE user_id=$1 AND id=$2',
+        [owner, course.medication_id]
+      )
+    : null;
+  await insertCourseRevision(
+    client,
+    owner,
+    id,
+    nextId,
+    old.revision_no + 1,
+    old.id,
+    plan,
+    now,
+    med?.rows[0]?.is_active ? cutoff : null,
+    (await loadCourseDevice(client, owner, course.medication_id, plan, old))
+      .choice,
+    {
+      weekly_anchor_date: courseWeeklyAnchor(plan, old),
+      phase_family_id: null,
+      phase_origin_context: {
+        start_date: plan.start_date,
+        end_date: plan.end_date ?? null,
+      },
+    }
+  );
+  await client.query(
+    'UPDATE medication_courses SET current_revision_id=$3,version=version+1 WHERE user_id=$1 AND id=$2',
+    [owner, id, nextId]
+  );
+  return {
+    course_id: id,
+    revision_id: nextId,
+    version: course.version + 1,
+    operation_id: input.operation_id,
+  };
 }
 export async function setMedicationCourseStatus(
   owner: string,
