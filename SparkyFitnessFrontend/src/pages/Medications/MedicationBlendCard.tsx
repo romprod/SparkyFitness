@@ -4,6 +4,7 @@ import { FlaskConical, Plus, Trash2 } from 'lucide-react';
 import {
   BLEND_SOURCES,
   blendTotalMg,
+  blendVialMismatches,
   medicationBlendInputSchema,
   weakestBlendSource,
   type BlendSource,
@@ -22,6 +23,7 @@ import {
   useMedicationBlends,
   useSaveMedicationBlendMutation,
 } from '@/hooks/Medications/useMedicationBlends';
+import { useMedicationPens } from '@/hooks/useMedications';
 
 interface Row {
   component_medication_id: string;
@@ -51,6 +53,37 @@ const rowsOf = (blend: MedicationBlend | undefined): Row[] =>
   }));
 
 /**
+ * Pitstop's blend-mass warning: advisory only, never blocks a save. In Sparky the "vial label" is
+ * each stock vial's printed mass (`label_mass_mg`); the medicine's own strength is not used as a
+ * default vial label, so it is not compared.
+ */
+function VialLabelWarning({
+  components,
+  vials,
+}: {
+  components: Parameters<typeof blendVialMismatches>[0];
+  vials: Parameters<typeof blendVialMismatches>[1];
+}) {
+  const { t } = useTranslation();
+  const mismatches = blendVialMismatches(components, vials);
+  if (mismatches.length === 0) return null;
+  return (
+    <div role="status" className="space-y-1 text-xs text-amber-600">
+      {mismatches.map((mismatch) => (
+        <p key={mismatch.expected_mg}>
+          {t(
+            'medications.blends.vialMismatch',
+            'Components total {{sum}} mg but the vial label says {{expected}} mg — derived figures will scale off {{sum}} mg.',
+            { sum: mismatch.sum_mg, expected: mismatch.expected_mg }
+          )}
+          {mismatch.vials.length > 0 && ` (${mismatch.vials.join(', ')})`}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/**
  * What a vendor blend is made of, as Pitstop's blend editor has it: the compounds one labelled
  * vial holds and the mg of each. Doses are still logged as the whole blend; what each compound
  * received is worked out from these masses and always shown as derived.
@@ -69,6 +102,7 @@ export default function MedicationBlendCard({
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const pensQ = useMedicationPens(medication.id);
 
   if (query.isLoading || query.isError || !blends) return null;
   const blend = blends.find((b) => b.blend_medication_id === medication.id);
@@ -84,15 +118,15 @@ export default function MedicationBlendCard({
 
   const editing = rows !== null;
   const total = blend ? blendTotalMg(blend.components) : '0';
-  const draftTotal = blendTotalMg(
-    (rows ?? []).map((row, index) => ({
-      component_medication_id: row.component_medication_id,
-      name: '',
-      mass_mg: row.mass_mg,
-      source: row.source,
-      sort_index: index,
-    }))
-  );
+  const draftComponents = (rows ?? []).map((row, index) => ({
+    component_medication_id: row.component_medication_id,
+    name: '',
+    mass_mg: row.mass_mg,
+    source: row.source,
+    sort_index: index,
+  }));
+  const draftTotal = blendTotalMg(draftComponents);
+  const vials = pensQ.data ?? [];
 
   const update = (index: number, patch: Partial<Row>) =>
     setRows((current) =>
@@ -196,6 +230,7 @@ export default function MedicationBlendCard({
                     }
                   )}
                 </p>
+                <VialLabelWarning components={blend.components} vials={vials} />
               </>
             ) : (
               <p className="text-xs text-muted-foreground">
@@ -379,6 +414,7 @@ export default function MedicationBlendCard({
                 })}
               </span>
             </div>
+            <VialLabelWarning components={draftComponents} vials={vials} />
             {rows.length === 0 && blend && (
               <p className="text-xs text-muted-foreground">
                 {t(

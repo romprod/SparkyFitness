@@ -17,6 +17,10 @@ let mockLoading = false;
 let mockFailed = false;
 let mockPending = false;
 const mockSave = jest.fn();
+let mockPens: Array<Record<string, unknown>> = [];
+jest.mock('@/hooks/useMedications', () => ({
+  useMedicationPens: () => ({ data: mockPens }),
+}));
 jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
   useMedicationBlends: () => ({
     data: mockBlends,
@@ -87,6 +91,7 @@ beforeEach(() => {
   mockLoading = false;
   mockFailed = false;
   mockPending = false;
+  mockPens = [];
   mockSave.mockReset().mockResolvedValue({});
 });
 
@@ -327,5 +332,68 @@ describe('blend split line', () => {
       <MedicationBlendSplit amount={null} unit="mg" components={components} />
     );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('vial label mismatch warning', () => {
+  const vial = (over: Record<string, unknown>) => ({
+    id: 'v',
+    status: 'in_use',
+    label: null,
+    expiry_date: null,
+    label_mass_mg: null,
+    ...over,
+  });
+  const WARN = (sum: string, expected: string) =>
+    `Components total ${sum} mg but the vial label says ${expected} mg — derived figures will scale off ${sum} mg.`;
+
+  it('warns on the saved card when a live vial label differs from the total', () => {
+    mockBlends = [klow()];
+    mockPens = [vial({ label_mass_mg: '100', label: 'Vial A' })];
+    renderCard();
+    expect(
+      screen.getByText(`${WARN('80', '100')} (Vial A)`)
+    ).toBeInTheDocument();
+  });
+
+  it('is silent when the label equals the total, is unknown, or the vial is retired', () => {
+    mockBlends = [klow()];
+    mockPens = [
+      vial({ label_mass_mg: '80.0' }),
+      vial({ id: 'w', label_mass_mg: null }),
+      vial({ id: 'x', label_mass_mg: '100', status: 'finished' }),
+      vial({ id: 'y', label_mass_mg: '100', status: 'discarded' }),
+    ];
+    renderCard();
+    expect(screen.queryByText(/vial label says/)).not.toBeInTheDocument();
+  });
+
+  it('lists each differing label once, naming vials by label or expiry', () => {
+    mockBlends = [klow()];
+    mockPens = [
+      vial({ id: 'a', label_mass_mg: '100', label: 'Vial A' }),
+      vial({ id: 'b', label_mass_mg: '100', expiry_date: '2027-01-31' }),
+      vial({ id: 'c', label_mass_mg: '90' }),
+    ];
+    renderCard();
+    expect(
+      screen.getByText(`${WARN('80', '100')} (Vial A, exp 2027-01-31)`)
+    ).toBeInTheDocument();
+    expect(screen.getByText(WARN('80', '90'))).toBeInTheDocument();
+    expect(screen.getAllByText(/vial label says/)).toHaveLength(2);
+  });
+
+  it('updates live while editing and never blocks saving', async () => {
+    mockBlends = [klow()];
+    mockPens = [vial({ label_mass_mg: '80' })];
+    renderCard();
+    expect(screen.queryByText(/vial label says/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit components' }));
+    expect(screen.queryByText(/vial label says/)).not.toBeInTheDocument();
+    mass(0, '60');
+    expect(screen.getByText('Total 90 mg')).toBeInTheDocument();
+    expect(screen.getByText(WARN('90', '80'))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save components' }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
   });
 });

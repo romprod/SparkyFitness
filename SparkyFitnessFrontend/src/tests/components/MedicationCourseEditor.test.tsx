@@ -19,6 +19,7 @@ import type {
   CourseAdvanceProposal,
   MedicationCourseReviewInput,
   MedicationCourseReview,
+  MedicationBlend,
 } from '@workspace/shared';
 let mockRxReady = false;
 const mockRxId = '00000000-0000-4000-8000-000000000071';
@@ -91,8 +92,17 @@ const mockDevices = { syringes: [], default_syringe_id: null } as {
 jest.mock('@/hooks/Medications/useMedicationInventoryForecast', () => ({
   useMedicationForecastDevices: () => ({ data: mockDevices, isError: false }),
 }));
+let mockBlends: MedicationBlend[] = [];
+let mockPens: Array<Record<string, unknown>> = [];
+jest.mock('@/hooks/Medications/useMedicationBlends', () => ({
+  useMedicationBlends: () => ({
+    data: mockBlends,
+    query: { isLoading: false, isError: false },
+  }),
+}));
 jest.mock('@/hooks/useMedications', () => ({
   useMedicationTitration: () => ({ data: [] }),
+  useMedicationPens: () => ({ data: mockPens }),
 }));
 jest.mock('@/contexts/PreferencesContext', () => ({
   usePreferences: () => ({
@@ -151,6 +161,8 @@ beforeEach(() => {
   mockCurrent = true;
   mockDevices.syringes = [];
   mockDevices.default_syringe_id = null;
+  mockBlends = [];
+  mockPens = [];
   close.mockReset();
   refresh.mockReset();
   refresh.mockResolvedValue(undefined);
@@ -863,4 +875,115 @@ it('reviews the reordered phases in order and shows the order change', async () 
     '4',
   ]);
   expect(screen.getByText(/Phase 1: 2 mg · 14 days/)).toBeInTheDocument();
+});
+
+describe('blend components across the ladder', () => {
+  const blendOf = (): MedicationBlend => ({
+    blend_medication_id: courseMedication.id,
+    name: 'Example medication',
+    components: [
+      {
+        component_medication_id: '00000000-0000-4000-8000-0000000000a1',
+        name: 'Alpha',
+        mass_mg: '5',
+        source: 'label',
+        sort_index: 0,
+      },
+      {
+        component_medication_id: '00000000-0000-4000-8000-0000000000a2',
+        name: 'Beta',
+        mass_mg: '5',
+        source: 'assumed',
+        sort_index: 1,
+      },
+    ],
+  });
+  const withSteps = (
+    steps: Array<{ dose: string; unit: string; days: number | null }>,
+    basis: 'per_injection' | 'per_week' = 'per_injection'
+  ) => {
+    const base = courseFixture();
+    return courseFixture({
+      revisions: [
+        {
+          ...base.revisions[0]!,
+          dose_basis: basis,
+          steps: steps.map((step, index) => ({
+            id: courseIds.step,
+            user_id: courseIds.owner,
+            revision_id: courseIds.revision,
+            step_index: index,
+            dose: step.dose,
+            dose_unit: step.unit,
+            duration_days: step.days,
+            notes: null,
+          })),
+        },
+      ],
+    });
+  };
+
+  it('shows the derived per-component table and caption for a blend', () => {
+    mockBlends = [blendOf()];
+    setup(
+      'edit',
+      withSteps([
+        { dose: '200', unit: 'mcg', days: 14 },
+        { dose: '300', unit: 'mcg', days: null },
+      ])
+    );
+    const table = screen.getByRole('table');
+    expect(table).toHaveTextContent('Blend dose');
+    expect(table).toHaveTextContent('Alpha (mcg)');
+    const rows = screen.getAllByRole('row');
+    expect(rows[1]).toHaveTextContent('1200 mcg100100');
+    expect(rows[1]).toHaveTextContent('14 d');
+    expect(rows[2]).toHaveTextContent('2300 mcg150150');
+    expect(rows[2]).toHaveTextContent('maintenance');
+    expect(
+      screen.getByText(
+        /Component masses are derived from the Example medication vendor ratio \(Assumed\); the blend is one vial — components are not dosed separately\./
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('shows nothing for a medicine that is not a blend', () => {
+    setup('edit', withSteps([{ dose: '200', unit: 'mcg', days: null }]));
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Blend components across the ladder')
+    ).not.toBeInTheDocument();
+  });
+
+  it('divides a per-week phase into a per-administration dose first', () => {
+    mockBlends = [blendOf()];
+    setup(
+      'edit',
+      withSteps([{ dose: '1400', unit: 'mcg', days: null }], 'per_week')
+    );
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('200 mcg100100');
+  });
+
+  it('needs the in-use vial concentration for mL, else dashes', () => {
+    mockBlends = [blendOf()];
+    const plan = withSteps([{ dose: '0.5', unit: 'ml', days: null }]);
+    const { unmount } = setup('edit', plan);
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('0.5 ml——');
+    unmount();
+    mockPens = [
+      { id: 'p1', status: 'in_use', concentration_mg_ml: 2, opened_at: null },
+    ];
+    setup('edit', plan);
+    // 0.5 mL x 2 mg/mL = 1 mg = 1000 mcg
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('0.5 ml500500');
+  });
+
+  it('leaves units doses as dashes, never a guessed number', () => {
+    mockBlends = [blendOf()];
+    mockPens = [
+      { id: 'p1', status: 'in_use', concentration_mg_ml: 2, opened_at: null },
+    ];
+    setup('edit', withSteps([{ dose: '20', unit: 'units', days: null }]));
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('20 units——');
+  });
 });

@@ -53,6 +53,7 @@ import MedicationCourseRules from './MedicationCourseRules';
 import MedicationCourseCycleDates from './MedicationCourseCycleDates';
 import MedicationCourseRampGenerator from './MedicationCourseRampGenerator';
 import MedicationCourseRampChart from './MedicationCourseRampChart';
+import MedicationBlendStepBreakdown from './MedicationBlendStepBreakdown';
 import { formatScheduleDescription } from './medicationUtils';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationForecastDevices } from '@/hooks/Medications/useMedicationInventoryForecast';
@@ -1048,6 +1049,18 @@ export default function MedicationCourseEditor({
               ))}
               {draft.steps.length > 0 && (
                 <MedicationCourseRampChart
+                  steps={draft.steps}
+                  rules={draft.rules}
+                  doseBasis={draft.dose_basis}
+                  startDate={draft.start_date || null}
+                  endDate={draft.end_date ?? null}
+                  today={today}
+                />
+              )}
+              {draft.steps.length > 0 && (
+                <MedicationBlendStepBreakdown
+                  medicationId={med.id}
+                  medicationName={med.display_name || med.name}
                   steps={draft.steps}
                   rules={draft.rules}
                   doseBasis={draft.dose_basis}
