@@ -1,12 +1,18 @@
 import { useTranslation } from 'react-i18next';
-import type { BodyCompScan, LifeEvent, MetabolicTest } from '@workspace/shared';
+import {
+  DEFAULT_BODY_COMP_PRECISION,
+  type BodyCompScan,
+  type LifeEvent,
+  type MetabolicTest,
+} from '@workspace/shared';
+import type { ScaleBackground } from './bodyCompScaleModel';
 import { usePreferences } from '@/contexts/PreferencesContext';
 import {
   bandEndTime,
   buildSeriesPanels,
   lifeEventShades,
   msDay,
-  panelValueRange,
+  panelAxisRange,
   seriesTimeRange,
   showSeriesLine,
   type SeriesPanel,
@@ -34,6 +40,7 @@ const PANEL_TITLE: Record<SeriesPanel['key'], string> = {
   bmd: 'Total BMD',
   rmr: 'Resting metabolic rate',
   weight: 'Weight',
+  biaRaw: 'Body fat (scale)',
 };
 
 function PanelSvg({
@@ -65,12 +72,13 @@ function PanelSvg({
     tMax === tMin
       ? (left + right) / 2
       : left + ((time - tMin) / (tMax - tMin)) * (right - left);
-  const { lo, hi } = panelValueRange(panel.points);
+  const { lo, hi } = panelAxisRange(panel);
   const yOf = (value: number) =>
     top + (1 - (value - lo) / (hi - lo)) * (bottom - top);
   const pts = panel.points;
+  const bg = panel.bg;
   const latest = pts[pts.length - 1];
-  if (!latest) return null;
+  if (!latest && bg.length === 0) return null;
   const clipId = `dexa-series-clip-${panel.key}`;
   const hasBand = pts.some((p) => p.band !== null);
   const hasPractical = pts.some((p) => p.band?.practical != null);
@@ -81,16 +89,42 @@ function PanelSvg({
     )
     .join(' ');
 
+  const bgPath = bg
+    .map(
+      (p, i) =>
+        `${i === 0 ? 'M' : 'L'}${xOf(p.t).toFixed(1)},${yOf(p.v).toFixed(1)}`
+    )
+    .join(' ');
+  const bgLabel =
+    panel.bgKind === 'weight'
+      ? t(
+          'labs.bodyComp.series.bgWeight',
+          'Garmin scale, cleaned (7-day median, > 3 kg outliers excluded)'
+        )
+      : panel.bgKind === 'bia'
+        ? t(
+            'labs.bodyComp.series.bgBia',
+            'Garmin scale, offset to latest DEXA — estimate, not a measurement'
+          )
+        : panel.bgKind === 'biaRaw'
+          ? t(
+              'labs.bodyComp.series.bgBiaRaw',
+              'Garmin scale, uncalibrated bioimpedance — not a DEXA measurement'
+            )
+          : null;
+
   return (
     <div className="rounded-md border p-3" data-series-panel={panel.key}>
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <p className="text-sm font-semibold">{title}</p>
-        <p className="text-sm tabular-nums">
-          {latest.v.toFixed(panel.digits)}
-          <span className="ml-1 text-xs text-muted-foreground">
-            {panel.unit}
-          </span>
-        </p>
+        {latest && (
+          <p className="text-sm tabular-nums">
+            {latest.v.toFixed(panel.digits)}
+            <span className="ml-1 text-xs text-muted-foreground">
+              {panel.unit}
+            </span>
+          </p>
+        )}
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
@@ -128,7 +162,7 @@ function PanelSvg({
             </rect>
           );
         })}
-        {/* Bands before points, so they lie under them. */}
+        {/* Bands before the background and the points, so they lie under them. */}
         {pts.map((pt, i) => {
           if (!pt.band) return null;
           const x = xOf(pt.t);
@@ -152,6 +186,30 @@ function PanelSvg({
             </g>
           );
         })}
+        {/* A faint dashed scale series, clipped to the plot; never a measurement. */}
+        {bg.length >= 2 && (
+          <path
+            data-series-bg={panel.bgKind}
+            d={bgPath}
+            clipPath={`url(#${clipId})`}
+            fill="none"
+            stroke={MUTED}
+            strokeWidth="1"
+            strokeDasharray="3 3"
+            strokeOpacity="0.5"
+          />
+        )}
+        {bg.length === 1 && bg[0] && (
+          <circle
+            data-series-bg={panel.bgKind}
+            cx={xOf(bg[0].t)}
+            cy={yOf(bg[0].v)}
+            r="2"
+            clipPath={`url(#${clipId})`}
+            fill={MUTED}
+            fillOpacity="0.5"
+          />
+        )}
         <line
           x1={left}
           y1={bottom}
@@ -209,7 +267,7 @@ function PanelSvg({
         <text x={right} y={H - 6} fontSize="9" fill={MUTED} textAnchor="end">
           {formatDate(msDay(tMax))}
         </text>
-        {forwardLabel && latest.band && (
+        {forwardLabel && latest?.band && (
           <text
             x={Math.min(right - 2, xOf(latest.t) + 6)}
             y={Math.max(top + 9, yOf(latest.v + latest.band.technical) - 3)}
@@ -221,20 +279,32 @@ function PanelSvg({
         )}
       </svg>
       <p className="mt-1 text-[10px] text-muted-foreground">
-        {hasBand
-          ? hasPractical
-            ? t(
-                'labs.bodyComp.series.captionBoth',
-                'Dark band ± technical LSC, light band ± practical LSC.'
-              )
+        {pts.length === 0
+          ? t('labs.bodyComp.series.captionNoPoint', 'No scan point yet.')
+          : hasBand
+            ? hasPractical
+              ? t(
+                  'labs.bodyComp.series.captionBoth',
+                  'Dark band ± technical LSC, light band ± practical LSC.'
+                )
+              : t(
+                  'labs.bodyComp.series.captionTechnical',
+                  'Dark band ± technical LSC.'
+                )
             : t(
-                'labs.bodyComp.series.captionTechnical',
-                'Dark band ± technical LSC.'
-              )
-          : t(
-              'labs.bodyComp.series.captionNoBand',
-              'Clinic scale weight at each scan; no noise band is defined for weight.'
-            )}
+                'labs.bodyComp.series.captionNoBand',
+                'Clinic scale weight at each scan; no noise band is defined for weight.'
+              )}
+        {bgLabel
+          ? ` ${t('labs.bodyComp.series.dashed', 'Dashed: {{label}}.', { label: bgLabel })}`
+          : ''}
+        {panel.excludedCount > 0
+          ? ` ${t('labs.bodyComp.series.excluded', {
+              count: panel.excludedCount,
+              defaultValue_one: '{{count}} scale reading excluded.',
+              defaultValue_other: '{{count}} scale readings excluded.',
+            })}`
+          : ''}
       </p>
     </div>
   );
@@ -243,20 +313,27 @@ function PanelSvg({
 /**
  * The scans as small multiples with noise bands, as Pitstop's Body page draws them. Descriptive
  * only: a point is a measurement, a band is how much two readings of the same body can differ.
- * Left out with no scan.
+ * With no scan only the scale background is drawn; left out when there is nothing at all.
  */
 export default function BodyCompSeries({
   scans,
   tests,
   lifeEvents,
+  scale = null,
 }: {
   scans: readonly BodyCompScan[];
   tests: readonly MetabolicTest[];
   lifeEvents: readonly LifeEvent[];
+  /** Faint scale series behind the scans; left out when absent, loading or failed. */
+  scale?: ScaleBackground | null;
 }) {
   const { t } = useTranslation();
-  if (scans.length === 0) return null;
-  const panels = buildSeriesPanels(scans, tests);
+  const panels = buildSeriesPanels(
+    scans,
+    tests,
+    DEFAULT_BODY_COMP_PRECISION,
+    scale
+  );
   if (panels.length === 0) return null;
   const { tMin, tMax } = seriesTimeRange(panels, scans);
   const shades = lifeEventShades(lifeEvents, tMin, tMax);

@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import { render, screen, within } from '@testing-library/react';
 import type { LifeEvent } from '@workspace/shared';
 import BodyCompSeries from '@/pages/Labs/BodyCompSeries';
+import type { ScaleBackground } from '@/pages/Labs/bodyCompScaleModel';
 import { makeScan } from './bodyCompTestKit';
 
 jest.mock('react-i18next', () =>
@@ -205,5 +206,201 @@ describe('BodyCompSeries', () => {
     const fat = panelOf(/Fat mass/);
     expect(within(fat).getByText('UK:2026-08-10')).toBeInTheDocument();
     expect(within(fat).getByText('UK:2026-11-30')).toBeInTheDocument();
+  });
+});
+
+describe('BodyCompSeries scale background', () => {
+  const weights = (n: number, base = 82) =>
+    Array.from({ length: n }, (_, i) => ({
+      day: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      weightKg: base + (i % 2) * 0.2,
+    }));
+  const background = (
+    over: Partial<ScaleBackground> = {},
+    kept = weights(5)
+  ): ScaleBackground => ({
+    offsetPts: 7.6,
+    scaleDay: '2026-08-10',
+    weight: { kept, excluded: [] },
+    calibrated: [
+      { day: '2026-08-05', calibratedPct: 60 },
+      { day: '2026-08-06', calibratedPct: 61 },
+    ],
+    raw: [],
+    ...over,
+  });
+  const bgOf = (el: HTMLElement) => el.querySelectorAll('[data-series-bg]');
+
+  it('draws cleaned scale weight as a dashed background with its caption', () => {
+    render(
+      <BodyCompSeries
+        scans={[scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background()}
+      />
+    );
+    const weight = panelOf(/Weight/);
+    const path = bgOf(weight)[0]!;
+    expect(path.tagName).toBe('path');
+    expect(path).toHaveAttribute('stroke-dasharray', '3 3');
+    expect(
+      within(weight).getByText(
+        /Dashed: Garmin scale, cleaned \(7-day median, > 3 kg outliers excluded\)\./
+      )
+    ).toBeInTheDocument();
+    expect(within(weight).queryByText(/excluded\.$/)).toBeNull();
+    expect(weight.textContent).not.toMatch(/scale readings? excluded/);
+  });
+
+  it('adds the excluded count, singular and plural', () => {
+    const excluded = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        day: `2026-07-0${i + 1}`,
+        weightKg: 60,
+      }));
+    const { rerender } = render(
+      <BodyCompSeries
+        scans={[scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={{
+          ...background(),
+          weight: { kept: weights(5), excluded: excluded(1) },
+        }}
+      />
+    );
+    expect(
+      within(panelOf(/Weight/)).getByText(/1 scale reading excluded\./)
+    ).toBeInTheDocument();
+    rerender(
+      <BodyCompSeries
+        scans={[scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={{
+          ...background(),
+          weight: { kept: weights(5), excluded: excluded(2) },
+        }}
+      />
+    );
+    expect(
+      within(panelOf(/Weight/)).getByText(/2 scale readings excluded\./)
+    ).toBeInTheDocument();
+  });
+
+  it('draws the calibrated body fat only with two or more scans', () => {
+    const { rerender } = render(
+      <BodyCompSeries
+        scans={[scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background()}
+      />
+    );
+    expect(bgOf(panelOf(/^Body fat,/))).toHaveLength(0);
+    expect(screen.queryByText(/offset to latest DEXA/)).toBeNull();
+    rerender(
+      <BodyCompSeries
+        scans={[scan2, scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background()}
+      />
+    );
+    const fat = panelOf(/^Body fat,/);
+    expect(bgOf(fat)).toHaveLength(1);
+    expect(
+      within(fat).getByText(
+        /Dashed: Garmin scale, offset to latest DEXA — estimate, not a measurement\./
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('never lets the calibrated body fat size the axis, and clips it', () => {
+    render(
+      <BodyCompSeries
+        scans={[scan2, scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background()}
+      />
+    );
+    const fat = panelOf(/^Body fat,/);
+    const labels = [...fat.querySelectorAll('text')].map((x) => x.textContent);
+    // Scans read 24.1 %; a 60 % background would push the top label past 60.
+    expect(
+      Math.max(...labels.map((l) => Number(l)).filter((n) => n > 0))
+    ).toBeLessThan(40);
+    expect(bgOf(fat)[0]).toHaveAttribute('clip-path');
+  });
+
+  it('lets scale weight size the weight axis', () => {
+    render(
+      <BodyCompSeries
+        scans={[scan1]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background({}, weights(5, 60))}
+      />
+    );
+    const labels = [...panelOf(/Weight/).querySelectorAll('text')].map(
+      (x) => x.textContent
+    );
+    // The y-axis labels come first: the top, then the bottom. Clinic weight is 83 kg, scale 60 kg.
+    expect(Number(labels[1])).toBeLessThan(60);
+  });
+
+  it('draws a single background reading as a small dot', () => {
+    render(
+      <BodyCompSeries
+        scans={[]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background({ raw: [{ day: '2026-11-06', bodyFatPct: 18 }] }, [
+          { day: '2026-11-06', weightKg: 80 },
+        ])}
+      />
+    );
+    const raw = panelOf(/Body fat \(scale\)/);
+    expect(bgOf(raw)[0]!.tagName).toBe('circle');
+  });
+
+  it('with no scan shows the weight and raw body fat panels and no scan panels', () => {
+    const { container } = render(
+      <BodyCompSeries
+        scans={[]}
+        tests={[]}
+        lifeEvents={[]}
+        scale={background({
+          calibrated: [],
+          offsetPts: null,
+          scaleDay: null,
+          raw: [
+            { day: '2026-08-01', bodyFatPct: 18 },
+            { day: '2026-08-04', bodyFatPct: 17.5 },
+          ],
+        })}
+      />
+    );
+    expect(
+      screen.getByText('Scan series with noise bands', { selector: 'h3' })
+    ).toBeInTheDocument();
+    const raw = panelOf(/Body fat \(scale\)/);
+    expect(
+      within(raw).getByText(
+        /No scan point yet\. Dashed: Garmin scale, uncalibrated bioimpedance — not a DEXA measurement\./
+      )
+    ).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-series-point]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-series-panel]')).toHaveLength(2);
+    expect(screen.queryByText('± LSC forward')).toBeNull();
+  });
+
+  it('draws nothing with no scan and no scale', () => {
+    const { container } = render(
+      <BodyCompSeries scans={[]} tests={[]} lifeEvents={[]} scale={null} />
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 });

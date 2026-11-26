@@ -20,6 +20,8 @@ export interface DayCellRender {
   ariaLabel?: string;
   /** Native hover tooltip (HTML `title` attribute) for a day's detail breakdown. */
   title?: string;
+  /** Small text shown under the day circle; the cell is only wrapped when it is set. */
+  footer?: ReactNode;
 }
 
 export interface LegendItem {
@@ -177,7 +179,7 @@ export default function MonthCalendar({
               const cell =
                 renderDay(dateStr, { inMonth, isToday, isSelected }) ?? {};
 
-              return (
+              const dayButton = (
                 <button
                   key={dateStr}
                   type="button"
@@ -205,6 +207,16 @@ export default function MonthCalendar({
                   <span>{dayNum}</span>
                   {cell.content}
                 </button>
+              );
+              if (!cell.footer) return dayButton;
+              return (
+                <div
+                  key={dateStr}
+                  className="flex min-w-0 flex-col items-center gap-0.5"
+                >
+                  {dayButton}
+                  {cell.footer}
+                </div>
               );
             })}
           </div>

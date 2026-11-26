@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Footprints, Moon } from 'lucide-react';
 import {
   addDays,
   buildMonthGrid,
@@ -17,6 +18,8 @@ import {
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { useMedicationEntries } from '@/hooks/useMedications';
 import { useSymptomEntries } from '@/hooks/useSymptoms';
+import { useDailyHealthMetrics } from '@/hooks/useGenericHealth';
+import { useSleepEntriesQuery } from '@/hooks/CheckIn/useSleep';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
@@ -26,6 +29,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import MonthCalendar, { type DayCellRender } from '@/components/MonthCalendar';
+import {
+  fmtSleepShort,
+  fmtSteps,
+  monthWearableByDay,
+} from './medicationWearableFigures';
 import type {
   Medication,
   MedicationDetail,
@@ -186,6 +194,16 @@ export default function MedicationMonthCalendar({
     fromDate: fetchFrom,
     toDate: fetchTo,
   });
+
+  // One range query each for the whole grid; a failed or loading one adds
+  // nothing to the cells and never blocks the calendar. Workouts are only
+  // available one day at a time, so the cells carry no workout icon.
+  const { data: metricRows } = useDailyHealthMetrics(fetchFrom, fetchTo);
+  const { data: sleepRows } = useSleepEntriesQuery(fetchFrom, fetchTo);
+  const wearableByDay = useMemo(
+    () => monthWearableByDay(metricRows, sleepRows),
+    [metricRows, sleepRows]
+  );
 
   const entriesByDay = useMemo(
     () =>
@@ -465,6 +483,28 @@ export default function MedicationMonthCalendar({
           }
           if (badges.length > 0) {
             cell.content = <>{badges}</>;
+          }
+
+          const wearable = wearableByDay[day];
+          if (wearable && day <= todayInZone(timezone)) {
+            cell.footer = (
+              <div className="pointer-events-none flex w-full min-w-0 flex-col items-center text-[9px] leading-none text-muted-foreground">
+                {wearable.steps !== null && (
+                  <span className="flex max-w-full items-center gap-0.5 tabular-nums">
+                    <Footprints className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                    <span className="truncate">{fmtSteps(wearable.steps)}</span>
+                  </span>
+                )}
+                {wearable.sleepSeconds !== null && (
+                  <span className="flex max-w-full items-center gap-0.5 tabular-nums">
+                    <Moon className="h-2.5 w-2.5 shrink-0" aria-hidden />
+                    <span className="truncate">
+                      {fmtSleepShort(wearable.sleepSeconds)}
+                    </span>
+                  </span>
+                )}
+              </div>
+            );
           }
 
           return cell;

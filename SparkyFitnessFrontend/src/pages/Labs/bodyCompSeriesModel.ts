@@ -9,6 +9,7 @@ import {
   type LifeEvent,
   type MetabolicTest,
 } from '@workspace/shared';
+import type { ScaleBackground } from './bodyCompScaleModel';
 
 /**
  * The DEXA scan series as small multiples, after Pitstop's ScanSeries: one point per scan with a
@@ -24,7 +25,24 @@ export const FORWARD_DAYS = 112;
 export const DEFAULT_BMD_CV_PCT = 1.0;
 
 export type SeriesPanelKey =
-  'fat' | 'lean' | 'pctFat' | 'alm' | 'vat' | 'bmd' | 'rmr' | 'weight';
+  | 'fat'
+  | 'lean'
+  | 'pctFat'
+  | 'alm'
+  | 'vat'
+  | 'bmd'
+  | 'rmr'
+  | 'weight'
+  | 'biaRaw';
+
+/** Which scale background a panel carries: it sets the caption. */
+export type SeriesBgKind = 'weight' | 'bia' | 'biaRaw';
+
+/** A scale reading drawn faintly behind the points; never a measurement. */
+export interface SeriesBgPoint {
+  t: number;
+  v: number;
+}
 
 export interface SeriesPoint {
   /** Midnight UTC of the scan or test day, in ms. */
@@ -42,7 +60,24 @@ export interface SeriesPanel {
   digits: number;
   /** Oldest first. */
   points: SeriesPoint[];
+  /** Faint dashed scale series, oldest first; empty when there is none. */
+  bg: SeriesBgPoint[];
+  bgKind: SeriesBgKind | null;
+  /**
+   * True when the background is the same quantity as the points (scale weight) and may size the
+   * axis. False for the calibrated body fat: the axis is sized from the scans and bands only.
+   */
+  bgSharesAxis: boolean;
+  /** Scale weight readings left out as outliers; only on the weight panel. */
+  excludedCount: number;
 }
+
+const NO_BG = {
+  bg: [] as SeriesBgPoint[],
+  bgKind: null,
+  bgSharesAxis: false,
+  excludedCount: 0,
+} as const;
 
 export const dayMs = (day: string): number => Date.parse(`${day}T00:00:00Z`);
 /** The day string of a millisecond time, in UTC. */
@@ -76,7 +111,8 @@ export const scansOldestFirst = <T extends Pick<BodyCompScan, 'scanned_day'>>(
 export function buildSeriesPanels(
   scans: readonly BodyCompScan[],
   tests: readonly Pick<MetabolicTest, 'tested_day' | 'measured_rmr_kcal'>[],
-  precision: BodyCompPrecision = DEFAULT_BODY_COMP_PRECISION
+  precision: BodyCompPrecision = DEFAULT_BODY_COMP_PRECISION,
+  scale: ScaleBackground | null = null
 ): SeriesPanel[] {
   const ordered = scansOldestFirst(scans);
   const scanPanel = (
@@ -90,6 +126,7 @@ export function buildSeriesPanels(
     title,
     unit,
     digits,
+    ...NO_BG,
     points: ordered.flatMap((scan) => {
       const { v, band } = get(scan);
       return v === null
@@ -111,6 +148,26 @@ export function buildSeriesPanels(
       practical: technical * precision.practical_lean_multiplier,
     };
   };
+  const bgOf = (
+    rows: readonly { day: string; v: number | null }[]
+  ): SeriesBgPoint[] =>
+    rows.flatMap((r) => (r.v === null ? [] : [{ t: dayMs(r.day), v: r.v }]));
+  const weightBg = bgOf(
+    scale?.weight.kept.map((r) => ({ day: r.day, v: r.weightKg })) ?? []
+  );
+  // The calibrated body fat needs a comparator scan: two or more.
+  const calibratedBg =
+    ordered.length >= 2
+      ? bgOf(
+          scale?.calibrated.map((r) => ({ day: r.day, v: r.calibratedPct })) ??
+            []
+        )
+      : [];
+  // With no scan, the raw scale body fat, labelled uncalibrated.
+  const rawBg =
+    ordered.length === 0
+      ? bgOf(scale?.raw.map((r) => ({ day: r.day, v: r.bodyFatPct })) ?? [])
+      : [];
   const rmrTests = [...tests].sort((a, b) =>
     a.tested_day.localeCompare(b.tested_day)
   );
@@ -164,6 +221,7 @@ export function buildSeriesPanels(
       title: 'Resting metabolic rate',
       unit: 'kcal/d',
       digits: 0,
+      ...NO_BG,
       points: rmrTests.map((test) => ({
         t: dayMs(test.tested_day),
         day: test.tested_day,
@@ -174,12 +232,37 @@ export function buildSeriesPanels(
         },
       })),
     },
-    scanPanel('weight', 'Weight', 'kg', 1, (s) => ({
-      v: s.clinic_weight_kg,
-      band: null,
-    })),
+    {
+      ...scanPanel('weight', 'Weight', 'kg', 1, (s) => ({
+        v: s.clinic_weight_kg,
+        band: null,
+      })),
+      bg: weightBg,
+      bgKind: weightBg.length > 0 ? 'weight' : null,
+      bgSharesAxis: true,
+      excludedCount: scale?.weight.excluded.length ?? 0,
+    },
+    {
+      key: 'biaRaw',
+      title: 'Body fat (scale)',
+      unit: '%',
+      digits: 1,
+      points: [],
+      bg: rawBg,
+      bgKind: rawBg.length > 0 ? 'biaRaw' : null,
+      bgSharesAxis: true,
+      excludedCount: 0,
+    },
   ];
-  return panels.filter((panel) => panel.points.length > 0);
+  // The calibrated background goes on the DEXA body fat panel.
+  const pctFat = panels.find((p) => p.key === 'pctFat');
+  if (pctFat && calibratedBg.length > 0) {
+    pctFat.bg = calibratedBg;
+    pctFat.bgKind = 'bia';
+  }
+  return panels.filter(
+    (panel) => panel.points.length > 0 || panel.bg.length > 0
+  );
 }
 
 /**
@@ -190,7 +273,10 @@ export function seriesTimeRange(
   panels: readonly SeriesPanel[],
   scans: readonly Pick<BodyCompScan, 'scanned_day'>[]
 ): { tMin: number; tMax: number } {
-  const times = panels.flatMap((panel) => panel.points.map((p) => p.t));
+  const times = panels.flatMap((panel) => [
+    ...panel.points.map((p) => p.t),
+    ...panel.bg.map((b) => b.t),
+  ]);
   const latest = Math.max(...scans.map((s) => dayMs(s.scanned_day)));
   return {
     tMin: Math.min(...times),
@@ -199,7 +285,10 @@ export function seriesTimeRange(
 }
 
 /** The value axis of one panel: its points and bands, padded; a single flat value is opened out. */
-export function panelValueRange(points: readonly SeriesPoint[]): {
+export function panelValueRange(
+  points: readonly SeriesPoint[],
+  bg: readonly SeriesBgPoint[] = []
+): {
   lo: number;
   hi: number;
 } {
@@ -211,6 +300,7 @@ export function panelValueRange(points: readonly SeriesPoint[]): {
       ys.push(point.v + width, point.v - width);
     }
   }
+  ys.push(...bg.map((b) => b.v));
   let lo = Math.min(...ys);
   let hi = Math.max(...ys);
   if (lo === hi) {
@@ -221,6 +311,18 @@ export function panelValueRange(points: readonly SeriesPoint[]): {
   const span = hi - lo;
   return { lo: lo - span * 0.15, hi: hi + span * 0.15 };
 }
+
+/**
+ * A panel's value axis. A background sizes it only when it is the same quantity as the points
+ * (scale weight) or when there is nothing else to size it; the calibrated body fat never does.
+ */
+export const panelAxisRange = (
+  panel: Pick<SeriesPanel, 'points' | 'bg' | 'bgSharesAxis'>
+) =>
+  panelValueRange(
+    panel.points,
+    panel.bgSharesAxis || panel.points.length === 0 ? panel.bg : []
+  );
 
 /** Where a point's band stops: the next point, or 112 days forward for the last. */
 export const bandEndTime = (

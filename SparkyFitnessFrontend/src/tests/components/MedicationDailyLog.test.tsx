@@ -156,10 +156,10 @@ const definition = (
   ...patch,
 });
 
-const renderLog = (date = PAST, title?: string | null) =>
+const renderLog = (date = PAST, title?: string | null, hideSleep?: boolean) =>
   render(
     <MemoryRouter>
-      <MedicationDailyLog date={date} title={title} />
+      <MedicationDailyLog date={date} title={title} hideSleep={hideSleep} />
     </MemoryRouter>
   );
 
@@ -797,5 +797,41 @@ describe('MedicationDailyLog form', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('button', { name: 'Add log' })).toBeInTheDocument();
     expect(mockSaveCheckIn).not.toHaveBeenCalled();
+  });
+});
+
+describe('MedicationDailyLog hideSleep', () => {
+  const night = {
+    entry_date: PAST,
+    bedtime: `${PAST}T00:00:00Z`,
+    wake_time: `${PAST}T07:30:00Z`,
+    duration_in_seconds: 27000,
+    time_asleep_in_seconds: 26640,
+    source: 'garmin',
+  };
+
+  it('shows sleep by default and leaves it out when hidden', () => {
+    mockSleep = [night];
+    mockWeightKg = 80.5;
+    const { unmount } = renderLog();
+    expect(screen.getByText('7.4 h · Garmin')).toBeInTheDocument();
+    unmount();
+    renderLog(PAST, undefined, true);
+    expect(screen.queryByText('Sleep')).not.toBeInTheDocument();
+    expect(screen.getByText('80.5 kg')).toBeInTheDocument();
+  });
+
+  it('reads as empty when sleep was the only value and it is hidden', () => {
+    mockSleep = [night];
+    renderLog(PAST, undefined, true);
+    expect(
+      screen.getByText('Nothing logged for this day.')
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the sleep line out of the form too', () => {
+    renderLog(PAST, undefined, true);
+    openForm();
+    expect(screen.queryByText('No sleep recorded')).not.toBeInTheDocument();
   });
 });

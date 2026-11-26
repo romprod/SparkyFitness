@@ -9,11 +9,13 @@ import {
   dayMs,
   lifeEventShades,
   msDay,
+  panelAxisRange,
   panelValueRange,
   scansOldestFirst,
   seriesTimeRange,
   showSeriesLine,
 } from '@/pages/Labs/bodyCompSeriesModel';
+import type { ScaleBackground } from '@/pages/Labs/bodyCompScaleModel';
 import { makeScan } from './bodyCompTestKit';
 
 const test = (day: string, kcal: number) => ({
@@ -196,5 +198,94 @@ describe('lifeEventShades', () => {
     );
     expect(shades.map((s) => s.key)).toEqual(['edge', 'in']);
     expect(shades[1]!.title).toBe('travel 2026-09-01 → 2026-09-03');
+  });
+});
+
+describe('buildSeriesPanels with a scale background', () => {
+  const scale = (over: Partial<ScaleBackground> = {}): ScaleBackground => ({
+    offsetPts: 1,
+    scaleDay: '2026-08-10',
+    weight: {
+      kept: [
+        { day: '2026-08-01', weightKg: 82 },
+        { day: '2026-08-02', weightKg: 82.4 },
+      ],
+      excluded: [{ day: '2026-08-03', weightKg: 70 }],
+    },
+    calibrated: [{ day: '2026-08-01', calibratedPct: 20 }],
+    raw: [{ day: '2026-08-01', bodyFatPct: 18 }],
+    ...over,
+  });
+  const scans2 = [
+    makeScan({ id: 'a', scanned_day: '2026-08-10' }),
+    makeScan({ id: 'b', scanned_day: '2026-11-02' }),
+  ];
+
+  it('puts the weight background and excluded count on the weight panel', () => {
+    const w = panel(
+      buildSeriesPanels([makeScan()], [], undefined, scale()),
+      'weight'
+    )!;
+    expect(w.bg.map((b) => b.v)).toEqual([82, 82.4]);
+    expect(w.bg[0]?.t).toBe(dayMs('2026-08-01'));
+    expect(w.bgKind).toBe('weight');
+    expect(w.bgSharesAxis).toBe(true);
+    expect(w.excludedCount).toBe(1);
+  });
+
+  it('adds the calibrated body fat to the body fat panel only from two scans, off the axis', () => {
+    const one = panel(
+      buildSeriesPanels([makeScan()], [], undefined, scale()),
+      'pctFat'
+    )!;
+    expect(one.bg).toEqual([]);
+    const two = panel(
+      buildSeriesPanels(scans2, [], undefined, scale()),
+      'pctFat'
+    )!;
+    expect(two.bg).toHaveLength(1);
+    expect(two.bgKind).toBe('bia');
+    expect(two.bgSharesAxis).toBe(false);
+    expect(panelAxisRange(two)).toEqual(panelValueRange(two.points));
+  });
+
+  it('leaves out calibrated points that are null', () => {
+    const two = panel(
+      buildSeriesPanels(
+        scans2,
+        [],
+        undefined,
+        scale({ calibrated: [{ day: '2026-08-01', calibratedPct: null }] })
+      ),
+      'pctFat'
+    )!;
+    expect(two.bg).toEqual([]);
+    expect(two.bgKind).toBeNull();
+  });
+
+  it('with no scan, builds only the weight and raw scale body fat panels', () => {
+    const panels = buildSeriesPanels([], [], undefined, scale());
+    expect(panels.map((p) => p.key)).toEqual(['weight', 'biaRaw']);
+    const raw = panel(panels, 'biaRaw')!;
+    expect(raw.points).toEqual([]);
+    expect(raw.bgKind).toBe('biaRaw');
+    // Nothing else sizes it, so the background does.
+    expect(panelAxisRange(raw).lo).toBeLessThan(18);
+    expect(panelAxisRange(raw).hi).toBeGreaterThan(18);
+  });
+
+  it('shows no raw panel once a scan exists, and none without a background', () => {
+    expect(
+      buildSeriesPanels([makeScan()], [], undefined, scale()).map((p) => p.key)
+    ).not.toContain('biaRaw');
+    expect(buildSeriesPanels([], [], undefined, null)).toEqual([]);
+  });
+
+  it('lets the background widen the time range', () => {
+    const panels = buildSeriesPanels([], [], undefined, scale());
+    expect(seriesTimeRange(panels, [])).toEqual({
+      tMin: dayMs('2026-08-01'),
+      tMax: dayMs('2026-08-02'),
+    });
   });
 });

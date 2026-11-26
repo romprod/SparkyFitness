@@ -11,6 +11,7 @@ import {
   distributionRatios,
   limbAsymmetry,
   nextBodyCompScanWindow,
+  addDays,
   todayInZone,
   type BodyCompDeltaKey,
   type BodyCompPrep,
@@ -33,6 +34,7 @@ import {
   useBodyCompScans,
   useDeleteBodyCompScanMutation,
 } from '@/hooks/Labs/useBodyCompScans';
+import { useRecentStandardMeasurements } from '@/hooks/CheckIn/useCheckIn';
 import { useMetabolicTests } from '@/hooks/Labs/useMetabolicTests';
 import { useLifeEvents } from '@/hooks/Medications/useLifeEvents';
 import { useMedicationBlends } from '@/hooks/Medications/useMedicationBlends';
@@ -42,6 +44,11 @@ import BodyCompFigureCard from './BodyCompFigureCard';
 import BodyCompNearestLabs from './BodyCompNearestLabs';
 import BodyCompReportFields from './BodyCompReportFields';
 import BodyCompSeries from './BodyCompSeries';
+import {
+  buildScaleBackground,
+  SCALE_DAYS,
+  scaleReadings,
+} from './bodyCompScaleModel';
 import { regionReportColumns } from './bodyCompReportFieldsModel';
 import { num } from './bodyCompFormat';
 import { TIER_FALLBACK, TIER_VARIANT } from './bodyCompTier';
@@ -189,6 +196,18 @@ export default function BodyCompScansCard() {
   const metabolicTests = useMetabolicTests().data;
   const lifeEvents = useLifeEvents().data;
   const today = todayInZone(timezone);
+  // The scale's last 180 days, drawn faintly behind the scans; nothing is drawn while it loads or if it fails.
+  const scaleRows = useRecentStandardMeasurements(
+    addDays(today, -SCALE_DAYS),
+    today
+  ).data;
+  const scale = useMemo(
+    () =>
+      Array.isArray(scaleRows)
+        ? buildScaleBackground(scaleReadings(scaleRows), scans)
+        : null,
+    [scaleRows, scans]
+  );
 
   const regionLabel = (name: string) =>
     t(`labs.bodyComp.region.${name}`, REGION_FALLBACK[name] ?? name);
@@ -376,16 +395,27 @@ export default function BodyCompScansCard() {
           </p>
         )}
 
-        {scans.length > 0 && (
-          <>
-            <BodyCompFigureCard scans={scans} />
-            <BodyCompSeries
-              scans={scans}
-              tests={metabolicTests ?? []}
-              lifeEvents={lifeEvents ?? []}
-            />
-          </>
+        {scans.length > 0 && <BodyCompFigureCard scans={scans} />}
+        {(scans.length > 0 || (!isLoading && !isError && scale)) && (
+          <BodyCompSeries
+            scans={scans}
+            tests={metabolicTests ?? []}
+            lifeEvents={lifeEvents ?? []}
+            scale={scale}
+          />
         )}
+        {scans.length === 0 &&
+          !isLoading &&
+          !isError &&
+          scale &&
+          scale.raw.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'labs.bodyComp.series.uncalibrated',
+                'Garmin scale body-fat readings are uncalibrated bioimpedance until a DEXA exists to offset them; they are drawn raw above, not as a body-fat measurement.'
+              )}
+            </p>
+          )}
 
         {comparison && ordered.from && ordered.to && (
           <section
@@ -567,6 +597,20 @@ export default function BodyCompScansCard() {
               to={ordered.to.scanned_day}
             />
           </section>
+        )}
+
+        {scans.length >= 2 && scale?.offsetPts != null && scale.scaleDay && (
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'labs.bodyComp.series.offset',
+              'Scale offset to the latest DEXA: {{sign}}{{points}} points on {{date}}.',
+              {
+                sign: scale.offsetPts > 0 ? '+' : '',
+                points: scale.offsetPts.toFixed(1),
+                date: formatDate(scale.scaleDay),
+              }
+            )}
+          </p>
         )}
 
         {scans[0] && <BodyCompNearestLabs scanDay={scans[0].scanned_day} />}

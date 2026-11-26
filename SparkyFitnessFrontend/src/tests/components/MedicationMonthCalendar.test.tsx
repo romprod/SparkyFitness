@@ -17,6 +17,22 @@ jest.mock('@/hooks/useMedications', () => ({
 jest.mock('@/hooks/useSymptoms', () => ({
   useSymptomEntries: () => ({ data: [] }),
 }));
+let mockMetrics: unknown[] | undefined;
+let mockSleep: unknown[] | undefined;
+const mockMetricsHook = jest.fn();
+const mockSleepHook = jest.fn();
+jest.mock('@/hooks/useGenericHealth', () => ({
+  useDailyHealthMetrics: (...args: unknown[]) => {
+    mockMetricsHook(...args);
+    return { data: mockMetrics };
+  },
+}));
+jest.mock('@/hooks/CheckIn/useSleep', () => ({
+  useSleepEntriesQuery: (...args: unknown[]) => {
+    mockSleepHook(...args);
+    return { data: mockSleep };
+  },
+}));
 
 const schedule = (type: string, extra: object = {}) => ({
   id: `s-${type}`,
@@ -38,6 +54,10 @@ const med = (id: string, name: string, schedules: object[], extra = {}) =>
 
 beforeEach(() => {
   mockEntries = [];
+  mockMetrics = undefined;
+  mockSleep = undefined;
+  mockMetricsHook.mockReset();
+  mockSleepHook.mockReset();
   jest.useFakeTimers().setSystemTime(new Date('2026-11-19T12:00:00Z'));
 });
 afterEach(() => jest.useRealTimers());
@@ -88,4 +108,48 @@ it('does not mark a day that already has a logged dose', () => {
   ];
   renderMonth([med('a', 'Sertraline', [schedule('daily')])]);
   expect(screen.getAllByTitle('1 planned')).toHaveLength(16);
+});
+
+describe('device figures in the cells', () => {
+  const metric = (day: string, steps: number | null) => ({
+    entry_date: day,
+    source_provider: 'garmin',
+    total_steps: steps,
+  });
+  const night = (day: string, seconds: number) => ({
+    id: `n-${day}`,
+    entry_date: day,
+    bedtime: `${day}T00:30:00Z`,
+    wake_time: `${day}T08:30:00Z`,
+    duration_in_seconds: seconds,
+    time_asleep_in_seconds: seconds,
+    sleep_score: null,
+    source: 'garmin',
+  });
+
+  it('shows steps and sleep for past and current days, fetching the grid once', () => {
+    mockMetrics = [metric('2026-11-18', 8200), metric('2026-11-19', 12400)];
+    mockSleep = [night('2026-11-18', 27000)];
+    renderMonth([med('a', 'Sertraline', [schedule('daily')])]);
+    expect(screen.getByText('8.2k')).toBeInTheDocument();
+    expect(screen.getByText('12k')).toBeInTheDocument();
+    expect(screen.getByText('7.5h')).toBeInTheDocument();
+    expect(mockMetricsHook).toHaveBeenCalledWith('2026-10-26', '2026-12-06');
+    expect(mockSleepHook).toHaveBeenCalledWith('2026-10-26', '2026-12-06');
+  });
+
+  it('leaves out a figure a day lacks and shows nothing for future days', () => {
+    mockMetrics = [metric('2026-11-18', null), metric('2026-11-25', 9000)];
+    mockSleep = [night('2026-11-18', 25200)];
+    renderMonth([med('a', 'Sertraline', [schedule('daily')])]);
+    expect(screen.getByText('7h')).toBeInTheDocument();
+    expect(screen.queryByText('9k')).not.toBeInTheDocument();
+  });
+
+  it('shows no figures, and still renders the calendar, when the queries have no data', () => {
+    renderMonth([med('a', 'Sertraline', [schedule('daily')])]);
+    expect(screen.getByText('Planned')).toBeInTheDocument();
+    expect(screen.queryByText(/\dh$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/k$/)).not.toBeInTheDocument();
+  });
 });

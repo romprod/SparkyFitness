@@ -160,6 +160,7 @@ interface FormProps {
   summary: DailyLogSummary;
   choices: SymptomChoice[];
   canLogSymptoms: boolean;
+  hideSleep: boolean;
   onClose: () => void;
 }
 
@@ -177,6 +178,7 @@ function DailyLogForm(props: FormProps) {
     summary,
     choices,
     canLogSymptoms,
+    hideSleep,
     onClose,
   } = props;
   const { t } = useTranslation();
@@ -476,14 +478,16 @@ function DailyLogForm(props: FormProps) {
       />
 
       <dl className="grid grid-cols-2 gap-3 rounded-md border p-3 sm:grid-cols-3">
-        <Stat
-          label={t('medications.dailyLog.sleep', 'Sleep')}
-          value={
-            summary.sleep
-              ? `${summary.sleep.hours} h · ${formatSleepSource(summary.sleep.source)}`
-              : t('medications.dailyLog.noSleep', 'No sleep recorded')
-          }
-        />
+        {!hideSleep && (
+          <Stat
+            label={t('medications.dailyLog.sleep', 'Sleep')}
+            value={
+              summary.sleep
+                ? `${summary.sleep.hours} h · ${formatSleepSource(summary.sleep.source)}`
+                : t('medications.dailyLog.noSleep', 'No sleep recorded')
+            }
+          />
+        )}
         <Stat
           label={t('medications.dailyLog.calories', 'Calories')}
           value={
@@ -702,10 +706,13 @@ function DailyLogForm(props: FormProps) {
 export default function MedicationDailyLog({
   date,
   title,
+  hideSleep = false,
 }: {
   date: string;
   /** Heading text; pass null when the surrounding card already has one. */
   title?: string | null;
+  /** Leave the sleep line out, for a caller that already shows the night. */
+  hideSleep?: boolean;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -752,7 +759,7 @@ export default function MedicationDailyLog({
         day: date,
         weightKg: weightQuery.data?.weight ?? null,
         mood: moodEntry,
-        sleepEntries: sleepQuery.data ?? [],
+        sleepEntries: hideSleep ? [] : (sleepQuery.data ?? []),
         calories: totals.calories,
         proteinG: totals.protein,
         waterMl: waterQuery.data ?? 0,
@@ -764,6 +771,7 @@ export default function MedicationDailyLog({
       weightQuery.data,
       moodEntry,
       sleepQuery.data,
+      hideSleep,
       totals,
       waterQuery.data,
       goalQuery.data,
@@ -796,6 +804,7 @@ export default function MedicationDailyLog({
           summary={summary}
           choices={choices}
           canLogSymptoms={canLogSymptoms}
+          hideSleep={hideSleep}
           onClose={() => setEditing(false)}
         />
       </section>

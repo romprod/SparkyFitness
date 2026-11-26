@@ -7,9 +7,11 @@ import {
   type MedicationLogWeekActual,
   medicationWeekOffSchedule,
   type MedicationLogWeekPlannedSlot,
+  todayInZone,
   type MedSubtype,
 } from '@workspace/shared';
 import type { Medication } from '@/types/medications';
+import { useSleepEntriesQuery } from '@/hooks/CheckIn/useSleep';
 import { useActiveUser } from '@/contexts/ActiveUserContext';
 import { formatTimeInZone } from '@/utils/timeFormatters';
 import { usePreferences } from '@/contexts/PreferencesContext';
@@ -45,6 +47,8 @@ import {
 import Glp1RecentInjections from './Glp1RecentInjections';
 import MedicationAddDoseForDay from './MedicationAddDoseForDay';
 import MedicationDailyLog from './MedicationDailyLog';
+import MedicationDayWearable from './MedicationDayWearable';
+import { wearableSleepForDay } from './medicationWearableFigures';
 
 type Result = ReturnType<typeof useMedicationLogWeek>;
 type Scope = Result['scope'];
@@ -316,8 +320,14 @@ export default function MedicationCalendarDayDetail({
   onSelectDate: (day: string) => void;
 }) {
   const { t } = useTranslation();
-  const { formatDate, timeFormat } = usePreferences();
+  const { formatDate, timeFormat, timezone: calendarZone } = usePreferences();
   const { hasWritePermission } = useActiveUser();
+  // The watch block is for days that have happened. It reads the same sleep
+  // query as the daily log, so the night is fetched once and shown once.
+  const showWearable = day <= todayInZone(calendarZone);
+  const wearableSleep = useSleepEntriesQuery(day, day);
+  const hideLogSleep =
+    showWearable && wearableSleepForDay(wearableSleep.data, day) !== null;
   const [action, setAction] = useState<{
     kind: 'edit' | 'delete';
     actual: MedicationLogWeekActual;
@@ -540,8 +550,9 @@ export default function MedicationCalendarDayDetail({
                 )}
             </>
           )}
+          {showWearable && <MedicationDayWearable day={day} />}
           <div className="border-t pt-3">
-            <MedicationDailyLog date={day} />
+            <MedicationDailyLog date={day} hideSleep={hideLogSleep} />
           </div>
           <Button variant="outline" onClick={onClose}>
             {t('common.close', 'Close')}

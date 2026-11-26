@@ -77,6 +77,14 @@ let mockMetabolicTests: unknown[] = [];
 jest.mock('@/hooks/Labs/useMetabolicTests', () => ({
   useMetabolicTests: () => ({ data: mockMetabolicTests }),
 }));
+let mockScale: { data?: unknown; isError?: boolean; isLoading?: boolean } = {};
+const mockScaleHook = jest.fn();
+jest.mock('@/hooks/CheckIn/useCheckIn', () => ({
+  useRecentStandardMeasurements: (from: string, to: string) => {
+    mockScaleHook(from, to);
+    return mockScale;
+  },
+}));
 let mockLifeEvents: unknown[] = [];
 jest.mock('@/hooks/Medications/useLifeEvents', () => ({
   useLifeEvents: () => ({ data: mockLifeEvents }),
@@ -174,6 +182,8 @@ beforeEach(() => {
   mockEntries = { data: [] };
   mockMetabolicTests = [];
   mockLifeEvents = [];
+  mockScale = {};
+  mockScaleHook.mockClear();
   mockLabPanels = { data: { panels: [] } };
   mockEntriesHook.mockClear();
   mockRemove.mockReset();
@@ -691,5 +701,122 @@ describe('Pitstop’s Body page extras', () => {
     const trunk = detail.getByText('Trunk').closest('tr') as HTMLElement;
     expect(within(trunk).getByText('71')).toBeInTheDocument();
     expect(within(trunk).getByText('1.050')).toBeInTheDocument();
+  });
+});
+
+describe('the scale background', () => {
+  const row = (
+    entry_date: string,
+    weight: number | null,
+    body_fat_percentage: number | null
+  ) => ({ entry_date, weight, body_fat_percentage });
+  const dashed = () =>
+    document.querySelectorAll('[data-series-bg]') as NodeListOf<Element>;
+
+  it('reads the last 180 days, ending today', () => {
+    renderCard();
+    expect(mockScaleHook).toHaveBeenCalledWith('2026-03-05', '2026-09-01');
+  });
+
+  it('with no scan, shows the scale weight, the raw body fat and the uncalibrated note', () => {
+    mockScale = {
+      data: [row('2026-08-30', 82, null), row('2026-08-31', 82.4, 18.2)],
+    };
+    renderCard();
+    expect(
+      screen.getByRole('heading', { name: 'Scan series with noise bands' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: /^Weight, 0 point/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: /^Body fat \(scale\), 0 point/ })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Garmin scale body-fat readings are uncalibrated/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No scans yet/)).toBeInTheDocument();
+    // One body fat reading is a dot; two weights are a dashed line.
+    expect(dashed()).toHaveLength(2);
+    expect(screen.queryByText(/Scale offset to the latest DEXA/)).toBeNull();
+  });
+
+  it('with no scan and weight only, shows the weight panel without the body fat note', () => {
+    mockScale = { data: [row('2026-08-30', 82, null)] };
+    renderCard();
+    expect(
+      screen.getByRole('img', { name: /^Weight, 0 point/ })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /Body fat/ })).toBeNull();
+    expect(screen.queryByText(/uncalibrated/)).toBeNull();
+  });
+
+  it('draws nothing while it loads or if it fails', () => {
+    mockScale = { isLoading: true };
+    const { unmount } = renderCard();
+    expect(screen.queryByText('Scan series with noise bands')).toBeNull();
+    unmount();
+    mockScale = { isError: true };
+    renderCard();
+    expect(screen.queryByText('Scan series with noise bands')).toBeNull();
+    expect(screen.getByText(/No scans yet/)).toBeInTheDocument();
+  });
+
+  it('keeps the scan series when the scale cannot be read', () => {
+    mockQuery = { data: [later(), scan()] };
+    mockScale = { isError: true };
+    renderCard();
+    expect(
+      screen.getByRole('heading', { name: 'Scan series with noise bands' })
+    ).toBeInTheDocument();
+    expect(dashed()).toHaveLength(0);
+    expect(screen.queryByText(/Scale offset to the latest DEXA/)).toBeNull();
+  });
+
+  it('with two scans, offsets to the latest and says by how much and when', () => {
+    mockQuery = { data: [later(), scan()] };
+    mockScale = {
+      data: [
+        row('2026-11-01', 82, 14.5),
+        row('2026-11-02', 82.2, 15),
+        row('2026-11-03', 82.1, 15.4),
+      ],
+    };
+    renderCard();
+    expect(
+      screen.getByText(
+        'Scale offset to the latest DEXA: +7.0 points on UK:2026-11-02.'
+      )
+    ).toBeInTheDocument();
+    const compare = screen.getByRole('region', { name: 'Compare two scans' });
+    const offset = screen.getByText(/Scale offset to the latest DEXA/);
+    expect(
+      compare.compareDocumentPosition(offset) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Dashed: Garmin scale, offset to latest DEXA/)
+    ).toBeInTheDocument();
+  });
+
+  it('with one scan, draws the weight but no calibrated body fat or offset line', () => {
+    mockQuery = { data: [later()] };
+    mockScale = {
+      data: [row('2026-11-01', 82, 14.5), row('2026-11-02', 82.2, 15)],
+    };
+    renderCard();
+    expect(screen.queryByText(/offset to latest DEXA/)).toBeNull();
+    expect(screen.queryByText(/Scale offset/)).toBeNull();
+    expect(
+      screen.getByText(/Dashed: Garmin scale, cleaned/)
+    ).toBeInTheDocument();
+  });
+
+  it('says no offset when no scale reading is within a day of the latest scan', () => {
+    mockQuery = { data: [later(), scan()] };
+    mockScale = {
+      data: [row('2026-10-20', 82, 14.5), row('2026-10-21', 82.2, 15)],
+    };
+    renderCard();
+    expect(screen.queryByText(/Scale offset/)).toBeNull();
   });
 });

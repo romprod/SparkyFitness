@@ -30,6 +30,16 @@ jest.mock('@/hooks/Medications/useMedicationLogWeek', () => ({
     data: calendarWeek({ actuals: [calendarActual()] }),
   }),
 }));
+jest.mock('@/pages/Medications/MedicationDayWearable', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+jest.mock('@/hooks/useGenericHealth', () => ({
+  useDailyHealthMetrics: () => ({ data: undefined }),
+}));
+jest.mock('@/hooks/CheckIn/useSleep', () => ({
+  useSleepEntriesQuery: () => ({ data: undefined }),
+}));
 jest.mock('@/hooks/useSymptoms', () => ({
   useSymptomEntries: () => ({ data: [] }),
 }));

@@ -20,9 +20,21 @@ const mockCreate = jest.fn(),
   mockDeleteInjection = jest.fn(),
   mockReadHook = jest.fn(),
   mockFullEditor = jest.fn();
+const mockDailyLog = jest.fn();
+let mockNightEntries: unknown[] | undefined;
 jest.mock('@/pages/Medications/MedicationDailyLog', () => ({
   __esModule: true,
-  default: () => null,
+  default: (props: unknown) => {
+    mockDailyLog(props);
+    return null;
+  },
+}));
+jest.mock('@/pages/Medications/MedicationDayWearable', () => ({
+  __esModule: true,
+  default: ({ day }: { day: string }) => <p>Wearable block {day}</p>,
+}));
+jest.mock('@/hooks/CheckIn/useSleep', () => ({
+  useSleepEntriesQuery: () => ({ data: mockNightEntries }),
 }));
 jest.mock('@/contexts/ActiveUserContext', () => ({
   useActiveUser: () => ({
@@ -107,6 +119,8 @@ beforeEach(() => {
   mockWrite = true;
   mockDiaryWrite = false;
   mockRead = undefined;
+  mockNightEntries = undefined;
+  mockDailyLog.mockReset();
   [
     mockUpdate,
     mockUpdateInjection,
@@ -351,4 +365,53 @@ it('says a recorded dose was taken off schedule, and not for one counted toward 
     )
   );
   expect(screen.queryByText(/Off schedule/)).not.toBeInTheDocument();
+});
+
+describe('device figures', () => {
+  const garminNight = {
+    entry_date: '2026-11-17',
+    bedtime: '2026-11-16T22:30:00Z',
+    wake_time: '2026-11-17T06:30:00Z',
+    duration_in_seconds: 28800,
+    time_asleep_in_seconds: 26000,
+    sleep_score: 80,
+    source: 'garmin',
+  };
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-19T12:00:00Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('shows the wearable block above the daily log and keeps the log sleep when there is no device night', () => {
+    renderDetail();
+    expect(screen.getByText('Wearable block 2026-11-17')).toBeInTheDocument();
+    expect(mockDailyLog).toHaveBeenCalledWith(
+      expect.objectContaining({ date: '2026-11-17', hideSleep: false })
+    );
+  });
+
+  it('hides the daily log sleep when the block shows the night', () => {
+    mockNightEntries = [garminNight];
+    renderDetail();
+    expect(mockDailyLog).toHaveBeenCalledWith(
+      expect.objectContaining({ hideSleep: true })
+    );
+  });
+
+  it('keeps the daily log sleep for a typed-in night', () => {
+    mockNightEntries = [{ ...garminNight, source: 'manual' }];
+    renderDetail();
+    expect(mockDailyLog).toHaveBeenCalledWith(
+      expect.objectContaining({ hideSleep: false })
+    );
+  });
+
+  it('does not show the block for a future day', () => {
+    mockNightEntries = [{ ...garminNight, entry_date: '2026-11-20' }];
+    renderDetail({ ...props(), day: '2026-11-20' });
+    expect(screen.queryByText(/Wearable block/)).not.toBeInTheDocument();
+    expect(mockDailyLog).toHaveBeenCalledWith(
+      expect.objectContaining({ hideSleep: false })
+    );
+  });
 });
