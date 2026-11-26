@@ -58,6 +58,34 @@ it('never requests private vial cost data for a delegated context', () => {
   expect(screen.queryByRole('link')).not.toBeInTheDocument();
 });
 
+it('says a price is a share of a prescription total rather than a per-vial price', () => {
+  mockCosts.mockReturnValue({
+    data: {
+      cost_basis: 'with_prescription_estimates',
+      vials: [
+        {
+          pen_id: 'vial',
+          is_costed: true,
+          cost_source: 'prescription',
+          unit_cost: '30',
+          currency: 'GBP',
+          purchase_id: null,
+          prescription_id: 'rx',
+          estimate_basis: 'per_prescription',
+        },
+      ],
+    },
+  });
+  render(
+    <MemoryRouter>
+      <MedicationVialCostLink penId="vial" />
+    </MemoryRouter>
+  );
+  expect(screen.getByRole('link')).toHaveTextContent(
+    'GBP 30.00 · Share of a prescription total · no shipping'
+  );
+});
+
 it('shows a confirmed zero prescription estimate without an invoice and never fabricates currency', () => {
   mockCosts.mockReturnValue({
     data: {

@@ -2,6 +2,7 @@ import '@testing-library/jest-dom';
 import { fireEvent, render, screen } from '@testing-library/react';
 import MedicationPrescriptionLink from '@/pages/Medications/MedicationPrescriptionLink';
 import {
+  coveredFixture,
   prescriptionFixture,
   prescriptionIds,
 } from '@/tests/fixtures/medicationPrescriptions';
@@ -11,6 +12,15 @@ import {
 } from '@/tests/fixtures/medicationCourses';
 let mockReady = true;
 const mockForm = jest.fn();
+const otherMedication = {
+  ...courseMedication,
+  id: '00000000-0000-4000-8000-0000000000aa',
+  name: 'Another medication',
+  display_name: 'Another medication',
+};
+jest.mock('@/hooks/useMedications', () => ({
+  useMedications: () => ({ data: [courseMedication, otherMedication] }),
+}));
 jest.mock('@/hooks/Medications/useLastUsedMedicationCurrency', () => ({
   useLastUsedMedicationCurrency: () => 'GBP',
 }));
@@ -36,6 +46,14 @@ jest.mock('@/hooks/Medications/useMedicationPrescriptions', () => ({
           medication_id: courseIds.rule,
           source: 'Other medication',
         }),
+        coveredFixture(
+          [
+            { id: courseIds.rule, name: 'Second medication' },
+            { id: courseIds.med, name: 'Example medication' },
+            { id: null, name: 'Removed medication' },
+          ],
+          { id: courseIds.revision, source: 'Shared source' }
+        ),
       ],
     },
   }),
@@ -80,6 +98,38 @@ it('includes every same-medication status, unlinks explicitly and never chooses 
   fireEvent.change(select, { target: { value: 'none' } });
   expect(change).toHaveBeenLastCalledWith(null);
 });
+it('lists a prescription that covers several medicines for each one it covers, naming the others, and for no other', () => {
+  render(
+    <MedicationPrescriptionLink
+      medication={courseMedication}
+      value={null}
+      onChange={jest.fn()}
+    />
+  );
+  expect(
+    screen.getByRole('option', {
+      name: /Example medication \+ Second medication \+ Removed medication · Shared source/,
+    })
+  ).toBeInTheDocument();
+  // The prescription is still not offered for a medication it does not cover.
+  expect(screen.queryByRole('option', { name: /Other medication/ })).toBeNull();
+  expect(
+    screen.getByText(/Prescriptions that cover this medication are listed/)
+  ).toBeInTheDocument();
+});
+it('falls back to the single target for a server that sends no covered list', () => {
+  render(
+    <MedicationPrescriptionLink
+      medication={{ ...courseMedication, id: courseIds.rule }}
+      value={null}
+      onChange={jest.fn()}
+    />
+  );
+  expect(
+    screen.getByRole('option', { name: /Other medication/ })
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /Active source/ })).toBeNull();
+});
 it('opens the same regular form with the matching target fixed, without creating stock or doses', () => {
   render(
     <MedicationPrescriptionLink
@@ -92,7 +142,8 @@ it('opens the same regular form with the matching target fixed, without creating
   expect(mockForm).toHaveBeenCalledWith(
     expect.objectContaining({
       fixedMedicationId: courseIds.med,
-      medications: [courseMedication],
+      // The fixed medication first, then the others it can also cover.
+      medications: [courseMedication, otherMedication],
     })
   );
 });

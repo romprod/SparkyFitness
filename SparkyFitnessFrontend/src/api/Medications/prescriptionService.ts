@@ -1,18 +1,30 @@
 import type { z } from 'zod';
 import {
   medicationPrescriptionQuerySchema,
-  medicationPrescriptionListSchema,
-  medicationPrescriptionDetailSchema,
+  medicationPrescriptionClientListSchema,
+  medicationPrescriptionClientDetailSchema,
   medicationPrescriptionMutationResultSchema,
-  medicationPrescriptionCreateSchema,
-  medicationPrescriptionUpdateSchema,
+  medicationPrescriptionCreateSchemaV2,
+  medicationPrescriptionUpdateSchemaV2,
   medicationPrescriptionDeleteSchema,
+  PRESCRIPTION_MODEL_VERSION,
+  PRESCRIPTION_MODEL_VERSION_HEADER,
   type MedicationPrescriptionDelete,
 } from '@workspace/shared';
 import { apiCall } from '@/api/api';
 
-type CreateRequest = z.input<typeof medicationPrescriptionCreateSchema>;
-type UpdateRequest = z.input<typeof medicationPrescriptionUpdateSchema>;
+type CreateRequest = z.input<typeof medicationPrescriptionCreateSchemaV2>;
+type UpdateRequest = z.input<typeof medicationPrescriptionUpdateSchemaV2>;
+
+/**
+ * Opts every prescription call into the model that knows several medicines per prescription. An older
+ * server ignores the header and answers in the one-medicine shape, which the client schemas accept.
+ */
+const model = {
+  headers: {
+    [PRESCRIPTION_MODEL_VERSION_HEADER]: String(PRESCRIPTION_MODEL_VERSION),
+  },
+};
 
 const root = '/v2/medication-prescriptions';
 const ownerQuery = (ownerId: string) =>
@@ -22,9 +34,10 @@ export const listMedicationPrescriptions = async (
   ownerId: string,
   signal?: AbortSignal
 ) => {
-  const result = medicationPrescriptionListSchema.parse(
+  const result = medicationPrescriptionClientListSchema.parse(
     await apiCall(root, {
       method: 'GET',
+      ...model,
       params: ownerQuery(ownerId),
       signal,
       suppressErrorToast: true,
@@ -39,9 +52,10 @@ export const getMedicationPrescription = async (
   id: string,
   signal?: AbortSignal
 ) => {
-  const result = medicationPrescriptionDetailSchema.parse(
+  const result = medicationPrescriptionClientDetailSchema.parse(
     await apiCall(`${root}/${id}`, {
       method: 'GET',
+      ...model,
       params: ownerQuery(ownerId),
       signal,
       suppressErrorToast: true,
@@ -55,10 +69,11 @@ export const createMedicationPrescription = async (
   ownerId: string,
   body: CreateRequest
 ) => {
-  medicationPrescriptionCreateSchema.parse(body);
+  medicationPrescriptionCreateSchemaV2.parse(body);
   return medicationPrescriptionMutationResultSchema.parse(
     await apiCall(root, {
       method: 'POST',
+      ...model,
       params: ownerQuery(ownerId),
       body,
       suppressErrorToast: true,
@@ -71,10 +86,11 @@ export const updateMedicationPrescription = async (
   id: string,
   body: UpdateRequest
 ) => {
-  medicationPrescriptionUpdateSchema.parse(body);
+  medicationPrescriptionUpdateSchemaV2.parse(body);
   const result = medicationPrescriptionMutationResultSchema.parse(
     await apiCall(`${root}/${id}`, {
       method: 'PUT',
+      ...model,
       params: ownerQuery(ownerId),
       body,
       suppressErrorToast: true,
@@ -95,6 +111,7 @@ export const deleteMedicationPrescription = async (
   const result = medicationPrescriptionMutationResultSchema.parse(
     await apiCall(`${root}/${id}`, {
       method: 'DELETE',
+      ...model,
       params: ownerQuery(ownerId),
       body,
       suppressErrorToast: true,

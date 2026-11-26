@@ -7,6 +7,7 @@ import { courseIds } from '@/tests/fixtures/medicationCourses';
 jest.mock('@/api/api', () => ({ apiCall: jest.fn() }));
 const request = jest.mocked(apiCall);
 const root = '/v2/medication-prescriptions';
+const model2 = { 'X-Prescription-Model-Version': '2' };
 const row = (): MedicationPrescription => ({
   id: courseIds.legacy,
   user_id: courseIds.owner,
@@ -66,6 +67,7 @@ it('lists all owner prescriptions without filters, reordering or inferred zero/u
   ).resolves.toEqual(response);
   expect(request).toHaveBeenCalledWith(root, {
     method: 'GET',
+    headers: model2,
     params: { expected_owner_id: courseIds.owner },
     signal,
     suppressErrorToast: true,
@@ -79,6 +81,7 @@ it('reads one exact owner record with caller cancellation', async () => {
   ).resolves.toEqual({ prescription: row() });
   expect(request).toHaveBeenCalledWith(`${root}/${courseIds.legacy}`, {
     method: 'GET',
+    headers: model2,
     params: { expected_owner_id: courseIds.owner },
     signal,
     suppressErrorToast: true,
@@ -138,6 +141,7 @@ it.each([
     await expect(run()).resolves.toEqual(response);
     expect(request).toHaveBeenCalledWith(path, {
       method,
+      headers: model2,
       params: { expected_owner_id: courseIds.owner },
       body,
       suppressErrorToast: true,
@@ -307,4 +311,68 @@ it('accepts the optional confirmed basis response while retaining old unconfirme
     (await service.getMedicationPrescription(courseIds.owner, courseIds.legacy))
       .prescription
   ).not.toHaveProperty('cost_basis');
+});
+it('accepts several medicines on create and update, sending a single one exactly as before', async () => {
+  request.mockResolvedValue(receipt);
+  const many = {
+    operation_id: courseIds.step,
+    medication_ids: [courseIds.med, courseIds.rule],
+    currency: 'GBP',
+  };
+  await service.createMedicationPrescription(courseIds.owner, many);
+  expect(request.mock.calls[0]![1]!.body).toBe(many);
+  await expect(
+    service.createMedicationPrescription(courseIds.owner, {
+      ...many,
+      medication_id: courseIds.med,
+    })
+  ).rejects.toBeInstanceOf(ZodError);
+  await service.updateMedicationPrescription(
+    courseIds.owner,
+    courseIds.legacy,
+    {
+      operation_id: courseIds.step,
+      expected_version: 1,
+      medication_ids: [courseIds.rule],
+    }
+  );
+  expect(request.mock.calls[1]![1]!.body).toMatchObject({
+    medication_ids: [courseIds.rule],
+  });
+  expect(request).toHaveBeenCalledTimes(2);
+});
+it('reads the covered medicines from a newer server and tolerates an older one that omits them', async () => {
+  const covered = [
+    {
+      medication_id: courseIds.med,
+      medication_name: 'Example medication',
+      position: 0,
+    },
+    {
+      medication_id: null,
+      medication_name: 'Retained known name',
+      position: 1,
+    },
+  ];
+  request.mockResolvedValueOnce({
+    prescriptions: [{ ...row(), medications: covered }],
+  });
+  const newer = await service.listMedicationPrescriptions(courseIds.owner);
+  expect(newer.prescriptions[0]!.medications).toEqual(covered);
+  request.mockResolvedValueOnce({ prescriptions: [row()] });
+  const older = await service.listMedicationPrescriptions(courseIds.owner);
+  expect(older.prescriptions[0]).not.toHaveProperty('medications');
+  request.mockResolvedValueOnce({
+    prescription: { ...row(), cost: '9', cost_basis: 'per_prescription' },
+  });
+  expect(
+    (await service.getMedicationPrescription(courseIds.owner, courseIds.legacy))
+      .prescription.cost_basis
+  ).toBe('per_prescription');
+  request.mockResolvedValueOnce({
+    prescriptions: [{ ...row(), medications: [] }],
+  });
+  await expect(
+    service.listMedicationPrescriptions(courseIds.owner)
+  ).rejects.toBeInstanceOf(ZodError);
 });

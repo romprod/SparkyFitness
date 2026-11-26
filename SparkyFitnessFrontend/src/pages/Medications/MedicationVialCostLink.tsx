@@ -26,10 +26,15 @@ function OwnedVialCost({ ownerId, penId }: { ownerId: string; penId: string }) {
   const invoice = known && cost.cost_source === 'invoice';
   const provenance = invoice
     ? t('medications.costs.invoice', 'Invoice')
-    : t(
-        'medications.costEstimates.prescriptionEstimate',
-        'Prescription estimate'
-      );
+    : known && cost.estimate_basis === 'per_prescription'
+      ? t(
+          'medications.costEstimates.prescriptionShare',
+          'Share of a prescription total'
+        )
+      : t(
+          'medications.costEstimates.prescriptionEstimate',
+          'Prescription estimate'
+        );
   const amount =
     known && cost.currency
       ? formatPurchaseMoney(cost.unit_cost!, cost.currency, i18n.language)

@@ -92,6 +92,8 @@ it('opts vial prices in and preserves known free estimates, invoice credits, cur
   ).resolves.toEqual(result);
   expect(request).toHaveBeenCalledWith('/v2/medication-purchases/vial-costs', {
     method: 'GET',
+    // Lets a share of a prescription total say so instead of reading as a per-vial price.
+    headers: { 'X-Prescription-Model-Version': '2' },
     params: {
       expected_owner_id: courseIds.owner,
       cost_basis: 'with_prescription_estimates',
@@ -186,4 +188,16 @@ it('propagates unavailable-mode errors without retrying another request shape', 
     getMedicationCostAnalyticsWithPrescriptionEstimates(courseIds.owner, '12')
   ).rejects.toBe(error);
   expect(request).toHaveBeenCalledTimes(1);
+});
+it('reads a share of a prescription total as such', async () => {
+  const result = vials();
+  result.vials[0] = {
+    ...result.vials[0]!,
+    unit_cost: '33.333333333333333333333333333333333333333',
+    estimate_basis: 'per_prescription',
+  };
+  request.mockResolvedValue(result);
+  await expect(
+    getMedicationVialCostsWithPrescriptionEstimates(courseIds.owner)
+  ).resolves.toEqual(result);
 });

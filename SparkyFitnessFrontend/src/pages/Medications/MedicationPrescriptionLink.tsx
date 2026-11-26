@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Medication } from '@/types/medications';
 import { useMedicationPrescriptions } from '@/hooks/Medications/useMedicationPrescriptions';
@@ -6,7 +6,33 @@ import { useLastUsedMedicationCurrency } from '@/hooks/Medications/useLastUsedMe
 import { usePreferences } from '@/contexts/PreferencesContext';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { useMedications } from '@/hooks/useMedications';
 import MedicationPrescriptionForm from './MedicationPrescriptionForm';
+import {
+  coversMedication,
+  otherCoveredNames,
+} from './medicationPrescriptionPresentation';
+
+/** The create dialog only loads the other medications once it opens, so more can be added around the fixed one. */
+function CreateFromLink({
+  medication,
+  ...props
+}: {
+  medication: Medication;
+} & Omit<
+  ComponentProps<typeof MedicationPrescriptionForm>,
+  'medications' | 'fixedMedicationId'
+>) {
+  const { data } = useMedications({ activeOnly: true });
+  const others = (data ?? []).filter((med) => med.id !== medication.id);
+  return (
+    <MedicationPrescriptionForm
+      {...props}
+      medications={[medication, ...others]}
+      fixedMedicationId={medication.id}
+    />
+  );
+}
 
 export default function MedicationPrescriptionLink({
   medication,
@@ -26,8 +52,9 @@ export default function MedicationPrescriptionLink({
   const [create, setCreate] = useState<HTMLElement | null>(null);
   const defaultCurrency = useLastUsedMedicationCurrency(!!create);
   if (!scope.ready || !scope.isCurrent()) return null;
+  // Every prescription that covers this medication, including ones that also cover others.
   const options =
-    data?.prescriptions.filter((row) => row.medication_id === medication.id) ??
+    data?.prescriptions.filter((row) => coversMedication(row, medication.id)) ??
     [];
   const missing = !!value && !options.some((row) => row.id === value);
   return (
@@ -67,7 +94,11 @@ export default function MedicationPrescriptionLink({
           )}
           {options.map((row) => (
             <option key={row.id} value={row.id}>
-              {medication.display_name || medication.name} ·{' '}
+              {medication.display_name || medication.name}
+              {otherCoveredNames(row, medication.id).length > 0
+                ? ` + ${otherCoveredNames(row, medication.id).join(' + ')}`
+                : ''}{' '}
+              ·{' '}
               {row.source ??
                 row.prescriber ??
                 row.pharmacy ??
@@ -94,8 +125,8 @@ export default function MedicationPrescriptionLink({
       </div>
       <p className="text-xs text-muted-foreground">
         {t(
-          'medications.prescriptions.linkHelp',
-          'Only prescriptions for this medication are listed, including expired or cancelled records. Linking does not change dosing or stock quantities.'
+          'medications.prescriptions.linkHelpCovers',
+          'Prescriptions that cover this medication are listed, including ones that also cover others and expired or cancelled records. Linking does not change dosing or stock quantities.'
         )}
       </p>
       {query.isError && (
@@ -107,10 +138,9 @@ export default function MedicationPrescriptionLink({
         </p>
       )}
       {create && (
-        <MedicationPrescriptionForm
+        <CreateFromLink
           scope={scope}
-          medications={[medication]}
-          fixedMedicationId={medication.id}
+          medication={medication}
           defaultCurrency={defaultCurrency}
           onClose={() => setCreate(null)}
           onSaved={(createdId) => {
@@ -137,7 +167,7 @@ export function MedicationPrescriptionSummary({
   const { scope, data } = useMedicationPrescriptions(!!prescriptionId);
   if (!scope.ready || !scope.isCurrent()) return null;
   const row = data?.prescriptions.find(
-    (item) => item.id === prescriptionId && item.medication_id === medicationId
+    (item) => item.id === prescriptionId && coversMedication(item, medicationId)
   );
   return (
     <p className="text-sm">

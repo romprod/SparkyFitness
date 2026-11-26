@@ -1034,7 +1034,8 @@
         "vial": "Vial",
         "pen": "Pen"
       },
-      "emptyAll": "No vials yet. Add your first vial to start tracking stock."
+      "emptyAll": "No vials yet. Add your first vial to start tracking stock.",
+      "alsoCovers": "also covers {{names}}"
     },
     "stock": {
       "title": "Inventory",
@@ -1308,7 +1309,9 @@
       "monthlyCash": "Monthly bars and invoice totals show recorded invoice cash only; prescription estimates are excluded.",
       "currencyUnavailable": "Currency unavailable",
       "invoiceSpend": "Spend",
-      "usageSources": "{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates"
+      "usageSources": "{{invoice}} doses priced from invoices · {{prescription}} from prescription estimates",
+      "totalSplit": "Total cost (split across linked vials)",
+      "prescriptionShare": "Share of a prescription total"
     },
     "costReport": {
       "mixedSpend": "Spend is unavailable because its contributors use different currencies.",
@@ -1439,7 +1442,21 @@
         "active": "Active",
         "expired": "Expired",
         "cancelled": "Cancelled"
-      }
+      },
+      "covered": "Medications covered",
+      "primary": "Primary",
+      "moveUp": "Move {{name}} up",
+      "moveDown": "Move {{name}} down",
+      "removeMedication": "Remove {{name}}",
+      "addMedication": "Also covers another medication",
+      "addChoose": "Add a medication…",
+      "needsServerUpdate": "Needs a server update",
+      "clearsPerVial": "A per-vial price belongs to one medication, so saving clears its per-vial confirmation. The cost is kept.",
+      "totalCost": "Total cost",
+      "priceBasis": "Price basis",
+      "basisNone": "Not used for estimates",
+      "basisWhole": "Whole prescription, split across its linked vials",
+      "linkHelpCovers": "Prescriptions that cover this medication are listed, including ones that also cover others and expired or cancelled records. Linking does not change dosing or stock quantities."
     },
     "week": {
       "view": "Calendar view",

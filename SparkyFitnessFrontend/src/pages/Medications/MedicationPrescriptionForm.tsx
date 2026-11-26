@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  medicationPrescriptionCreateSchema,
-  medicationPrescriptionUpdateSchema,
-  type MedicationPrescription,
-  type MedicationPrescriptionCreate,
-  type MedicationPrescriptionUpdate,
+  medicationPrescriptionCreateSchemaV2,
+  medicationPrescriptionUpdateSchemaV2,
+  MAX_PRESCRIPTION_MEDICATIONS,
+  type MedicationPrescriptionCreateV2,
+  type MedicationPrescriptionUpdateV2,
 } from '@workspace/shared';
 import {
   useMedicationPrescription,
@@ -15,6 +15,13 @@ import {
 } from '@/hooks/Medications/useMedicationPrescriptions';
 import { HttpApiError } from '@/hooks/Medications/useMedicationCourses';
 import type { Medication } from '@/types/medications';
+import {
+  liveCoveredIds,
+  prescriptionBasisIntent,
+  prescriptionCoverage,
+  type PrescriptionBasisChoice,
+  type PrescriptionRecord,
+} from './medicationPrescriptionPresentation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,11 +35,10 @@ import {
 
 type Scope = ReturnType<typeof useMedicationPrescriptionScope>;
 type Attempt =
-  | { kind: 'create'; body: MedicationPrescriptionCreate }
-  | { kind: 'update'; id: string; body: MedicationPrescriptionUpdate };
-function seed(initial: MedicationPrescription | undefined, target: string) {
+  | { kind: 'create'; body: MedicationPrescriptionCreateV2 }
+  | { kind: 'update'; id: string; body: MedicationPrescriptionUpdateV2 };
+function seed(initial: PrescriptionRecord | undefined) {
   return {
-    medication_id: initial?.medication_id ?? target,
     source: initial?.source ?? '',
     pharmacy: initial?.pharmacy ?? '',
     prescriber: initial?.prescriber ?? '',
@@ -69,7 +75,8 @@ export default function MedicationPrescriptionForm({
 }: {
   scope: Scope;
   medications: Medication[];
-  initial?: MedicationPrescription;
+  initial?: PrescriptionRecord;
+  /** The medication the prescription is for; it stays the primary. More can be added around it. */
   fixedMedicationId?: string;
   /** Currency of the newest prescription or invoice; prefills a new record. */
   defaultCurrency?: string;
@@ -84,9 +91,21 @@ export default function MedicationPrescriptionForm({
   const detail = useMedicationPrescription(initial?.id, !!initial);
   const [base, setBase] = useState(initial);
   const [costTouched, setCostTouched] = useState(false);
-  const [stored, setDraft] = useState(() =>
-    seed(initial, fixedMedicationId ?? medications[0]?.id ?? '')
+  const [stored, setDraft] = useState(() => seed(initial));
+  // The covered medicines in order; the first is the primary. Deleted ones are kept by the server.
+  const [ids, setIds] = useState<string[]>(() =>
+    initial
+      ? liveCoveredIds(initial)
+      : [fixedMedicationId ?? medications[0]?.id ?? ''].filter(Boolean)
   );
+  const [choice, setChoice] = useState<PrescriptionBasisChoice>(
+    initial?.cost_basis ?? ''
+  );
+  // An older server answers in the one-medicine shape; several medicines would be rejected there.
+  const serverRows = register.data?.prescriptions;
+  const manyUnsupported =
+    !!serverRows?.length &&
+    serverRows.every((row) => row.medications === undefined);
   const [currencyError, setCurrencyError] = useState(false);
   const [currencyTyped, setCurrencyTyped] = useState(false);
   // A new record follows the default (which may arrive after the form opens)
@@ -113,6 +132,12 @@ export default function MedicationPrescriptionForm({
     setDraft((old) => ({ ...old, [key]: value }));
     setMessage('');
   };
+  const editIds = (next: string[]) => {
+    if (locked) return;
+    attempt.current = null;
+    setIds(next);
+    setMessage('');
+  };
   const save = async () => {
     if (
       !scope.isCurrent() ||
@@ -123,7 +148,7 @@ export default function MedicationPrescriptionForm({
     )
       return;
     if (!attempt.current) {
-      const { medication_id, ...fields } = draft;
+      const fields = draft;
       if (!fields.currency.trim()) {
         setCurrencyError(true);
         return;
@@ -142,15 +167,23 @@ export default function MedicationPrescriptionForm({
         return;
       }
       const operation_id = crypto.randomUUID();
-      const basis = costTouched
-        ? { cost_basis: fields.cost.trim() ? ('per_vial' as const) : null }
-        : base?.cost_basis === 'per_vial' && fields.cost.trim()
-          ? { cost_basis: 'per_vial' as const }
-          : {};
+      const basis = prescriptionBasisIntent({
+        medicationCount: ids.length,
+        baseBasis: base?.cost_basis,
+        hasBase: !!base,
+        costTouched,
+        cost: fields.cost,
+        choice,
+      });
       if (base) {
-        const parsed = medicationPrescriptionUpdateSchema.safeParse({
+        const current = liveCoveredIds(base);
+        const changed =
+          ids.length !== current.length ||
+          ids.some((id, index) => id !== current[index]);
+        const parsed = medicationPrescriptionUpdateSchemaV2.safeParse({
           ...fields,
           ...basis,
+          ...(changed ? { medication_ids: ids } : {}),
           operation_id,
           expected_version: base.version,
         });
@@ -167,10 +200,13 @@ export default function MedicationPrescriptionForm({
         }
         attempt.current = { kind: 'update', id: base.id, body: parsed.data };
       } else {
-        const parsed = medicationPrescriptionCreateSchema.safeParse({
+        // One medicine is sent exactly as before several existed, so an older server accepts it.
+        const parsed = medicationPrescriptionCreateSchemaV2.safeParse({
           ...fields,
           ...basis,
-          medication_id,
+          ...(ids.length === 1
+            ? { medication_id: ids[0] }
+            : { medication_ids: ids }),
           operation_id,
         });
         if (!parsed.success) {
@@ -202,7 +238,17 @@ export default function MedicationPrescriptionForm({
         error instanceof HttpApiError &&
         [400, 404, 409, 410, 422].includes(error.status);
       const missing = error instanceof HttpApiError && error.status === 404;
-      if (missing || (!uncertain && deterministic)) {
+      // These refusals are about the draft itself, not a stale record: name them and keep editing.
+      const refusal =
+        error instanceof HttpApiError &&
+        (error.code === 'prescription_medication_linked' ||
+          error.code === 'cost_basis_per_vial_needs_one_medication')
+          ? error
+          : null;
+      if (refusal && !uncertain) {
+        attempt.current = null;
+        setMessage(refusal.message);
+      } else if (missing || (!uncertain && deterministic)) {
         attempt.current = null;
         setStale(!!base && (error.status === 409 || missing));
         if (missing) {
@@ -247,7 +293,9 @@ export default function MedicationPrescriptionForm({
       if (!scope.isCurrent()) return;
       if (fresh.isSuccess && fresh.data?.prescription) {
         setBase(fresh.data.prescription);
-        setDraft(seed(fresh.data.prescription, ''));
+        setDraft(seed(fresh.data.prescription));
+        setIds(liveCoveredIds(fresh.data.prescription));
+        setChoice(fresh.data.prescription.cost_basis ?? '');
         setCostTouched(false);
         attempt.current = null;
         setStale(false);
@@ -263,6 +311,23 @@ export default function MedicationPrescriptionForm({
       setPending(false);
     }
   };
+  const nameOf = (id: string) => {
+    const known = medications.find((med) => med.id === id);
+    return (
+      (known && (known.display_name || known.name)) ||
+      (base
+        ? prescriptionCoverage(base).find((entry) => entry.medication_id === id)
+            ?.medication_name
+        : undefined) ||
+      id
+    );
+  };
+  const tombstones = base
+    ? prescriptionCoverage(base).filter((entry) => entry.medication_id === null)
+    : [];
+  const addable = medications.filter((med) => !ids.includes(med.id));
+  // Several medicines share one total price; so does a single one that already has a whole-fill price.
+  const wholeFill = ids.length > 1 || base?.cost_basis === 'per_prescription';
   const field = (
     key: keyof typeof draft,
     label: string,
@@ -338,10 +403,15 @@ export default function MedicationPrescriptionForm({
               id="rx-medication"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               disabled={!!base || !!fixedMedicationId}
-              value={
-                base?.medication_id === null ? 'deleted' : draft.medication_id
-              }
-              onChange={(event) => change('medication_id', event.target.value)}
+              value={base?.medication_id === null ? 'deleted' : (ids[0] ?? '')}
+              onChange={(event) => {
+                const next = event.target.value;
+                editIds(
+                  next
+                    ? [next, ...ids.slice(1).filter((id) => id !== next)]
+                    : ids.slice(1)
+                );
+              }}
             >
               {base?.medication_id === null ? (
                 <option value="deleted">
@@ -368,9 +438,155 @@ export default function MedicationPrescriptionForm({
               )}
             </select>
           </div>
+          {(ids.length > 1 || tombstones.length > 0) && (
+            <ul
+              aria-label={t(
+                'medications.prescriptions.covered',
+                'Medications covered'
+              )}
+              className="space-y-1"
+            >
+              {ids.map((id, index) => {
+                const name = nameOf(id);
+                const lockedPrimary = !!fixedMedicationId && index === 0;
+                return (
+                  <li
+                    key={id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 break-words">
+                      {index + 1}. {name}
+                      {index === 0 && (
+                        <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs">
+                          {t('medications.prescriptions.primary', 'Primary')}
+                        </span>
+                      )}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={
+                        index === 0 || (index === 1 && !!fixedMedicationId)
+                      }
+                      aria-label={t(
+                        'medications.prescriptions.moveUp',
+                        'Move {{name}} up',
+                        { name }
+                      )}
+                      onClick={() => {
+                        const next = [...ids];
+                        [next[index - 1], next[index]] = [
+                          next[index]!,
+                          next[index - 1]!,
+                        ];
+                        editIds(next);
+                      }}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={index === ids.length - 1 || lockedPrimary}
+                      aria-label={t(
+                        'medications.prescriptions.moveDown',
+                        'Move {{name}} down',
+                        { name }
+                      )}
+                      onClick={() => {
+                        const next = [...ids];
+                        [next[index], next[index + 1]] = [
+                          next[index + 1]!,
+                          next[index]!,
+                        ];
+                        editIds(next);
+                      }}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={ids.length === 1 || lockedPrimary}
+                      aria-label={t(
+                        'medications.prescriptions.removeMedication',
+                        'Remove {{name}}',
+                        { name }
+                      )}
+                      onClick={() => editIds(ids.filter((x) => x !== id))}
+                    >
+                      ✕
+                    </Button>
+                  </li>
+                );
+              })}
+              {tombstones.map((entry, index) => (
+                <li
+                  key={'deleted-' + index}
+                  className="rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground"
+                >
+                  {entry.medication_name} ·{' '}
+                  {t(
+                    'medications.prescriptions.deletedTarget',
+                    'Deleted medication'
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {addable.length > 0 && ids.length > 0 && (
+            <div className="space-y-1">
+              <Label htmlFor="rx-add-medication">
+                {t(
+                  'medications.prescriptions.addMedication',
+                  'Also covers another medication'
+                )}
+              </Label>
+              <select
+                id="rx-add-medication"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                disabled={
+                  manyUnsupported || ids.length >= MAX_PRESCRIPTION_MEDICATIONS
+                }
+                value=""
+                onChange={(event) => {
+                  if (event.target.value) editIds([...ids, event.target.value]);
+                }}
+              >
+                <option value="">
+                  {manyUnsupported
+                    ? t(
+                        'medications.prescriptions.needsServerUpdate',
+                        'Needs a server update'
+                      )
+                    : t(
+                        'medications.prescriptions.addChoose',
+                        'Add a medication…'
+                      )}
+                </option>
+                {addable.map((med) => (
+                  <option key={med.id} value={med.id}>
+                    {med.display_name || med.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {ids.length > 1 && base?.cost_basis === 'per_vial' && (
+            <p className="text-sm text-muted-foreground">
+              {t(
+                'medications.prescriptions.clearsPerVial',
+                'A per-vial price belongs to one medication, so saving clears its per-vial confirmation. The cost is kept.'
+              )}
+            </p>
+          )}
           {base?.cost !== null &&
             base?.cost !== undefined &&
             base.cost_basis !== 'per_vial' &&
+            base.cost_basis !== 'per_prescription' &&
             !costTouched && (
               <p className="text-sm text-muted-foreground">
                 {t(
@@ -410,9 +626,41 @@ export default function MedicationPrescriptionForm({
             )}
             {field(
               'cost',
-              t('medications.costEstimates.costPerVial', 'Cost per vial'),
+              wholeFill
+                ? t('medications.prescriptions.totalCost', 'Total cost')
+                : t('medications.costEstimates.costPerVial', 'Cost per vial'),
               'text',
               'decimal'
+            )}
+            {wholeFill && (
+              <div className="space-y-1">
+                <Label htmlFor="rx-cost-basis">
+                  {t('medications.prescriptions.priceBasis', 'Price basis')}
+                </Label>
+                <select
+                  id="rx-cost-basis"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={choice === 'per_prescription' ? choice : ''}
+                  onChange={(event) => {
+                    if (locked) return;
+                    attempt.current = null;
+                    setChoice(event.target.value as PrescriptionBasisChoice);
+                  }}
+                >
+                  <option value="">
+                    {t(
+                      'medications.prescriptions.basisNone',
+                      'Not used for estimates'
+                    )}
+                  </option>
+                  <option value="per_prescription">
+                    {t(
+                      'medications.prescriptions.basisWhole',
+                      'Whole prescription, split across its linked vials'
+                    )}
+                  </option>
+                </select>
+              </div>
             )}
             {field(
               'currency',
@@ -517,7 +765,7 @@ export default function MedicationPrescriptionForm({
               stale ||
               !scope.ready ||
               !scope.canWrite ||
-              (!base && !draft.medication_id)
+              (!base && !ids.length)
             }
             onClick={() => void save()}
           >
