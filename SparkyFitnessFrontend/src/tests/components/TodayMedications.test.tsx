@@ -935,3 +935,166 @@ describe('as-needed list and running plans', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('just after midnight', () => {
+  const YESTERDAY = '2026-11-26';
+  const TODAY = '2026-11-27';
+  const renderAt = (
+    now: string,
+    selectedDate: string,
+    options: {
+      entries?: MedicationEntry[];
+      recentEntries?: MedicationEntry[];
+      onSelectDate?: (date: string) => void;
+    } = {}
+  ) => {
+    jest.useFakeTimers({ now: new Date(now) });
+    return render(
+      <TodayMedications
+        selectedDate={selectedDate}
+        today={TODAY}
+        meds={[medWithDose('21:00')]}
+        entries={options.entries ?? []}
+        recentEntries={options.recentEntries ?? []}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={options.onSelectDate ?? jest.fn()}
+      />
+    );
+  };
+  const loggedYesterday = (): MedicationEntry => ({
+    ...loggedEntry(),
+    taken_at: '2026-11-26T21:05:00.000Z',
+    entry_date: YESTERDAY,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockTimezone = 'Europe/London';
+    mockIntervalEntries = [];
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('offers yesterday on Today at 00:30 and opens it', () => {
+    const onSelectDate = jest.fn();
+    renderAt('2026-11-27T00:30:00Z', TODAY, { onSelectDate });
+    expect(screen.getByText('From yesterday')).toBeInTheDocument();
+    expect(screen.getByText('Vitamin D 21:00')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Log for yesterday' }));
+    expect(onSelectDate).toHaveBeenCalledWith(YESTERDAY);
+  });
+
+  it('shows no banner at 02:00 or at 23:00', () => {
+    const first = renderAt('2026-11-27T02:00:00Z', TODAY);
+    expect(screen.queryByText('From yesterday')).not.toBeInTheDocument();
+    first.unmount();
+    jest.useRealTimers();
+    renderAt('2026-11-27T23:00:00Z', TODAY);
+    expect(screen.queryByText('From yesterday')).not.toBeInTheDocument();
+  });
+
+  it('shows no banner when yesterday’s dose is already logged', () => {
+    renderAt('2026-11-27T00:30:00Z', TODAY, {
+      recentEntries: [loggedYesterday()],
+    });
+    expect(screen.queryByText('From yesterday')).not.toBeInTheDocument();
+  });
+
+  it('still shows the banner when yesterday’s dose was only snoozed', () => {
+    renderAt('2026-11-27T00:30:00Z', TODAY, {
+      recentEntries: [{ ...loggedYesterday(), status: 'snoozed' }],
+    });
+    expect(screen.getByText('From yesterday')).toBeInTheDocument();
+  });
+
+  it('lists an open course slot from yesterday', () => {
+    mockSlots = [
+      {
+        ...managedSlot(),
+        scheduled_day: YESTERDAY,
+        scheduled_for: '2026-11-26T09:00:00.000Z',
+      },
+    ];
+    renderAt('2026-11-27T00:30:00Z', TODAY, {
+      recentEntries: [loggedYesterday()],
+    });
+    expect(screen.getByText('From yesterday')).toBeInTheDocument();
+  });
+
+  it('hides a course slot the server reports as fulfilled', () => {
+    mockSlots = [{ ...managedSlot(), scheduled_day: YESTERDAY }];
+    mockFulfilled = [
+      {
+        entry_id: 'entry-9',
+        status: 'taken',
+        source_kind: 'adherence',
+        entry_date: TODAY,
+        course_revision_id: 'revision-1',
+        course_rule_id: 'rule-1',
+        course_slot_key: 'slot-1',
+        scheduled_day: YESTERDAY,
+      },
+    ] as unknown as typeof mockFulfilled;
+    renderAt('2026-11-27T00:30:00Z', TODAY, {
+      recentEntries: [loggedYesterday()],
+    });
+    expect(screen.queryByText('From yesterday')).not.toBeInTheDocument();
+  });
+
+  it('logs at the real time for yesterday on yesterday’s page', () => {
+    renderAt('2026-11-27T00:30:00Z', YESTERDAY);
+    expect(screen.getByText(/It is just after midnight/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'taken',
+        taken_at: '2026-11-27T00:30:00.000Z',
+        entry_date: YESTERDAY,
+        scheduled_for: '2026-11-26T21:00:00.000Z',
+      }),
+      expect.anything()
+    );
+  });
+
+  it('checks the minimum interval on yesterday’s page during the grace', () => {
+    mockIntervalEntries = [
+      {
+        medication_id: 'med-1',
+        status: 'taken',
+        taken_at: '2026-11-26T23:00:00Z',
+      },
+    ];
+    jest.useFakeTimers({ now: new Date('2026-11-27T00:30:00Z') });
+    const med = medWithDose('21:00');
+    med.custom_fields = { min_interval_hours: 24 };
+    render(
+      <TodayMedications
+        selectedDate={YESTERDAY}
+        today={TODAY}
+        meds={[med]}
+        entries={[]}
+        recentEntries={[]}
+        loadingMeds={false}
+        loadingEntries={false}
+        onSelectDate={jest.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry).not.toHaveBeenCalled();
+  });
+
+  it('still logs yesterday’s dose at its scheduled time outside the grace', () => {
+    renderAt('2026-11-27T14:00:00Z', YESTERDAY);
+    expect(
+      screen.queryByText(/It is just after midnight/)
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Take' }));
+    expect(mockCreateEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taken_at: '2026-11-26T21:00:00.000Z',
+        entry_date: YESTERDAY,
+      }),
+      expect.anything()
+    );
+  });
+});

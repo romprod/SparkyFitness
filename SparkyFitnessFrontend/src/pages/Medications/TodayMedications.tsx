@@ -2,7 +2,7 @@ import MedicationPackPicker from './MedicationPackPicker';
 import MedicationStacksCard, {
   type StackLogResult,
 } from './MedicationStacksCard';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Clock,
@@ -41,6 +41,8 @@ import {
   type MedicationCourseExpectedSlot,
   type MedicationCourseAttributionInput,
   addDays,
+  afterMidnightGrace,
+  nextGraceBoundary,
   intervalWarning,
   lastDoseDecay,
   medicationHalfLifeHours,
@@ -135,12 +137,35 @@ export default function TodayMedications({
   recentEntries,
   loadingMeds,
   loadingEntries,
+  onSelectDate,
   subtype = 'all',
 }: TodayMedicationsProps) {
   const { t } = useTranslation();
   const { timezone, formatTime, timeFormat } = usePreferences();
   const { hasPermission, activeUserName } = useActiveUser();
   const courseDue = useMedicationCourseDue(selectedDate);
+
+  // The first two hours after local midnight: Today offers a way back to yesterday's page, and
+  // yesterday's page logs at the real time. A timer re-renders at the next 00:00 or 02:00 local.
+  const [clockNow, setClockNow] = useState(() => new Date());
+  useEffect(() => {
+    const boundary = nextGraceBoundary(clockNow, timezone).getTime();
+    const timer = setTimeout(
+      () => setClockNow(new Date()),
+      Math.max(1000, boundary - Date.now() + 250)
+    );
+    return () => clearTimeout(timer);
+  }, [clockNow, timezone]);
+  const grace = useMemo(
+    () => afterMidnightGrace(clockNow, timezone),
+    [clockNow, timezone]
+  );
+  const showFromYesterday = grace.active && selectedDate === grace.today;
+  const onYesterdayInGrace = grace.active && selectedDate === grace.yesterday;
+  const yesterdayCourseDue = useMedicationCourseDue(
+    grace.yesterday,
+    showFromYesterday
+  );
   const [managedDose, setManagedDose] = useState<{
     due: DueDose;
     takenAt: string;
@@ -205,7 +230,8 @@ export default function TodayMedications({
   const fetchInjections = useFetchMedicationInjections();
   const guardInterval = (med: MedicationDetail, proceed: () => void) => {
     const { min_interval_hours } = readDosePolicy(med.custom_fields);
-    if (!min_interval_hours || selectedDate !== today) return proceed();
+    if (!min_interval_hours || (selectedDate !== today && !onYesterdayInGrace))
+      return proceed();
     const check = (injected: string[]) => {
       const takenAt = [
         ...(intervalEntries.data ?? [])
@@ -823,15 +849,82 @@ export default function TodayMedications({
     }
   };
 
-  // Today logs the moment of the tap. A past day logs at the dose's scheduled time that day, or at
+  // Today, and yesterday's page just after midnight, log the moment of the tap. A past day logs at the dose's scheduled time that day, or at
   // local noon when it has none, so an evening dose stays an evening dose.
   const takenAtFor = (due?: DueDose): string => {
-    if (selectedDate === today) return new Date().toISOString();
+    if (selectedDate === today || onYesterdayInGrace)
+      return new Date().toISOString();
     return (
       (due ? scheduledForDue(due) : null) ??
       localDateTimeToUtc(`${selectedDate}T12:00`, timezone).toISOString()
     );
   };
+
+  // Yesterday's planned doses still open, for the banner on Today just after midnight. Plain plans
+  // are matched against yesterday's own entries; course slots against any entry for the slot plus
+  // the server's fulfilled_slots. A taken or skipped dose is not listed; a snoozed one still is;
+  // as-needed doses are never planned, so they never appear.
+  const openYesterdayDoses = useMemo(() => {
+    if (!showFromYesterday || loadingMeds || meds.length === 0) return [];
+    const yesterday = grace.yesterday;
+    const yesterdayEntries = recentEntries.filter(
+      (e) => e.entry_date === yesterday
+    );
+    const plain: DueDose[] = getDueDosesForDate(meds, yesterday, timezone);
+    const courseData = yesterdayCourseDue.data;
+    const managed: DueDose[] = (courseData?.slots ?? []).flatMap((slot) => {
+      const medication = meds.find(
+        (med) =>
+          med.id === slot.medication_id &&
+          med.user_id === yesterdayCourseDue.scope.ownerId
+      );
+      return medication && slot.scheduled_day === yesterday
+        ? [{ medication, schedule: { ...slot, id: slot.course_rule_id } }]
+        : [];
+    });
+    const fulfilled = courseData?.fulfilled_slots ?? [];
+    const isDone = (e: MedicationEntry) =>
+      e.status === 'taken' || e.status === 'skipped';
+    const handled = (due: DueDose) => {
+      if (due.schedule.course_revision_id) {
+        if (
+          fulfilled.some(
+            (f) =>
+              f.course_revision_id === due.schedule.course_revision_id &&
+              f.course_rule_id === due.schedule.course_rule_id &&
+              f.course_slot_key === due.schedule.course_slot_key &&
+              f.scheduled_day === due.schedule.scheduled_day
+          )
+        )
+          return true;
+        return recentEntries.some((e) => entryMatchesDue(e, due) && isDone(e));
+      }
+      return yesterdayEntries.some((e) => entryMatchesDue(e, due) && isDone(e));
+    };
+    return [...plain, ...managed].filter((due) => !handled(due));
+  }, [
+    showFromYesterday,
+    loadingMeds,
+    meds,
+    grace.yesterday,
+    recentEntries,
+    timezone,
+    yesterdayCourseDue.data,
+    yesterdayCourseDue.scope.ownerId,
+  ]);
+  const openYesterdayLabel = (() => {
+    const label = (due: DueDose) => {
+      const name = due.medication.display_name || due.medication.name;
+      return due.schedule.time_of_day
+        ? `${name} ${formatTimeOfDayString(due.schedule.time_of_day, timeFormat)}`
+        : name;
+    };
+    const shown = openYesterdayDoses.slice(0, 4).map(label).join(', ');
+    const more = openYesterdayDoses.length - 4;
+    return more > 0
+      ? `${shown} ${t('medications.fromYesterday.more', '+{{count}} more', { count: more })}`
+      : shown;
+  })();
 
   const isDueLogged = (due: DueDose) =>
     checklistEntries.some(
@@ -1193,6 +1286,35 @@ export default function TodayMedications({
 
   return (
     <div className="space-y-6">
+      {showFromYesterday && openYesterdayDoses.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-50/40 dark:bg-amber-950/20">
+          <CardContent className="flex items-center justify-between gap-4 p-4">
+            <div>
+              <p className="font-semibold">
+                {t('medications.fromYesterday.title', 'From yesterday')}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {openYesterdayLabel}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onSelectDate(grace.yesterday)}
+            >
+              {t('medications.fromYesterday.open', 'Log for yesterday')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+      {onYesterdayInGrace && (
+        <p className="text-sm text-muted-foreground">
+          {t(
+            'medications.fromYesterday.note',
+            'It is just after midnight. Doses you log now are recorded at the current time and count for yesterday.'
+          )}
+        </p>
+      )}
       {selectedDate === today && courseDue.data?.courses && (
         <MedicationCycleBanner courses={courseDue.data.courses} />
       )}
