@@ -591,7 +591,9 @@ export interface MedicationWeekOffSchedule {
  * Whether a recorded dose was taken off its plan, as Pitstop's calendar marks it: a scheduled dose
  * (not an as-needed one) that was not counted toward a planned dose on its own day, where its
  * medication has planned doses that week. A medication with nothing planned that week has nothing
- * to be off, and past weeks without plan history show no flag. Never changes the plan.
+ * to be off, and past weeks without plan history show no flag. A day whose plan coverage is wholly
+ * unavailable (an earlier day of a plain plan, or a day before a course's capture) has no plan history
+ * either, so a dose on it has nothing to be off. Never changes the plan.
  */
 export function medicationWeekOffSchedule(
   week: MedicationLogWeekResponse,
@@ -606,6 +608,14 @@ export function medicationWeekOffSchedule(
     : undefined;
   if (slot && slot.scheduled_day === actual.entry_date) return null;
   if (link) return { credited_to: slot ?? null };
+  const dayCoverage = week.coverage.filter(
+    (row) => row.lane_id === actual.lane_id && row.day === actual.entry_date
+  );
+  if (
+    dayCoverage.length > 0 &&
+    dayCoverage.every((row) => row.coverage === 'unavailable')
+  )
+    return null;
   return week.planned_slots.some((item) => item.lane_id === actual.lane_id)
     ? { credited_to: null }
     : null;

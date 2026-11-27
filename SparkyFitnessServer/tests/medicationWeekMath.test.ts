@@ -777,4 +777,74 @@ describe('doses taken off the plan', () => {
     i.courses = [];
     expect(offSchedule([fact()], i)).toEqual([{ id: uid(1), off: null }]);
   });
+  describe('plain daily plan, earlier days of the current week', () => {
+    const wednesday = '2026-11-18';
+    function plain() {
+      const i = input();
+      i.today = wednesday;
+      i.as_of = wednesday + 'T12:00:00Z';
+      i.courses = [];
+      i.legacy_schedules = [
+        {
+          id: uid(50),
+          medication_id: ids.medication,
+          schedule_type_id: 'daily',
+          time_of_day: '08:00',
+          start_date: '2026-01-01',
+          dose_amount: null,
+          active: true,
+        },
+      ];
+      return i;
+    }
+    const onTime = (n: number, day: string) =>
+      fact({
+        id: uid(n),
+        entry_date: day,
+        occurred_at: day + 'T08:05:00Z',
+        schedule_id: uid(50),
+        scheduled_day: day,
+        scheduled_for: day + 'T08:00:00Z',
+      });
+    it('does not flag on-time doses on earlier days, which have no plan history', () => {
+      const rows = offSchedule(
+        [
+          onTime(1, '2026-11-16'),
+          onTime(2, '2026-11-17'),
+          onTime(3, wednesday),
+        ],
+        plain()
+      );
+      expect(rows.map((r) => r.off)).toEqual([null, null, null]);
+    });
+    it('still flags a second dose today, which has plan coverage', () => {
+      const rows = offSchedule(
+        [
+          onTime(1, wednesday),
+          fact({
+            id: uid(2),
+            entry_date: wednesday,
+            occurred_at: wednesday + 'T20:00:00Z',
+          }),
+        ],
+        plain()
+      );
+      expect(rows.find((r) => r.id === uid(1))?.off).toBeNull();
+      expect(rows.find((r) => r.id === uid(2))?.off).toEqual({
+        credited_to: null,
+      });
+    });
+    it('does not flag an unscheduled extra dose on an earlier day: a day without plan history has nothing to be off', () => {
+      const [row] = offSchedule(
+        [
+          fact({
+            entry_date: '2026-11-16',
+            occurred_at: '2026-11-16T13:00:00Z',
+          }),
+        ],
+        plain()
+      );
+      expect(row?.off).toBeNull();
+    });
+  });
 });
