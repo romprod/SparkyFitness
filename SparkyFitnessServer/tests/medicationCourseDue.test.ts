@@ -127,6 +127,34 @@ describe('authoritative scheduled-slot fulfilments', () => {
       (await getMedicationCourseDue(id.owner, day, now)).fulfilled_slots
     ).toEqual([]);
   });
+  it('counts a revision-only dose on the slot day for the nearest open slot', async () => {
+    actuals = [
+      {
+        ...actual('taken', 'entry'),
+        course_rule_id: null,
+        course_slot_key: null,
+        scheduled_day: null,
+        scheduled_for: null,
+        entry_date: day,
+        occurred_at: `${day}T19:00:00Z`,
+      },
+    ];
+    const due = await getMedicationCourseDue(id.owner, day, now);
+    expect(due.fulfilled_slots).toEqual([
+      {
+        course_revision_id: id.revision,
+        course_rule_id: id.rule,
+        course_slot_key: key,
+        scheduled_day: day,
+        status: 'taken',
+        source_kind: 'entry',
+        entry_id: id.activity,
+        occurred_at: `${day}T19:00:00.000Z`,
+        entry_date: day,
+      },
+    ]);
+    expect(medicationCourseDueSchema.safeParse(due).success).toBe(true);
+  });
   it.each(['skipped', 'prn_taken'])(
     'normalises explicit %s fulfilment without treating a snoozed entry as done',
     async (status) => {

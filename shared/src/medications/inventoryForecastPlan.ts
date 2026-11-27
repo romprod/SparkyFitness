@@ -109,7 +109,10 @@ import {
   instantToDay,
   localDateTimeToUtc,
 } from '../utils/timezone.ts';
-import { courseEntryMatchesSlot } from './courseAdherence.ts';
+import {
+  courseEntryMatchesSlot,
+  courseUnlinkedSlotMatches,
+} from './courseAdherence.ts';
 import {
   courseSlotsForDay,
   type CourseExpectedSlot,
@@ -512,6 +515,29 @@ export function buildInventoryForecastPlan(
       ) ??
       null;
     if (match) {
+      slot.match = match;
+      consumed.add(coursePhaseActualKey(match));
+      slot.status = match.status === 'skipped' ? 'skipped' : 'taken';
+    }
+  }
+  // An unlinked same-day dose fills the nearest managed slot the exact pass left open.
+  const openManaged = raw.filter((slot) => slot.managed && !slot.match);
+  const zones = new Map(
+    input.courses.map((course) => [course.id, course.timezone])
+  );
+  const openCourses = [...new Set(openManaged.map((slot) => slot.course_id))];
+  for (const courseId of openCourses) {
+    const slots = openManaged.filter((slot) => slot.course_id === courseId);
+    const found = courseUnlinkedSlotMatches({
+      slots: slots.map((slot) => slot.managed!),
+      entries: actuals.filter(
+        (entry) => !consumed.has(coursePhaseActualKey(entry))
+      ),
+      timezone: zones.get(courseId) ?? input.timezone,
+    });
+    for (const slot of slots) {
+      const match = found.get(slot.managed!.course_slot_key);
+      if (!match) continue;
       slot.match = match;
       consumed.add(coursePhaseActualKey(match));
       slot.status = match.status === 'skipped' ? 'skipped' : 'taken';

@@ -20,6 +20,7 @@ import {
 import {
   computeCourseAdherence,
   courseEntryMatchesSlot,
+  courseUnlinkedSlotMatches,
 } from './courseAdherence.ts';
 import { coursePhaseActuals } from './coursePhaseContext.ts';
 import {
@@ -164,11 +165,32 @@ function nextSlotKey(
       nowInstant: asOf,
       medicationActive,
     });
-  const logged = (slot: CourseExpectedSlot) =>
-    settled.some((entry) => courseEntryMatchesSlot(entry, slot));
+  // Exact links first, then an unlinked same-day dose fills the nearest open slot.
+  const loggedOn = (slots: CourseExpectedSlot[]) => {
+    const exact = new Set<string>();
+    const used = new Set<string>();
+    for (const slot of slots) {
+      const hit = settled.find(
+        (entry) => !used.has(entry.id) && courseEntryMatchesSlot(entry, slot)
+      );
+      if (hit) {
+        used.add(hit.id);
+        exact.add(slot.course_slot_key);
+      }
+    }
+    const loose = courseUnlinkedSlotMatches({
+      slots: slots.filter((slot) => !exact.has(slot.course_slot_key)),
+      entries: settled.filter((entry) => !used.has(entry.id)),
+      timezone: course.timezone,
+    });
+    return (slot: CourseExpectedSlot) =>
+      exact.has(slot.course_slot_key) || loose.has(slot.course_slot_key);
+  };
   let candidate: CourseExpectedSlot | undefined;
   for (let day = todayC; day <= lastDay; day = addDays(day, 1)) {
-    const open = slotsOn(day).filter(
+    const daySlots = slotsOn(day);
+    const logged = loggedOn(daySlots);
+    const open = daySlots.filter(
       (slot) => future(slot, asOf, course.timezone) && !logged(slot)
     );
     if (!open.length) continue;
@@ -188,7 +210,8 @@ function nextSlotKey(
     previous = slotsOn(day)
       .filter((slot) => !future(slot, asOf, course.timezone))
       .at(-1);
-  if (!previous || logged(previous)) return candidate.course_slot_key;
+  if (!previous || loggedOn(slotsOn(previous.scheduled_day))(previous))
+    return candidate.course_slot_key;
   const revision = course.revisions.find(
     (row) => row.id === candidate.course_revision_id
   );

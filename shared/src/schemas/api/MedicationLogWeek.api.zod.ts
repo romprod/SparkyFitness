@@ -294,9 +294,16 @@ export const medicationLogWeekResponseSchema = z
       const managed =
         slot?.plan_kind === 'managed' &&
         actual.course_revision_id === slot.course_revision_id &&
-        actual.course_rule_id === slot.course_rule_id &&
-        actual.course_slot_key === slot.course_slot_key &&
-        actual.scheduled_day === slot.scheduled_day;
+        ((actual.course_rule_id === slot.course_rule_id &&
+          actual.course_slot_key === slot.course_slot_key &&
+          actual.scheduled_day === slot.scheduled_day) ||
+          // Same-day fallback: a taken or skipped dose with the revision but no slot link.
+          ((actual.status === 'taken' || actual.status === 'skipped') &&
+            !actual.course_slot_key &&
+            !actual.scheduled_day &&
+            (!actual.course_rule_id ||
+              actual.course_rule_id === slot.course_rule_id) &&
+            actual.entry_date === slot.scheduled_day));
       const legacy =
         slot?.plan_kind === 'legacy' &&
         actual.course_origin !== true &&

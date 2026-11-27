@@ -19,6 +19,7 @@ import {
   stackPlanFor,
   stackTimingViolatesSchedule,
   courseEntryMatchesSlot,
+  courseUnlinkedSlotMatches,
   computeCourseAdherence,
   medicationCourseReviewSchema,
   type MedicationCourse,
@@ -1077,6 +1078,22 @@ export async function getMedicationCourseDue(
           ),
         });
         slots.push(...expected);
+        const fulfil = (
+          slot: (typeof expected)[number],
+          actual: (typeof actuals)[number]
+        ) =>
+          fulfilled_slots.push({
+            course_revision_id: slot.course_revision_id,
+            course_rule_id: slot.course_rule_id,
+            course_slot_key: slot.course_slot_key,
+            scheduled_day: slot.scheduled_day,
+            status: actual.status === 'skipped' ? 'skipped' : 'taken',
+            source_kind: actual.source_kind,
+            entry_id: actual.id,
+            occurred_at: actual.occurred_at,
+            entry_date: actual.entry_date,
+          });
+        const open: typeof expected = [];
         for (const slot of expected) {
           const matches = actuals.filter((actual) =>
             courseEntryMatchesSlot(actual, slot)
@@ -1084,18 +1101,18 @@ export async function getMedicationCourseDue(
           const actual =
             matches.find((row) => row.status === 'skipped') ??
             matches.find(courseAdministered);
-          if (actual)
-            fulfilled_slots.push({
-              course_revision_id: slot.course_revision_id,
-              course_rule_id: slot.course_rule_id,
-              course_slot_key: slot.course_slot_key,
-              scheduled_day: slot.scheduled_day,
-              status: actual.status === 'skipped' ? 'skipped' : 'taken',
-              source_kind: actual.source_kind,
-              entry_id: actual.id,
-              occurred_at: actual.occurred_at,
-              entry_date: actual.entry_date,
-            });
+          if (actual) fulfil(slot, actual);
+          else open.push(slot);
+        }
+        // A dose with the revision but no slot link counts for the nearest open slot that day.
+        const loose = courseUnlinkedSlotMatches({
+          slots: open,
+          entries: actuals,
+          timezone: course.timezone,
+        });
+        for (const slot of open) {
+          const actual = loose.get(slot.course_slot_key);
+          if (actual) fulfil(slot, actual);
         }
       }
       return { ...context, courses, slots, fulfilled_slots };

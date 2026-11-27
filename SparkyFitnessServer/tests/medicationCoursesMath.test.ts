@@ -863,7 +863,7 @@ it('accepts a backdated successor after baseline but never gives predecessor act
   expect(result.taken).toBe(0);
   expect(result.missed).toBe(1);
 });
-it('keeps the final finite-course slot pending without inventing a post-end deadline', () => {
+it('marks the final finite-course slot missed once its own day has ended, with no later deadline', () => {
   const c = course({
     revisions: [
       revision({
@@ -885,7 +885,7 @@ it('keeps the final finite-course slot pending without inventing a post-end dead
     now: '2026-03-10T12:00:00Z',
     medicationActive: true,
   });
-  expect(result).toMatchObject({ taken: 0, missed: 0, pending: 1, pct: null });
+  expect(result).toMatchObject({ taken: 0, missed: 1, pending: 0, pct: 0 });
 });
 
 it('treats authored dose times and actual cyclic recurrence as material, not reminder-only preferences', () => {
@@ -1003,8 +1003,8 @@ it('keeps nondeleted predecessor history after deleting the current tip without 
     medicationActive: true,
   });
   expect(report.days[0]?.slots[0]?.course_revision_id).toBe('rev');
-  expect(report.missed).toBe(1);
-  expect(report.pending).toBe(1);
+  expect(report.missed).toBe(2);
+  expect(report.pending).toBe(0);
 });
 it('closes future predecessor activity when deleting a future-dated tip while preserving earlier Today slots', () => {
   const old = revision({
