@@ -480,7 +480,10 @@ export const manageMedicationsInput = z.object({
     .describe('Filter to active medications only'),
   from_date: optionalDateSchema,
   to_date: optionalDateSchema,
-  dose_mg: z.number().optional().describe('Dose in mg (for log_injection)'),
+  dose_mg: z
+    .number()
+    .optional()
+    .describe('Dose in mg (required for log_injection)'),
   dosage: z
     .number()
     .optional()

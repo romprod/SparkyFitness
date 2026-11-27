@@ -2,6 +2,7 @@ import { vi, beforeEach, describe, expect, it } from 'vitest';
 import { buildMedicationTools } from '../ai/tools/medicationTools.js';
 import medicationRepository from '../models/medicationRepository.js';
 import medicationEntryRepository from '../models/medicationEntryRepository.js';
+import injectionRepository from '../models/injectionRepository.js';
 import * as packRepository from '../models/medicationPackRepository.js';
 import { toolOpts } from './helpers/toolExecutionOptions.js';
 
@@ -512,6 +513,42 @@ describe('sparky_manage_medications tablet and capsule packs', () => {
     expect(medicationEntryRepository.createEntry).toHaveBeenLastCalledWith(
       'user-1',
       expect.objectContaining({ deduct_pack: false })
+    );
+  });
+});
+
+describe('sparky_manage_medications log_injection dose', () => {
+  const run = (args: Record<string, unknown>) =>
+    tools.sparky_manage_medications.execute!(args as never, opts);
+
+  it('refuses to log an injection without dose_mg and saves nothing', async () => {
+    const result = await run({
+      action: 'log_injection',
+      medication_id: MED_ID,
+      entry_date: '2026-11-18',
+    });
+    expect(result).toContain(
+      'Give the dose amount in mg for this injection. Sparky does not guess it.'
+    );
+    expect(result).toContain('Error [VALIDATION]');
+    expect(injectionRepository.createInjection).not.toHaveBeenCalled();
+  });
+
+  it('passes an explicit dose_mg through to createInjection', async () => {
+    vi.mocked(injectionRepository.createInjection).mockResolvedValue({
+      dose_mg: 4,
+      entry_date: '2026-11-18',
+      pen: null,
+    } as never);
+    await run({
+      action: 'log_injection',
+      medication_id: MED_ID,
+      dose_mg: 4,
+      entry_date: '2026-11-18',
+    });
+    expect(injectionRepository.createInjection).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ medication_id: MED_ID, dose_mg: 4 })
     );
   });
 });

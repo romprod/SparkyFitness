@@ -5,7 +5,7 @@ import medicationRepository from '../../models/medicationRepository.js';
 import * as packRepository from '../../models/medicationPackRepository.js';
 import medicationEntryRepository from '../../models/medicationEntryRepository.js';
 import injectionRepository from '../../models/injectionRepository.js';
-import { ERRORS, formatZodError } from './errors.js';
+import { ERRORS, formatZodError, toolError } from './errors.js';
 import { dayString, formatConfirmation, formatList } from './formatting.js';
 import { normalizeActionArgs } from './dates.js';
 import {
@@ -216,7 +216,7 @@ Actions:
 - list_entries(medication_id?, from_date?, to_date?)
 - update_entry(entry_id, status?, taken_at?, entry_date?, notes?)
 - delete_entry(entry_id)
-- log_injection(medication_id?|medication_name?, dose_mg?, site?, deduct_pen?, entry_date?, notes?)
+- log_injection(medication_id?|medication_name?, dose_mg (required), site?, deduct_pen?, entry_date?, notes?)
 - list_injections(medication_id?, from_date?, to_date?)`,
       inputSchema: manageMedicationsInput,
       execute: async (rawArgs) => {
@@ -453,6 +453,13 @@ Actions:
               return formatConfirmation('Entry deleted.');
             }
             case 'log_injection': {
+              if (args.dose_mg === undefined || args.dose_mg === null) {
+                return toolError(
+                  'VALIDATION',
+                  'Give the dose amount in mg for this injection. Sparky does not guess it.',
+                  'Ask the user how much they injected, then call log_injection again with dose_mg.'
+                );
+              }
               if (!args.entry_date) args.entry_date = todayInZone(tz);
               const injection: InjectionWithPenRow =
                 await injectionRepository.createInjection(userId, {
