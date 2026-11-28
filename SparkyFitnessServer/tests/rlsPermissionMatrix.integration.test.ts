@@ -179,6 +179,7 @@ describe.runIf(RUN)('RLS permission matrix', () => {
     medication_reminder_sends: 'owner',
     web_push_subscriptions: 'owner',
     medication_purchase_operations: 'owner',
+    medication_change_audit: 'owner',
     api_key: 'owner',
     sparky_chat_history: 'owner',
     user_ignored_updates: 'owner',
@@ -1235,6 +1236,157 @@ describe.runIf(RUN)('RLS permission matrix', () => {
         const out = await run(
           who,
           'DELETE FROM public.medication_dose_audit WHERE id = $1',
+          [auditId]
+        );
+        if (WRITERS.includes(who)) {
+          expect(out.error?.message).toMatch(/immutable/);
+        } else {
+          expect(out.error).toBeUndefined();
+          expect(out.rowCount).toBe(0);
+        }
+      });
+    });
+
+    // -- vial, invoice and prescription change audit: owner-only read, nobody writes it directly ----
+    describe('medication_change_audit (owner-only, append-only)', () => {
+      const INACTIVE = '00000000-0000-4000-a000-0000000000b1';
+      const EXPIRED = '00000000-0000-4000-a000-0000000000b2';
+      const STRANGER = '00000000-0000-4000-a000-0000000000b3';
+      let medId = '';
+      let vialId = '';
+      let auditId = '';
+      beforeAll(async () => {
+        const sys = await getSystemClient();
+        try {
+          await sys.query(
+            'DELETE FROM public."user" WHERE id = ANY($1::uuid[])',
+            [[INACTIVE, EXPIRED, STRANGER]]
+          );
+          for (const id of [INACTIVE, EXPIRED, STRANGER])
+            await sys.query(
+              'INSERT INTO public."user" (id, email, email_verified) VALUES ($1, $2, true)',
+              [id, `rls-matrix-change-audit-${id}@example.test`]
+            );
+          const grant = JSON.stringify({ can_manage_medications: true });
+          await sys.query(
+            `INSERT INTO public.family_access (owner_user_id, family_user_id, family_email, access_permissions, is_active, status)
+             VALUES ($1, $2, 'rls-matrix-change-inactive@example.test', $3::jsonb, false, 'inactive')`,
+            [OWNER, INACTIVE, grant]
+          );
+          await sys.query(
+            `INSERT INTO public.family_access (owner_user_id, family_user_id, family_email, access_permissions, is_active, status, access_end_date)
+             VALUES ($1, $2, 'rls-matrix-change-expired@example.test', $3::jsonb, true, 'active', now() - interval '1 day')`,
+            [OWNER, EXPIRED, grant]
+          );
+          // The audit row is written by the trigger on this vial.
+          medId = (
+            await sys.query(
+              "INSERT INTO public.medications (user_id, name, type_id) VALUES ($1, 'rls-matrix-change-audit', 'injection') RETURNING id",
+              [OWNER]
+            )
+          ).rows[0].id;
+          vialId = (
+            await sys.query(
+              "INSERT INTO public.medication_pens (user_id, medication_id, kind, label) VALUES ($1, $2, 'vial', 'rls-matrix-change-audit') RETURNING id",
+              [OWNER, medId]
+            )
+          ).rows[0].id;
+          auditId = (
+            await sys.query(
+              'SELECT id FROM public.medication_change_audit WHERE entity_id = $1',
+              [vialId]
+            )
+          ).rows[0].id;
+        } finally {
+          sys.release();
+        }
+      });
+      afterAll(async () => {
+        const sys = await getSystemClient();
+        try {
+          await sys.query('DELETE FROM public.medications WHERE id = $1', [
+            medId,
+          ]);
+          await sys.query(
+            'DELETE FROM public."user" WHERE id = ANY($1::uuid[])',
+            [[INACTIVE, EXPIRED, STRANGER]]
+          );
+        } finally {
+          sys.release();
+        }
+      });
+
+      type Who = DelegateKey | 'owner' | 'inactive' | 'expired' | 'stranger';
+      const WHO: Who[] = ['owner', ...KEYS, 'inactive', 'expired', 'stranger'];
+      const authAs = (who: Who): [string, string] => {
+        if (who === 'owner') return [OWNER, OWNER];
+        if (who === 'inactive') return [OWNER, INACTIVE];
+        if (who === 'expired') return [OWNER, EXPIRED];
+        // a user with no grant at all asking for the owner's data
+        if (who === 'stranger') return [OWNER, STRANGER];
+        return [OWNER, D[who]];
+      };
+      // Who may read it: the owner only, whatever the delegate's medication or report grants.
+      const READERS: Who[] = ['owner'];
+      // Who gets as far as the immutability trigger on UPDATE/DELETE (RLS lets them see the row).
+      const WRITERS: Who[] = ['owner'];
+
+      async function run(who: Who, sql: string, params: unknown[]) {
+        const [user, actor] = authAs(who);
+        const client = await getClient(user, actor);
+        try {
+          await client.query('BEGIN');
+          try {
+            const res = await client.query(sql, params);
+            return { rows: res.rows, rowCount: res.rowCount ?? 0 };
+          } catch (e) {
+            return { error: e as { code?: string; message: string } };
+          } finally {
+            await client.query('ROLLBACK');
+          }
+        } finally {
+          client.release();
+        }
+      }
+
+      it.each(WHO)('SELECT as "%s"', async (who) => {
+        const out = await run(
+          who,
+          'SELECT id FROM public.medication_change_audit WHERE id = $1',
+          [auditId]
+        );
+        expect(out.rowCount).toBe(READERS.includes(who) ? 1 : 0);
+      });
+
+      it.each(WHO)('INSERT as "%s" is refused', async (who) => {
+        const out = await run(
+          who,
+          `INSERT INTO public.medication_change_audit (user_id, entity_kind, entity_id, action, new_values)
+           VALUES ($1, 'vial', $2, 'create', '{}'::jsonb)`,
+          [OWNER, randomUUID()]
+        );
+        // the guard trigger fires before the row security check, so everyone meets the guard
+        expect(out.error?.message).toMatch(/written by the database only/);
+      });
+
+      it.each(WHO)('UPDATE as "%s" is refused or hidden', async (who) => {
+        const out = await run(
+          who,
+          "UPDATE public.medication_change_audit SET action = 'delete' WHERE id = $1",
+          [auditId]
+        );
+        if (WRITERS.includes(who)) {
+          expect(out.error?.message).toMatch(/immutable/);
+        } else {
+          expect(out.error).toBeUndefined();
+          expect(out.rowCount).toBe(0);
+        }
+      });
+
+      it.each(WHO)('DELETE as "%s" is refused or hidden', async (who) => {
+        const out = await run(
+          who,
+          'DELETE FROM public.medication_change_audit WHERE id = $1',
           [auditId]
         );
         if (WRITERS.includes(who)) {

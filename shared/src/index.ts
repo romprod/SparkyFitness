@@ -382,6 +382,7 @@ export * from './medications/draw.ts';
 export * from './schemas/database/MedicationSyringes.zod.ts';
 export * from './schemas/database/MedicationStockStatusAudit.zod.ts';
 export * from './schemas/database/MedicationDoseAudit.zod.ts';
+export * from './schemas/database/MedicationChangeAudit.zod.ts';
 export * from './schemas/database/MedicationPacks.zod.ts';
 export * from './schemas/database/MedicationReminders.zod.ts';
 export * from './schemas/database/MedicationStacks.zod.ts';

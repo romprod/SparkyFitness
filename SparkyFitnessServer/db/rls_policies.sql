@@ -148,6 +148,7 @@ BEGIN
     'medication_preparation_corrections',
     'medication_preparation_dose_corrections',
     'medication_dose_audit',
+    'medication_change_audit',
     'medication_smooth_week_pins',
     'injection_entries',
     'medication_titration_steps',
@@ -840,6 +841,8 @@ SELECT create_owner_policy('medication_purchases');
 SELECT create_owner_policy('medication_purchase_items');
 SELECT create_owner_policy('medication_purchase_vials');
 SELECT create_owner_policy('medication_purchase_packs');
+-- Vial, invoice and prescription change log: owner only, written by triggers (see 20261128120000_medication_change_audit.sql).
+SELECT create_owner_policy('medication_change_audit');
 SELECT create_owner_policy('medication_reminder_settings');
 SELECT create_owner_policy('medication_reminder_sends');
 SELECT create_owner_policy('web_push_subscriptions');
